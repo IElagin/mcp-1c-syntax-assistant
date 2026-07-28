@@ -27,7 +27,12 @@ class QueryBuilder:
         if search_type == "auto":
             search_type = self._detect_search_type(query)
         
-        if search_type == "exact":
+        if search_type == "qualified":
+            razobrano = self.razobrat_kvalifitsirovannoe_imya(query)
+            if razobrano:
+                return self.build_qualified_query(*razobrano, limit=limit)
+            return self._build_exact_search(query, limit)
+        elif search_type == "exact":
             return self._build_exact_search(query, limit)
         elif search_type == "fuzzy":
             return self._build_fuzzy_search(query, limit)
@@ -73,12 +78,61 @@ class QueryBuilder:
             ]
         }
     
+    @staticmethod
+    def razobrat_kvalifitsirovannoe_imya(query: str):
+        """Разбирает 'ТаблицаЗначений.Добавить' на объект и элемент.
+
+        Возвращает (объект, элемент) либо None, если запрос не похож на
+        обращение к элементу объекта.
+        """
+        tekst = (query or "").strip()
+        if tekst.count(".") != 1 or " " in tekst:
+            return None
+
+        obekt, _, element = tekst.partition(".")
+        obekt, element = obekt.strip(), element.strip()
+        if not obekt or not element:
+            return None
+        return obekt, element
+
+    def build_qualified_query(
+        self,
+        object_name: str,
+        member_name: str,
+        limit: int = 10
+    ) -> Dict[str, Any]:
+        """Строит запрос по паре объект + элемент.
+
+        Принадлежность объекту — жёсткий filter, иначе в выдачу попадают
+        одноимённые методы чужих объектов ('Добавить' есть у десятков).
+        Имя элемента ищется от точного совпадения к префиксу.
+        """
+        return {
+            "query": {
+                "bool": {
+                    "filter": [{"term": {"object": object_name}}],
+                    "should": [
+                        {"term": {"name_ru.keyword": {"value": member_name, "boost": 10.0}}},
+                        {"term": {"name_en.keyword": {"value": member_name, "boost": 9.0}}},
+                        {"prefix": {"name_ru.keyword": {"value": member_name, "boost": 4.0}}},
+                        {"match": {"name_ru": {"query": member_name, "boost": 2.0}}},
+                        {"match": {"name_en": {"query": member_name, "boost": 2.0}}}
+                    ],
+                    "minimum_should_match": 1
+                }
+            },
+            "size": limit,
+            "sort": [
+                {"_score": {"order": "desc"}}
+            ]
+        }
+
     def _detect_search_type(self, query: str) -> str:
         """Автоматически определяет тип поиска по запросу."""
-        # Точный поиск - если запрос содержит точку (метод объекта)
-        if "." in query and len(query.split(".")) == 2:
-            return "exact"
-        
+        # Обращение к элементу объекта: 'ТаблицаЗначений.Добавить'
+        if self.razobrat_kvalifitsirovannoe_imya(query):
+            return "qualified"
+
         # Точный поиск - если запрос короткий и не содержит пробелов
         if len(query.split()) == 1 and len(query) < 30:
             return "exact"
@@ -96,8 +150,13 @@ class QueryBuilder:
             "query": {
                 "bool": {
                     "should": [
+                        # Точное совпадение имени. Раньше буст вешался на
+                        # name.keyword, где лежит слитное "Добавить (Add)",
+                        # поэтому не срабатывал никогда.
+                        {"term": {"name_ru.keyword": {"value": query, "boost": 12.0}}},
+                        {"term": {"name_en.keyword": {"value": query, "boost": 10.0}}},
+                        {"prefix": {"name_ru.keyword": {"value": query, "boost": 3.0}}},
                         {"match_phrase": {"name": {"query": query, "boost": 5.0}}},
-                        {"match_phrase": {"full_path": {"query": query, "boost": 4.0}}},
                         {"match_phrase": {"syntax_ru": {"query": query, "boost": 3.0}}},
                         {"match_phrase": {"syntax_en": {"query": query, "boost": 3.0}}},
                         {"match": {"description": {"query": query, "boost": 2.0}}}

@@ -1,7 +1,8 @@
 """Индексатор документации в Elasticsearch."""
 
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, Tuple
 import asyncio
+import re
 import time
 from datetime import datetime
 
@@ -10,6 +11,27 @@ from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Справка хранит имя элемента слитно: "Добавить (Add)", "ЗначениеЗаполнено (ValueIsFilled)".
+# Английская часть — латиница, возможна точка (например "ОбработкаЗаполнения (FillProcessing)").
+_IMYA_RU_EN = re.compile(r"^(?P<ru>.+?)\s+\((?P<en>[A-Za-z][A-Za-z0-9._]*)\)$")
+
+
+def razlozhit_imya(name: Optional[str]) -> Tuple[str, Optional[str]]:
+    """Раскладывает "Добавить (Add)" на русскую и английскую части.
+
+    Имя без английской части возвращается как есть — так устроены, например,
+    документы самих объектов ("ТаблицаЗначений") и разделы вида
+    "ОбъектМетаданных: Измерение".
+    """
+    imya = (name or "").strip()
+    if not imya:
+        return "", None
+
+    sovpadenie = _IMYA_RU_EN.match(imya)
+    if sovpadenie:
+        return sovpadenie.group("ru").strip(), sovpadenie.group("en").strip()
+    return imya, None
 
 
 class ElasticsearchIndexer:
@@ -113,10 +135,14 @@ class ElasticsearchIndexer:
     
     def _prepare_document(self, doc: Documentation) -> Dict[str, Any]:
         """Подготавливает документ для индексации в Elasticsearch."""
+        imya_ru, imya_en = razlozhit_imya(doc.name)
+
         es_doc = {
             "id": doc.id,
             "type": doc.type.value,
             "name": doc.name,
+            "name_ru": imya_ru,
+            "name_en": imya_en or "",
             "object": doc.object,
             "syntax_ru": doc.syntax_ru,
             "syntax_en": doc.syntax_en,
