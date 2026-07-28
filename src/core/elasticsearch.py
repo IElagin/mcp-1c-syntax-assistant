@@ -116,6 +116,11 @@ class ElasticsearchClient:
                     "id": {"type": "keyword"},
                     "type": {"type": "keyword"}, 
                     "name": {"type": "text", "analyzer": "russian", "fields": {"keyword": {"type": "keyword"}}},
+                    # Справка хранит имя слитно: "Добавить (Add)". Слитное имя
+                    # непригодно для точного совпадения, поэтому раскладываем его
+                    # на русскую и английскую части с keyword-подполями.
+                    "name_ru": {"type": "text", "analyzer": "russian", "fields": {"keyword": {"type": "keyword"}}},
+                    "name_en": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
                     "object": {"type": "keyword"},
                     "syntax_ru": {"type": "text"},
                     "syntax_en": {"type": "text"},

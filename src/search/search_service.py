@@ -42,10 +42,27 @@ class SearchService:
                 limit=limit,
                 search_type="auto"
             )
-            
+
             # Выполняем поиск
             response = await self.es_client.search(es_query)
-            
+
+            # Запрос вида 'Объект.Метод' ищет строго внутри объекта. Если объект
+            # не опознан — например, назван идентификатором из кода
+            # (ФоновыеЗадания вместо МенеджерФоновыхЗаданий) — выдача будет
+            # пустой. Тогда повторяем поиск по одному имени элемента, чтобы
+            # ответить хоть чем-то полезным вместо "ничего не найдено".
+            razobrano = self.query_builder.razobrat_kvalifitsirovannoe_imya(query)
+            if razobrano and not response.get("hits", {}).get("hits"):
+                _, imya_elementa = razobrano
+                logger.info(
+                    f"Объект '{razobrano[0]}' не найден, повторяем поиск по '{imya_elementa}'"
+                )
+                response = await self.es_client.search(
+                    self.query_builder.build_search_query(
+                        query=imya_elementa, limit=limit, search_type="auto"
+                    )
+                )
+
             if not response:
                 return {
                     "results": [],
