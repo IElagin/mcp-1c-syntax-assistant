@@ -155,17 +155,17 @@ class SearchService:
             # Строим базовый запрос
             elasticsearch_query = self.query_builder.build_search_query(query, limit)
             
-            # Добавляем фильтры по контексту
-            context_filters = []
-            
+            # Фильтры по типу элемента — подходит любой из перечисленных (ИЛИ)
+            type_filters = []
+
             if context == "global":
-                context_filters.extend([
+                type_filters.extend([
                     {"term": {"type": "global_function"}},
                     {"term": {"type": "global_procedure"}},
                     {"term": {"type": "global_event"}}
                 ])
             elif context == "object":
-                context_filters.extend([
+                type_filters.extend([
                     {"term": {"type": "object_function"}},
                     {"term": {"type": "object_procedure"}},
                     {"term": {"type": "object_property"}},
@@ -173,17 +173,24 @@ class SearchService:
                     {"term": {"type": "object_constructor"}}
                 ])
             # Для "all" не добавляем фильтры
-            
-            # Добавляем фильтр по объекту если указан
+
+            # Условия соединяются через И: тип элемента И принадлежность объекту.
+            # Складывать их в один should нельзя — фильтр по объекту перестаёт
+            # сужать выборку, потому что условие по типу выполняется само по себе.
+            filters = []
+
+            if type_filters:
+                filters.append({"bool": {"should": type_filters}})
+
             if object_name and context != "global":
-                context_filters.append({"term": {"object": object_name}})
-            
+                filters.append({"term": {"object": object_name}})
+
             # Применяем фильтры
-            if context_filters:
+            if filters:
                 elasticsearch_query["query"] = {
                     "bool": {
                         "must": [elasticsearch_query["query"]],
-                        "filter": [{"bool": {"should": context_filters}}]
+                        "filter": filters
                     }
                 }
             
