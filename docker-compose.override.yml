@@ -25,3 +25,6 @@ services:
       # монтируем, чтобы прогонять pytest внутри контейнера.
       - ./tests:/app/tests:ro
       - ./pytest.ini:/app/pytest.ini:ro
+      # Замер качества поиска — по той же причине, иначе теряется при
+      # пересоздании контейнера.
+      - ./eval_search.py:/app/eval_search.py:ro
