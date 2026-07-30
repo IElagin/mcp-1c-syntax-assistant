@@ -190,6 +190,135 @@ async def zamer_chastotnyh(service, limit=10):
     return itogi, pustye
 
 
+# Тип возврата длиной больше этого — почти наверняка абзац пояснения, а не тип.
+# Замер по индексу: у 50.5% заполненных return_type тип слит с пояснением.
+PREDEL_TIPA = 40
+
+
+async def vzyat_vse_dokumenty(polya):
+    """Выгружает весь индекс постранично через search_after."""
+    docs, posle = [], None
+    while True:
+        zapros = {
+            "size": 1000,
+            "query": {"match_all": {}},
+            "_source": polya,
+            "sort": [{"id": "asc"}],
+        }
+        if posle:
+            zapros["search_after"] = posle
+        otvet = await es_client.search(zapros)
+        hits = (otvet or {}).get("hits", {}).get("hits", [])
+        if not hits:
+            return docs
+        docs.extend(h["_source"] for h in hits)
+        posle = hits[-1]["sort"]
+
+
+def _pohozhe_na_tip(znachenie):
+    """Тип — короткая строка без внутренней точки: 'Массив', 'Строка, Число'."""
+    tekst = (znachenie or "").strip()
+    if not tekst or len(tekst) > PREDEL_TIPA:
+        return False
+    return "." not in tekst.rstrip(".")
+
+
+def _varianty(doc):
+    """Варианты вызова; у старой модели их нет, тогда — пустой список."""
+    return doc.get("variants") or []
+
+
+def _parametry(doc):
+    """Параметры из вариантов, а у старой модели — с верхнего уровня."""
+    iz_variantov = [p for v in _varianty(doc) for p in (v.get("parameters") or [])]
+    return iz_variantov or (doc.get("parameters") or [])
+
+
+def zamer_polnoty(docs):
+    """Считает, чего в карточке не хватает и что в ней искажено."""
+    itogi = Counter()
+    for d in docs:
+        tip = d.get("type") or ""
+        itogi["vsego"] += 1
+
+        if d.get("availability"):
+            itogi["s_dostupnostyu"] += 1
+
+        if tip == "object_property":
+            itogi["svoystv"] += 1
+            if d.get("value_type"):
+                itogi["svoystv_s_tipom"] += 1
+            if d.get("usage"):
+                itogi["svoystv_s_dostupom"] += 1
+
+        for p in _parametry(d):
+            itogi["param_vsego"] += 1
+            opisanie = p.get("description") or ""
+            if p.get("required") is True and "(необязательный)" in opisanie:
+                itogi["param_protivorechie"] += 1
+            if not p.get("type"):
+                itogi["param_bez_tipa"] += 1
+            if "(обязательный)" in opisanie or "(необязательный)" in opisanie:
+                itogi["param_dubl_v_opisanii"] += 1
+            # Отдельно от противоречия: после чистки описаний противоречие
+            # исчезнет само, а вот известна ли обязательность — вопрос
+            # положительный, и его надо мерить прямо.
+            if p.get("required") is None:
+                itogi["param_bez_obyazatelnosti"] += 1
+
+        for v in _varianty(d):
+            if not v.get("return_type"):
+                continue
+            if _pohozhe_na_tip(v["return_type"]):
+                itogi["vozvrat_tip"] += 1
+            else:
+                itogi["vozvrat_abzats"] += 1
+
+        # Старая модель: тип возврата лежал на верхнем уровне
+        if not _varianty(d) and d.get("return_type"):
+            if _pohozhe_na_tip(d["return_type"]):
+                itogi["vozvrat_tip"] += 1
+            else:
+                itogi["vozvrat_abzats"] += 1
+
+        if len(_varianty(d)) > 1:
+            itogi["mnogo_variantov"] += 1
+
+    return itogi
+
+
+def neunikalnye_imena(docs):
+    """Имена, встречающиеся больше одного раза, и сколько раз."""
+    schetchik = Counter(d.get("name_ru") for d in docs if d.get("name_ru"))
+    return {imya: n for imya, n in schetchik.items() if n > 1}
+
+
+async def zamer_odnoznachnosti(service, docs, razmer=40, seed=20260730):
+    """Сообщает ли сервер о неоднозначности вместо молчаливого выбора.
+
+    Берём имена-омонимы и просим карточку без указания объекта. Правильный
+    ответ — не карточка, а перечень кандидатов: выбрать за агента один из
+    275 одноимённых элементов сервер не вправе.
+    """
+    omonimy = sorted(neunikalnye_imena(docs).items(), key=lambda p: -p[1])
+    vyborka = [imya for imya, _ in omonimy[:200]]
+    random.Random(seed).shuffle(vyborka)
+    vyborka = vyborka[:razmer]
+
+    itogi = Counter()
+    for imya in vyborka:
+        itogi["vsego"] += 1
+        otvet = await service.kartochka_elementa(imya)
+        vid = (otvet or {}).get("kind")
+        if vid == "ambiguous":
+            itogi["soobshchil"] += 1
+        elif vid == "card":
+            itogi["molcha_vybral"] += 1
+        else:
+            itogi["ne_nashel"] += 1
+    return itogi
+
+
 def protsent(chast, vsego):
     return f"{100.0 * chast / vsego:5.1f}%" if vsego else "    н/д"
 
@@ -235,6 +364,33 @@ async def main():
         print(f"  точное имя в топ-5  : {protsent(chastotnye['tochnoe_v5'], chastotnye['vsego'])}  ({chastotnye['tochnoe_v5']}/{chastotnye['vsego']})")
         if pustye:
             print(f"  пусто по запросам   : {', '.join(pustye)}")
+
+        vse = await vzyat_vse_dokumenty([
+            "type", "object", "name_ru", "parameters", "variants", "return_type",
+            "availability", "usage", "value_type", "examples",
+        ])
+        polnota = zamer_polnoty(vse)
+        v = polnota["vsego"]
+        print("\n== E. Полнота карточки ==")
+        print(f"  с доступностью      : {protsent(polnota['s_dostupnostyu'], v)}  ({polnota['s_dostupnostyu']}/{v})")
+        print(f"  свойств с типом     : {protsent(polnota['svoystv_s_tipom'], polnota['svoystv'])}  ({polnota['svoystv_s_tipom']}/{polnota['svoystv']})")
+        print(f"  свойств с доступом  : {protsent(polnota['svoystv_s_dostupom'], polnota['svoystv'])}  ({polnota['svoystv_s_dostupom']}/{polnota['svoystv']})")
+        print(f"  параметров всего    : {polnota['param_vsego']}")
+        print(f"    противоречий      : {polnota['param_protivorechie']}")
+        print(f"    без типа          : {polnota['param_bez_tipa']}")
+        print(f"    дубль в описании  : {polnota['param_dubl_v_opisanii']}")
+        print(f"    обязательность неизвестна: {polnota['param_bez_obyazatelnosti']}")
+        print(f"  возврат: тип        : {polnota['vozvrat_tip']}")
+        print(f"  возврат: абзац      : {polnota['vozvrat_abzats']}")
+        print(f"  элементов с >1 вариантом вызова: {polnota['mnogo_variantov']}")
+
+        try:
+            odnozn = await zamer_odnoznachnosti(service, vse)
+            print("\n== F. Однозначность ==")
+            print(f"  сообщил о выборе    : {protsent(odnozn['soobshchil'], odnozn['vsego'])}  ({odnozn['soobshchil']}/{odnozn['vsego']})")
+            print(f"  выбрал молча        : {protsent(odnozn['molcha_vybral'], odnozn['vsego'])}  ({odnozn['molcha_vybral']}/{odnozn['vsego']})")
+        except AttributeError:
+            print("\n== F. Однозначность == (kartochka_elementa ещё не реализована)")
 
         if promahi:
             print("\n== Примеры промахов набора A ==")
