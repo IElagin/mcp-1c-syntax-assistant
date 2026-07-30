@@ -304,13 +304,24 @@ class SearchService:
                 elif 'event' in doc_type:
                     events.append(doc)
             
+            # total — сколько элементов в индексе, а не сколько поместилось в
+            # ответ. Раньше здесь стояла сумма вернувшихся списков, поэтому по
+            # ответу нельзя было понять, что limit срезал хвост.
+            vsego = response.get("hits", {}).get("total", {})
+            vsego_v_indekse = (
+                vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
+            )
+
             return {
                 "object": object_name,
                 "member_type": member_type,
                 "methods": methods,
                 "properties": properties,
                 "events": events,
-                "total": len(methods) + len(properties) + len(events)
+                "total": max(
+                    vsego_v_indekse,
+                    len(methods) + len(properties) + len(events)
+                )
             }
             
         except Exception as e:
