@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 
 from src.models.doc_models import Documentation, Parameter, DocumentType, ObjectMethod, ObjectProperty, ObjectEvent
 from src.core.logging import get_logger
+from src.parsers.tekst import izvlech_tip_i_poyasnenie
 
 logger = get_logger(__name__)
 
@@ -434,34 +435,27 @@ class HTMLParser:
                 if not any(p.name == param_name for p in doc.parameters):
                     self._process_parameter(doc, param_name, param_info, "")
     
-    def _process_parameter(self, doc: Documentation, param_name: str, param_info: str, param_required: str):
-        """Обрабатывает отдельный параметр."""
-        # Извлекаем тип из ссылки на def_
-        param_type = "Произвольный"
-        type_match = re.search(r'<a\s+href="[^"]*def_[^"]*"[^>]*>([^<]+)</a>', param_info)
-        if type_match:
-            param_type = type_match.group(1).strip()
-        
-        # Извлекаем полное описание (весь текст после типа)
-        # Удаляем HTML теги и получаем чистый текст
-        from bs4 import BeautifulSoup as BS
-        clean_info = BS(param_info, 'html.parser').get_text()
-        
-        # Убираем начальную часть "Тип: [тип]."
-        param_desc = re.sub(r'^Тип:\s*[^.]+\.\s*', '', clean_info.strip())
-        
-        # Добавляем информацию об обязательности
-        required_info = param_required.strip()
-        if required_info:
-            param_desc = f"({required_info}) {param_desc}"
-        
-        if param_name:
-            param = Parameter(
-                name=param_name,
-                type=param_type,
-                description=param_desc.strip()
-            )
-            doc.parameters.append(param)
+    def _process_parameter(self, doc: Documentation, param_name: str,
+                           param_info: str, param_required: str):
+        """Собирает параметр из имени, скобки обязательности и блока после неё."""
+        flag = (param_required or "").strip().lower()
+        if flag == 'обязательный':
+            obyazatelnyy = True
+        elif flag == 'необязательный':
+            obyazatelnyy = False
+        else:
+            # Справка молчит — так и запишем: это не то же самое, что
+            # «необязательный», и карточка обязана различать.
+            obyazatelnyy = None
+
+        tip, opisanie = izvlech_tip_i_poyasnenie(param_info)
+        if param_name.strip():
+            doc.parameters.append(Parameter(
+                name=param_name.strip(),
+                type=tip,
+                description=opisanie,
+                required=obyazatelnyy,
+            ))
     
     def _extract_return_type(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает тип и описание возвращаемого значения."""

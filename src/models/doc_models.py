@@ -42,9 +42,13 @@ class ObjectEvent(BaseModel):
 class Parameter(BaseModel):
     """Параметр функции/метода."""
     name: str
-    type: str
+    type: str = ""
     description: str = ""
-    required: bool = True
+    # None — справка об обязательности молчит. Раньше здесь стояло True по
+    # умолчанию, и карточка объявляла обязательными 2 677 параметров, которые
+    # справка помечает необязательными. Ложь хуже отсутствия данных: агент
+    # передаёт лишний аргумент и получает отказ платформы.
+    required: Optional[bool] = None
 
 
 class Documentation(BaseModel):
