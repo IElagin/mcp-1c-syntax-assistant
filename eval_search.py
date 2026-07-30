@@ -191,7 +191,10 @@ async def zamer_chastotnyh(service, limit=10):
 
 
 # Тип возврата длиной больше этого — почти наверняка абзац пояснения, а не тип.
-# Замер по индексу: у 50.5% заполненных return_type тип слит с пояснением.
+# Это лишь одно из двух условий классификации (см. _pohozhe_na_tip): тип — это
+# короткая строка И без внутренней точки, абзац — если нарушено любое из двух.
+# Замер по индексу (по обоим условиям вместе): 2410 из 4426 заполненных
+# return_type — абзац, слитый с типом (54,4%).
 PREDEL_TIPA = 40
 
 
@@ -234,6 +237,21 @@ def _parametry(doc):
     return iz_variantov or (doc.get("parameters") or [])
 
 
+def _uchest_vozvrat(itogi, return_type):
+    """Классифицирует один непустой return_type и прибавляет в itogi.
+
+    Общая точка для обеих моделей (тип внутри варианта и тип на верхнем
+    уровне старой модели), чтобы правило классификации не разъезжалось
+    между двумя копипастами при будущих правках.
+    """
+    if not return_type:
+        return
+    if _pohozhe_na_tip(return_type):
+        itogi["vozvrat_tip"] += 1
+    else:
+        itogi["vozvrat_abzats"] += 1
+
+
 def zamer_polnoty(docs):
     """Считает, чего в карточке не хватает и что в ней искажено."""
     itogi = Counter()
@@ -267,19 +285,11 @@ def zamer_polnoty(docs):
                 itogi["param_bez_obyazatelnosti"] += 1
 
         for v in _varianty(d):
-            if not v.get("return_type"):
-                continue
-            if _pohozhe_na_tip(v["return_type"]):
-                itogi["vozvrat_tip"] += 1
-            else:
-                itogi["vozvrat_abzats"] += 1
+            _uchest_vozvrat(itogi, v.get("return_type"))
 
         # Старая модель: тип возврата лежал на верхнем уровне
-        if not _varianty(d) and d.get("return_type"):
-            if _pohozhe_na_tip(d["return_type"]):
-                itogi["vozvrat_tip"] += 1
-            else:
-                itogi["vozvrat_abzats"] += 1
+        if not _varianty(d):
+            _uchest_vozvrat(itogi, d.get("return_type"))
 
         if len(_varianty(d)) > 1:
             itogi["mnogo_variantov"] += 1
