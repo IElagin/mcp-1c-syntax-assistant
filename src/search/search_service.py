@@ -11,6 +11,20 @@ from src.search.formatter import SearchFormatter
 
 logger = get_logger(__name__)
 
+# Сколько кандидатов показать при омонимии. Перечень нужен, чтобы агент выбрал
+# объект, а не чтобы прочитать все 275 — полный список он получит запросом.
+KANDIDATOV_V_OTVETE = 5
+
+
+def _nastoyashchiy_tip(imya_obekta) -> bool:
+    """Похоже ли имя объекта на тип языка, а не на заголовок раздела справки.
+
+    В справке под object лежат и типы («ТаблицаЗначений»), и разделы вида
+    «ОбъектМетаданных: Измерение» — последние в коде не пишут.
+    """
+    imya = imya_obekta or ""
+    return bool(imya) and " " not in imya and ":" not in imya
+
 
 class SearchService:
     """Сервис поиска по документации 1С."""
@@ -46,22 +60,11 @@ class SearchService:
             # Выполняем поиск
             response = await self.es_client.search(es_query)
 
-            # Запрос вида 'Объект.Метод' ищет строго внутри объекта. Если объект
-            # не опознан — например, назван идентификатором из кода
-            # (ФоновыеЗадания вместо МенеджерФоновыхЗаданий) — выдача будет
-            # пустой. Тогда повторяем поиск по одному имени элемента, чтобы
-            # ответить хоть чем-то полезным вместо "ничего не найдено".
-            razobrano = self.query_builder.razobrat_kvalifitsirovannoe_imya(query)
-            if razobrano and not response.get("hits", {}).get("hits"):
-                _, imya_elementa = razobrano
-                logger.info(
-                    f"Объект '{razobrano[0]}' не найден, повторяем поиск по '{imya_elementa}'"
-                )
-                response = await self.es_client.search(
-                    self.query_builder.build_search_query(
-                        query=imya_elementa, limit=limit, search_type="auto"
-                    )
-                )
+            # Прежде здесь стоял повторный поиск по одному имени элемента, если
+            # объект из запроса «Объект.Метод» не опознан. Он возвращал элементы
+            # чужих объектов, не сообщая об этом, — агент принимал их за
+            # запрошенные. Теперь пустая выдача остаётся пустой, а объяснение
+            # даёт kartochka_elementa через kind="object_not_found".
 
             if not response:
                 return {
@@ -335,3 +338,107 @@ class SearchService:
                 "total": 0,
                 "error": str(e)
             }
+
+    async def kartochka_elementa(
+        self,
+        name: str,
+        object_name: Optional[str] = None,
+        variant: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Находит элемент по точному имени, не выбирая молча при омонимии."""
+        if object_name:
+            est_obekt = await self._obekt_sushchestvuet(object_name)
+            if not est_obekt:
+                return {
+                    "kind": "object_not_found",
+                    "object": object_name,
+                    "similar": await self.pohozhie_obekty(object_name),
+                }
+
+        filtry = [{
+            "bool": {
+                "should": [
+                    {"term": {"name_ru.keyword": name}},
+                    {"term": {"name_en.keyword": name}},
+                ],
+                "minimum_should_match": 1,
+            }
+        }]
+        if object_name:
+            filtry.append({"term": {"object": object_name}})
+
+        otvet = await self.es_client.search({
+            "query": {"bool": {"filter": filtry}},
+            "size": 50,
+        })
+        hits = (otvet or {}).get("hits", {}).get("hits", [])
+        vsego = (otvet or {}).get("hits", {}).get("total", {})
+        vsego = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
+
+        if not hits:
+            return {
+                "kind": "not_found",
+                "name": name,
+                "similar": await self._pohozhie_elementy(name),
+            }
+
+        dokumenty = [h["_source"] for h in hits]
+
+        if len(dokumenty) > 1:
+            dokumenty.sort(
+                key=lambda d: (not _nastoyashchiy_tip(d.get("object")),
+                               d.get("object") or "")
+            )
+            return {
+                "kind": "ambiguous",
+                "name": name,
+                "candidates": dokumenty[:KANDIDATOV_V_OTVETE],
+                "total": vsego,
+            }
+
+        doc = dokumenty[0]
+
+        if variant:
+            imena = [v.get("variant", "") for v in (doc.get("variants") or [])]
+            if variant not in imena:
+                return {"kind": "variant_not_found", "document": doc, "variants": imena}
+            doc = dict(doc)
+            doc["variants"] = [
+                v for v in doc["variants"] if v.get("variant") == variant
+            ]
+
+        return {"kind": "card", "document": doc}
+
+    async def _obekt_sushchestvuet(self, object_name: str) -> bool:
+        """Есть ли в справке объект с таким именем."""
+        otvet = await self.es_client.search({
+            "query": {"bool": {"filter": [{"term": {"object": object_name}}]}},
+            "size": 0,
+        })
+        vsego = (otvet or {}).get("hits", {}).get("total", {})
+        vsego = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
+        return vsego > 0
+
+    async def pohozhie_obekty(self, object_name: str, limit: int = 5) -> list:
+        """Объекты с близким именем — вместо молчаливой подмены запроса."""
+        otvet = await self.es_client.search({
+            "query": {"match": {"name_ru": {"query": object_name, "fuzziness": "AUTO"}}},
+            "size": 50,
+            "_source": ["object"],
+        })
+        vidennye = []
+        for h in (otvet or {}).get("hits", {}).get("hits", []):
+            obekt = h["_source"].get("object")
+            if obekt and _nastoyashchiy_tip(obekt) and obekt not in vidennye:
+                vidennye.append(obekt)
+            if len(vidennye) >= limit:
+                break
+        return vidennye
+
+    async def _pohozhie_elementy(self, name: str, limit: int = 5) -> list:
+        """Элементы с близким именем для ответа «точного совпадения нет»."""
+        otvet = await self.es_client.search({
+            "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
+            "size": limit,
+        })
+        return [h["_source"] for h in (otvet or {}).get("hits", {}).get("hits", [])]
