@@ -66,153 +66,9 @@ class MCPResponseFormatter:
     def create_success_response(content: List[Dict[str, str]]) -> MCPResponse:
         """Создаёт стандартизированный успешный ответ."""
         return MCPResponse(content=content)
-    
-    @staticmethod
-    def format_search_header(count: int, query: str) -> Dict[str, str]:
-        """Форматирует заголовок результатов поиска."""
-        return {
-            "type": "text",
-            "text": f"📋 **Найдено:** {count} элементов по запросу \"{query}\"\n"
-        }
-    
-    @staticmethod
-    def format_search_result(result: Dict[str, Any], index: int) -> Dict[str, str]:
-        """Форматирует отдельный результат поиска."""
-        name = result.get("name", "")
-        obj = result.get("object", "")
-        description = result.get("description", "")
-        
-        text = f"{index}. **{name}**"
-        if obj:
-            text += f" ({obj} → Метод)" if obj != "Global context" else " (Глобальная функция)"
-        
-        if description:
-            text += f"\n   └ {obrezat_do_frazy(description, PREDEL_OPISANIYA)}"
-
-        return {"type": "text", "text": text + "\n"}
-    
-    @staticmethod
-    def format_syntax_info(result: Dict[str, Any]) -> str:
-        """Форматирует техническую справку."""
-        text = f"🔧 **ТЕХНИЧЕСКАЯ СПРАВКА:** {result.get('name', '')}"
-        
-        if result.get('object'):
-            text += f" ({result['object']})"
-        
-        text += "\n\n"
-        
-        if result.get('description'):
-            text += f"📝 **Описание:**\n   {result['description']}\n\n"
-        
-        if result.get('syntax_ru'):
-            text += f"🔤 **Синтаксис:**\n   `{result['syntax_ru']}`\n\n"
-        
-        # Параметры
-        parameters = result.get('parameters')
-        if parameters and isinstance(parameters, list):
-            text += "⚙️ **Параметры:**\n"
-            for param in parameters:
-                if isinstance(param, dict):
-                    required = " (обязательный)" if param.get('required') else " (необязательный)"
-                    text += f"   • {param.get('name', '')} ({param.get('type', '')}){required}"
-                    if param.get('description'):
-                        text += f" - {param['description']}"
-                    text += "\n"
-            text += "\n"
-        
-        if result.get('return_type'):
-            text += f"↩️ **Возвращает:** {result['return_type']}\n\n"
-        
-        return text
-    
-    @staticmethod
-    def format_quick_reference(result: Dict[str, Any]) -> str:
-        """Форматирует краткую справку."""
-        name = result.get('name', '')
-        syntax = result.get('syntax_ru', '')
-        description = result.get('description', '')
-        
-        text = "⚡ **КРАТКАЯ СПРАВКА**\n\n"
-        
-        if syntax:
-            text += f"`{syntax}`\n"
-        else:
-            text += f"`{name}`\n"
-        
-        if description:
-            text += f"└ {obrezat_do_frazy(description, PREDEL_OPISANIYA_KRATKO)}"
-        
-        return text
-    
-    @staticmethod
-    def format_context_search(
-        search_results: List[Dict[str, Any]], 
-        query: str, 
-        context: str
-    ) -> str:
-        """Форматирует результаты контекстного поиска."""
-        if context == "object":
-            objects = {}
-            for result in search_results:
-                obj = result.get("object", "Неизвестно")
-                if obj not in objects:
-                    objects[obj] = []
-                objects[obj].append(result)
-            
-            text = f"🎯 **ПОИСК В КОНТЕКСТЕ:** {context}\n\n"
-            text += f"Найдено {len(search_results)} элементов по запросу \"{query}\"\n\n"
-            
-            # Группировку не урезаем: сколько результатов показать, задаёт limit
-            # вызова. Прежние 5 объектов по 3 элемента отбрасывали остальное молча.
-            for obj, items in objects.items():
-                text += f"📦 **{obj}:**\n"
-                for item in items:
-                    name = item.get("name", "")
-                    syntax = item.get("syntax_ru", "")
-                    desc = item.get("description", "")
-
-                    text += f"   • {name}"
-                    if syntax:
-                        text += f" - `{syntax}`"
-                    if desc:
-                        text += f"\n     {obrezat_do_frazy(desc, PREDEL_OPISANIYA_KRATKO)}"
-                    text += "\n"
-                text += "\n"
-        else:
-            text = f"🔍 **ПОИСК В КОНТЕКСТЕ:** {context}\n\n"
-            text += f"Найдено {len(search_results)} элементов\n\n"
-
-            for i, result in enumerate(search_results, 1):
-                name = result.get("name", "")
-                syntax = result.get("syntax_ru", "")
-                text += f"{i}. **{name}**"
-                if syntax:
-                    text += f" - `{syntax}`"
-                text += "\n"
-        
-        return text
-    
-    @staticmethod
-    def format_quick_reference(result: dict) -> str:
-        """Форматирует краткую справку."""
-        name = result.get('name', '')
-        syntax = result.get('syntax_ru', '')
-        description = result.get('description', '')
-        
-        text = "⚡ **КРАТКАЯ СПРАВКА**\n\n"
-        
-        if syntax:
-            text += f"`{syntax}`\n"
-        else:
-            text += f"`{name}`\n"
-        
-        if description:
-            text += f"└ {obrezat_do_frazy(description, PREDEL_OPISANIYA_KRATKO)}"
-        
-        return text
 
     @staticmethod
-    def format_object_members_list(object_name: str, member_type: str, methods: list, 
+    def format_object_members_list(object_name: str, member_type: str, methods: list,
                                  properties: list, events: list, total: int) -> str:
         """Форматирует список элементов объекта.
 
@@ -224,8 +80,11 @@ class MCPResponseFormatter:
 
         pokazano = len(methods) + len(properties) + len(events)
 
-        # Методы
-        if member_type in ["all", "methods"] and methods:
+        # Методы. "constructors" тоже сюда: get_object_members_list кладёт
+        # конструкторы в тот же список methods, и без constructors в этом
+        # условии запрос members="constructors" молча вернул бы пустое тело —
+        # ровно та неполнота, от которой этот формат уходит.
+        if member_type in ["all", "methods", "constructors"] and methods:
             text += f"🔨 **Методы ({len(methods)}):**\n"
             for method in methods:
                 name = method.get("name", "")

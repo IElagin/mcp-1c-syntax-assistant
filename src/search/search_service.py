@@ -109,151 +109,71 @@ class SearchService:
                 "error": str(e)
             }
     
-    async def get_detailed_syntax_info(
-        self, 
-        element_name: str, 
-        object_name: Optional[str] = None, 
-        include_examples: bool = True
-    ) -> Optional[Dict[str, Any]]:
-        """Получить полную техническую информацию об элементе."""
-        try:
-            # Формируем запрос для точного поиска
-            if object_name:
-                # Для поиска метода объекта используем гибкий поиск
-                elasticsearch_query = {
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {"term": {"object": object_name}}
-                            ],
-                            "should": [
-                                # Точное совпадение по полному названию (высокий приоритет)
-                                {"term": {"name.keyword": {"value": element_name, "boost": 5.0}}},
-                                # Поиск по частям названия (русское и английское)
-                                {"match": {"name": {"query": element_name, "boost": 3.0}}},
-                                # Wildcard поиск для частичных совпадений
-                                {"wildcard": {"name.keyword": {"value": f"*{element_name}*", "boost": 2.0}}},
-                                # Фразовый поиск
-                                {"match_phrase": {"name": {"query": element_name, "boost": 2.5}}}
-                            ],
-                            "minimum_should_match": 1
-                        }
-                    },
-                    "size": 1
-                }
-            else:
-                # Для поиска без объекта используем точный запрос
-                elasticsearch_query = self.query_builder.build_exact_query(element_name)
-            
-            response = await self.es_client.search(elasticsearch_query)
-            
-            if response.get('hits', {}).get('total', {}).get('value', 0) > 0:
-                doc = response['hits']['hits'][0]['_source']
-                
-                # Фильтруем примеры если не нужны
-                if not include_examples:
-                    doc = doc.copy()
-                    doc.pop('examples', None)
-                
-                return doc
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Ошибка получения детальной информации для '{element_name}': {e}")
-            return None
-    
-    async def search_with_context_filter(
-        self, 
-        query: str, 
-        context: str, 
-        object_name: Optional[str] = None, 
-        limit: int = 10
+    async def find_help_by_query_s_filtrom(
+        self,
+        query: str,
+        tipy: list,
+        object_name: Optional[str] = None,
+        limit: int = 10,
     ) -> Dict[str, Any]:
-        """Поиск с фильтром по контексту (global/object/all)."""
-        try:
-            # Строим базовый запрос
-            elasticsearch_query = self.query_builder.build_search_query(query, limit)
-            
-            # Фильтры по типу элемента — подходит любой из перечисленных (ИЛИ)
-            type_filters = []
+        """Поиск с фильтром по видам элементов и объекту.
 
-            if context == "global":
-                type_filters.extend([
-                    {"term": {"type": "global_function"}},
-                    {"term": {"type": "global_procedure"}},
-                    {"term": {"type": "global_event"}}
-                ])
-            elif context == "object":
-                type_filters.extend([
-                    {"term": {"type": "object_function"}},
-                    {"term": {"type": "object_procedure"}},
-                    {"term": {"type": "object_property"}},
-                    {"term": {"type": "object_event"}},
-                    {"term": {"type": "object_constructor"}}
-                ])
-            # Для "all" не добавляем фильтры
+        Заменил пару find_help_by_query и search_with_context_filter: две точки
+        входа с почти одинаковым смыслом заставляли агента угадывать, какая
+        нужна.
+        """
+        zapros = self.query_builder.build_search_query(query, limit, "auto")
 
-            # Условия соединяются через И: тип элемента И принадлежность объекту.
-            # Складывать их в один should нельзя — фильтр по объекту перестаёт
-            # сужать выборку, потому что условие по типу выполняется само по себе.
-            filters = []
+        filtry = []
+        if tipy:
+            filtry.append({"terms": {"type": tipy}})
+        if object_name:
+            filtry.append({"term": {"object": object_name}})
 
-            if type_filters:
-                filters.append({"bool": {"should": type_filters}})
+        if filtry:
+            zapros["query"] = {"bool": {"must": [zapros["query"]], "filter": filtry}}
 
-            if object_name and context != "global":
-                filters.append({"term": {"object": object_name}})
+        otvet = await self.es_client.search(zapros)
+        if not otvet:
+            return {"results": [], "total": 0, "query": query,
+                    "error": "Ошибка выполнения поиска"}
 
-            # Применяем фильтры
-            if filters:
-                elasticsearch_query["query"] = {
-                    "bool": {
-                        "must": [elasticsearch_query["query"]],
-                        "filter": filters
-                    }
-                }
-            
-            response = await self.es_client.search(elasticsearch_query)
-            
-            # Обрабатываем ответ
-            if not response:
-                return {
-                    "results": [],
-                    "total": 0,
-                    "query": query,
-                    "context": context,
-                    "error": "Ошибка выполнения поиска"
-                }
-            
-            # Извлекаем результаты
-            hits = response.get("hits", {}).get("hits", [])
-            total = response.get("hits", {}).get("total", {})
-            total_count = total.get("value", 0) if isinstance(total, dict) else total
-            
-            # Ранжируем результаты
-            ranked_results = self.ranker.rank_results(hits, query)
-            
-            # Форматируем для вывода
-            formatted_results = self.formatter.format_search_results(ranked_results)
-            
-            return {
-                "results": formatted_results,
-                "total": total_count,
-                "query": query,
-                "context": context
-            }
-            
-        except Exception as e:
-            logger.error(f"Ошибка контекстного поиска '{query}' в контексте '{context}': {e}")
-            return {
-                "results": [],
-                "total": 0,
-                "query": query,
-                "context": context,
-                "error": str(e)
-            }
-    
+        hits = otvet.get("hits", {}).get("hits", [])
+        vsego = otvet.get("hits", {}).get("total", {})
+        vsego = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
+
+        return {
+            "results": self.formatter.format_search_results(
+                self.ranker.rank_results(hits, query)
+            ),
+            "total": vsego,
+            "query": query,
+        }
+
+    async def kolichestvo_chlenov(self, object_name: str) -> Dict[str, int]:
+        """Сколько у объекта методов, свойств и событий.
+
+        Списки methods/properties/events модели Documentation в Elasticsearch не
+        переносятся, поэтому считаем документы с этим object.
+        """
+        gruppy = {
+            "methods": ["object_function", "object_procedure", "object_constructor"],
+            "properties": ["object_property"],
+            "events": ["object_event"],
+        }
+        itogi = {}
+        for nazvanie, tipy in gruppy.items():
+            otvet = await self.es_client.search({
+                "query": {"bool": {"filter": [
+                    {"term": {"object": object_name}},
+                    {"terms": {"type": tipy}},
+                ]}},
+                "size": 0,
+            })
+            vsego = (otvet or {}).get("hits", {}).get("total", {})
+            itogi[nazvanie] = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
+        return itogi
+
     async def get_object_members_list(
         self, 
         object_name: str, 
@@ -277,6 +197,8 @@ class SearchService:
                 query_filters.append({"term": {"type": "object_property"}})
             elif member_type == "events":
                 query_filters.append({"term": {"type": "object_event"}})
+            elif member_type == "constructors":
+                query_filters.append({"term": {"type": "object_constructor"}})
             
             # Строим запрос
             elasticsearch_query = {
