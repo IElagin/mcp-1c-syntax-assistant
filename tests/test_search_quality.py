@@ -121,3 +121,63 @@ async def test_poisk_po_angliyskomu_imeni_tochnyy():
         ), imena(rezultaty)
     finally:
         await es_client.disconnect()
+
+
+@pytest.mark.unit
+@pytest.mark.search
+def test_zaprosy_ne_ssylayutsya_na_udalennye_polya():
+    """Буст по несуществующему полю — тихий ноль, а не ошибка.
+
+    syntax_en был пуст у 100% методов и всё равно стоял в бустах; parameters.*
+    в плоском match по nested-полю не находил ничего (0 попаданий против 11 у
+    nested-запроса). Такие бусты создают ложное чувство настроенного поиска.
+    """
+    import json
+
+    from src.search.query_builder import QueryBuilder
+
+    builder = QueryBuilder()
+    zaprosy = [
+        builder.build_search_query("ЗначениеЗаполнено", 10, "exact"),
+        builder.build_search_query("как получить количество строк", 10, "semantic"),
+        builder.build_search_query("ТаблицаЗначений.Добавить", 10, "auto"),
+        builder.build_search_query("найти строки", 10, "multi_match"),
+        builder.build_search_query("НайтиСтроки", 10, "fuzzy"),
+        builder.build_exact_query("Добавить"),
+    ]
+
+    tekst = json.dumps(zaprosy, ensure_ascii=False)
+    for pole in ("syntax_ru", "syntax_en", "parameters.name", "parameters.description"):
+        assert pole not in tekst, f"запрос ссылается на удалённое поле {pole}"
+
+    assert "syntax_all" in tekst, "поисковое поле синтаксиса не используется"
+
+
+@pytest.mark.unit
+@pytest.mark.search
+def test_formatter_ne_teryaet_polya_kartochki():
+    """Форматтер, вырезающий поля, делает карточку неполной ещё до рендера."""
+    from src.search.formatter import SearchFormatter
+
+    doc = {
+        "name": "НайтиСтроки (FindRows)", "name_ru": "НайтиСтроки",
+        "type": "object_function", "element_kind": "функция",
+        "object": "ТаблицаЗначений", "object_ru": "ТаблицаЗначений",
+        "full_path": "ТаблицаЗначений.НайтиСтроки",
+        "call_primary": "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)",
+        "variants": [{"variant": "", "syntax": "НайтиСтроки(<ПараметрыОтбора>)",
+                      "call": "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)",
+                      "parameters": [], "return_type": "Массив",
+                      "return_description": ""}],
+        "availability": ["сервер"], "usage": None, "value_type": "",
+        "note": "Примечание.", "description": "Поиск строк.",
+        "version_from": "8.0", "examples": [],
+    }
+
+    rezultat = SearchFormatter().format_search_results(
+        [{"document": doc, "score": 12.5}]
+    )[0]
+
+    for pole in ("availability", "variants", "call_primary", "note", "element_kind"):
+        assert pole in rezultat, f"форматтер потерял поле {pole}"
+    assert rezultat["_score"] == 12.5

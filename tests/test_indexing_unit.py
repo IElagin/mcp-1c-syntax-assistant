@@ -38,7 +38,7 @@ def test_documentation_to_dict(mock_parsed_hbk):
         'name': doc.name,
         'type': doc.type.value if hasattr(doc.type, 'value') else str(doc.type),
         'description': doc.description,
-        'syntax_ru': doc.syntax_ru,
+        'syntax_ru': doc.variants[0].syntax if doc.variants else "",
     }
     
     assert doc_dict['id'] is not None
@@ -95,14 +95,18 @@ async def test_elasticsearch_bulk_operations():
 def test_prepare_document_for_indexing(mock_parsed_hbk):
     """Тест подготовки документа для индексации."""
     doc = mock_parsed_hbk.documentation[0]
-    
+
+    # Параметры теперь лежат внутри варианта вызова (Task 3), а не на самом
+    # документе.
+    variant_parametry = doc.variants[0].parameters if doc.variants else []
+
     # Эмулируем подготовку для индексации
     prepared = {
         'id': doc.id,
         'type': str(doc.type),
         'name': doc.name,
         'object': doc.object,
-        'syntax_ru': doc.syntax_ru,
+        'syntax_ru': doc.variants[0].syntax if doc.variants else "",
         'description': doc.description,
         'parameters': [
             {
@@ -111,17 +115,17 @@ def test_prepare_document_for_indexing(mock_parsed_hbk):
                 'description': p.description,
                 'required': p.required
             }
-            for p in (doc.parameters or [])
+            for p in variant_parametry
         ],
         'full_path': doc.full_path
     }
-    
+
     assert prepared['id'] is not None
     assert prepared['name'] is not None
-    
+
     # Проверяем что параметры корректно сериализованы
-    if doc.parameters:
-        assert len(prepared['parameters']) == len(doc.parameters)
+    if variant_parametry:
+        assert len(prepared['parameters']) == len(variant_parametry)
         assert all('name' in p for p in prepared['parameters'])
 
 
@@ -172,6 +176,71 @@ def test_index_name_generation():
     assert index_name is not None
     assert len(index_name) > 0
     assert '_' in index_name or '-' in index_name or index_name.isalnum()
+
+
+@pytest.mark.unit
+@pytest.mark.indexer
+def test_dokument_indeksa_neset_dostupnost_i_varianty():
+    """Поле, извлечённое парсером и не попавшее в индекс, бесполезно.
+
+    Так было с usage: парсер его читал, а _prepare_document не переносил.
+    """
+    from src.models.doc_models import Documentation, DocumentType, Parameter, SyntaxVariant
+    from src.parsers.indexer import ElasticsearchIndexer
+
+    doc = Documentation(
+        id="",
+        type=DocumentType.OBJECT_FUNCTION,
+        name="НайтиСтроки (FindRows)",
+        object="ТаблицаЗначений",
+        object_ru="ТаблицаЗначений",
+        element_kind="функция",
+        description="Осуществляет поиск строк.",
+        note="Метод эффективно использовать для выборки неуникальных значений.",
+        availability=["сервер", "толстый клиент"],
+        variants=[SyntaxVariant(
+            syntax="НайтиСтроки(<ПараметрыОтбора>)",
+            parameters=[Parameter(name="ПараметрыОтбора", type="Структура",
+                                  required=True, description="Задает условия поиска.")],
+            return_type="Массив",
+            return_description="Массив строк.",
+        )],
+    )
+    doc.sobrat_vyzovy()
+
+    es_doc = ElasticsearchIndexer(None)._prepare_document(doc)
+
+    assert es_doc["availability"] == ["сервер", "толстый клиент"]
+    assert es_doc["note"].startswith("Метод эффективно")
+    assert es_doc["element_kind"] == "функция"
+    assert es_doc["call_primary"] == "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)"
+    assert es_doc["syntax_all"] == "НайтиСтроки(<ПараметрыОтбора>)"
+    assert es_doc["variants"][0]["parameters"][0]["type"] == "Структура"
+    assert es_doc["variants"][0]["parameters"][0]["required"] is True
+    assert es_doc["variants"][0]["return_type"] == "Массив"
+    assert "syntax_ru" not in es_doc
+    assert "syntax_en" not in es_doc
+
+
+@pytest.mark.unit
+@pytest.mark.indexer
+def test_svoystvo_neset_tip_i_dostup():
+    from src.models.doc_models import Documentation, DocumentType
+    from src.parsers.indexer import ElasticsearchIndexer
+
+    doc = Documentation(
+        id="", type=DocumentType.OBJECT_PROPERTY,
+        name="Колонки (Columns)", object="ТаблицаЗначений",
+        value_type="КоллекцияКолонокТаблицыЗначений", usage="только чтение",
+        description="Содержит коллекцию колонок.",
+    )
+    doc.sobrat_vyzovy()
+
+    es_doc = ElasticsearchIndexer(None)._prepare_document(doc)
+
+    assert es_doc["value_type"] == "КоллекцияКолонокТаблицыЗначений"
+    assert es_doc["usage"] == "только чтение"
+    assert es_doc["call_primary"] == "ТаблицаЗначений.Колонки"
 
 
 @pytest.mark.unit

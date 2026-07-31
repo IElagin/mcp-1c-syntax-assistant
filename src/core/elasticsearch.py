@@ -122,19 +122,38 @@ class ElasticsearchClient:
                     "name_ru": {"type": "text", "analyzer": "russian", "fields": {"keyword": {"type": "keyword"}}},
                     "name_en": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
                     "object": {"type": "keyword"},
-                    "syntax_ru": {"type": "text"},
-                    "syntax_en": {"type": "text"},
-                    "description": {"type": "text", "analyzer": "russian"},
-                    "parameters": {
-                        "type": "nested",
+                    "element_kind": {"type": "keyword"},
+                    "object_ru": {"type": "keyword"},
+                    "call_primary": {"type": "keyword"},
+                    "syntax_all": {"type": "text"},
+                    # object, а не nested: запросов по параметрам нет — прежние
+                    # бусты по parameters.* не работали в принципе, плоский
+                    # match по nested-полю не находит ничего. Рендер берёт
+                    # структуру из _source, где она сохраняется точно.
+                    "variants": {
+                        "type": "object",
                         "properties": {
-                            "name": {"type": "text"},
-                            "type": {"type": "keyword"},
-                            "description": {"type": "text", "analyzer": "russian"},
-                            "required": {"type": "boolean"}
-                        }
+                            "variant": {"type": "keyword"},
+                            "syntax": {"type": "text"},
+                            "call": {"type": "keyword"},
+                            "return_type": {"type": "keyword"},
+                            "return_description": {"type": "text", "analyzer": "russian"},
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "text"},
+                                    "type": {"type": "keyword"},
+                                    "description": {"type": "text", "analyzer": "russian"},
+                                    "required": {"type": "boolean"},
+                                },
+                            },
+                        },
                     },
-                    "return_type": {"type": "keyword"},
+                    "value_type": {"type": "keyword"},
+                    "usage": {"type": "keyword"},
+                    "availability": {"type": "keyword"},
+                    "note": {"type": "text", "analyzer": "russian"},
+                    "description": {"type": "text", "analyzer": "russian"},
                     "version_from": {"type": "keyword"},
                     "examples": {"type": "text", "analyzer": "russian"},
                     "source_file": {"type": "keyword"},

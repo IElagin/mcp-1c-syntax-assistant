@@ -1,8 +1,11 @@
-"""Регрессионные тесты фильтра по объекту в search_with_context_filter.
+"""Регрессионные тесты фильтра по объекту в find_help_by_query_s_filtrom.
 
 Дефект: фильтр по object_name складывался с фильтрами по типу элемента в один
 bool.should, то есть через ИЛИ. Любой объектный метод удовлетворял условию по
 типу, и ограничение по объекту не сужало выборку — параметр молча не работал.
+Инструмент search_by_context, который проверял этот файл, упразднён (Task 13):
+его роль перешла к find_1c_help вместе с методом сервиса
+find_help_by_query_s_filtrom.
 """
 
 import sys
@@ -18,70 +21,24 @@ from src.search.search_service import SearchService
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
-@pytest.mark.search
 @pytest.mark.asyncio
-async def test_object_name_ogranichivaet_vyborku_odnim_obektom():
-    """object_name оставляет только элементы указанного объекта.
+async def test_filtr_po_obektu_suzhaet_vyborku():
+    """Фильтр по объекту обязан сужать выдачу.
 
-    'Добавить' есть у многих объектов (ДанныеФормыКоллекция, УсловноеОформление,
-    ТаблицаЗначений и др.), поэтому запрос без фильтра гарантированно приносит
-    чужие объекты — на этом дефект и ловится.
+    Прежде условия по типу и по объекту складывались в один should, и фильтр по
+    объекту не сужал ничего: условие по типу выполнялось само по себе.
     """
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        search_service = SearchService(es_client)
+        service = SearchService(es_client)
 
-        results = await search_service.search_with_context_filter(
-            "Добавить", "object", "ТаблицаЗначений", limit=10
+        bez_filtra = await service.find_help_by_query_s_filtrom("Количество", [], None, 20)
+        s_filtrom = await service.find_help_by_query_s_filtrom(
+            "Количество", ["object_function"], "ТаблицаЗначений", 20
         )
 
-        assert not results.get("error"), results.get("error")
-
-        found = results.get("results", [])
-        assert found, "Ожидали найти ТаблицаЗначений.Добавить"
-
-        chuzhie = sorted({
-            r.get("object") for r in found if r.get("object") != "ТаблицаЗначений"
-        })
-        assert not chuzhie, f"Фильтр по объекту не сработал, пришли чужие: {chuzhie}"
-    finally:
-        await es_client.disconnect()
-
-
-@pytest.mark.integration
-@pytest.mark.elasticsearch
-@pytest.mark.search
-@pytest.mark.asyncio
-async def test_object_name_ne_lomaet_filtr_po_tipu():
-    """Вместе с object_name продолжает действовать фильтр по контексту.
-
-    Страховка от «починки» через замену should на must только для объекта:
-    результаты обязаны остаться элементами объектного контекста.
-    """
-    OBJEKTNYE_TIPY = {
-        "object_function",
-        "object_procedure",
-        "object_property",
-        "object_event",
-        "object_constructor",
-    }
-
-    assert await es_client.connect(), "Elasticsearch недоступен"
-    try:
-        search_service = SearchService(es_client)
-
-        results = await search_service.search_with_context_filter(
-            "Добавить", "object", "ТаблицаЗначений", limit=10
-        )
-
-        assert not results.get("error"), results.get("error")
-
-        found = results.get("results", [])
-        assert found, "Ожидали найти ТаблицаЗначений.Добавить"
-
-        lishnie_tipy = sorted({
-            r.get("type") for r in found if r.get("type") not in OBJEKTNYE_TIPY
-        })
-        assert not lishnie_tipy, f"Фильтр по контексту потерян, типы: {lishnie_tipy}"
+        assert s_filtrom["results"], "фильтр по объекту не должен обнулять выдачу"
+        assert all(r.get("object") == "ТаблицаЗначений" for r in s_filtrom["results"])
+        assert s_filtrom["total"] < bez_filtra["total"]
     finally:
         await es_client.disconnect()

@@ -53,121 +53,129 @@ def mock_elasticsearch():
 def mock_parsed_hbk():
     """Mock данных распарсенного .hbk файла для unit тестов."""
     from src.models.doc_models import (
-        ParsedHBK, Documentation, DocumentType, 
-        HBKFile, Parameter
+        ParsedHBK, Documentation, DocumentType,
+        HBKFile, Parameter, SyntaxVariant
     )
     from datetime import datetime
-    
-    # Создаём тестовые документы
+
+    # Создаём тестовые документы. Синтаксис, параметры и тип возврата лежат
+    # внутри variants (Task 3) — у модели больше нет отдельных полей для них
+    # на самом документе. Полей name_en/object_en (Documentation), name_en
+    # (Parameter), name_en/count (CategoryInfo) в моделях нет и не было —
+    # раньше pydantic молча их игнорировал, фикстура не должна делать вид,
+    # что они существуют.
     docs = [
         Documentation(
             id="global_func_add",
             name="Добавить",
-            name_en="Add",
             type=DocumentType.GLOBAL_FUNCTION,
             object=None,
-            syntax_ru="Добавить(<Значение>)",
-            syntax_en="Add(<Value>)",
+            element_kind="функция",
             description="Добавляет значение в массив",
-            parameters=[
-                Parameter(
-                    name="Значение",
-                    name_en="Value",
-                    type="Произвольный",
-                    description="Добавляемое значение",
-                    required=True
+            variants=[
+                SyntaxVariant(
+                    syntax="Добавить(<Значение>)",
+                    parameters=[
+                        Parameter(
+                            name="Значение",
+                            type="Произвольный",
+                            description="Добавляемое значение",
+                            required=True
+                        )
+                    ],
+                    return_type="Булево",
                 )
             ],
-            return_type="Булево",
             version_from="8.3.5",
             examples=["Массив.Добавить(10);"],
             source_file="GlobalContext/Add.html",
-            full_path="Глобальный контекст.Добавить"
         ),
         Documentation(
             id="global_func_delete",
             name="Удалить",
-            name_en="Delete",
             type=DocumentType.GLOBAL_FUNCTION,
             object=None,
-            syntax_ru="Удалить(<Индекс>)",
-            syntax_en="Delete(<Index>)",
+            element_kind="функция",
             description="Удаляет элемент из массива",
-            parameters=[
-                Parameter(
-                    name="Индекс",
-                    name_en="Index",
-                    type="Число",
-                    description="Индекс удаляемого элемента",
-                    required=True
+            variants=[
+                SyntaxVariant(
+                    syntax="Удалить(<Индекс>)",
+                    parameters=[
+                        Parameter(
+                            name="Индекс",
+                            type="Число",
+                            description="Индекс удаляемого элемента",
+                            required=True
+                        )
+                    ],
                 )
             ],
-            return_type=None,
             version_from="8.3.5",
             examples=["Массив.Удалить(0);"],
             source_file="GlobalContext/Delete.html",
-            full_path="Глобальный контекст.Удалить"
         ),
         Documentation(
             id="object_array_count",
             name="Количество",
-            name_en="Count",
             type=DocumentType.OBJECT_PROPERTY,
             object="Массив",
-            object_en="Array",
-            syntax_ru="Массив.Количество()",
-            syntax_en="Array.Count()",
+            element_kind="свойство",
             description="Возвращает количество элементов в массиве",
-            parameters=[],
-            return_type="Число",
+            variants=[
+                SyntaxVariant(
+                    syntax="Массив.Количество()",
+                    return_type="Число",
+                )
+            ],
             version_from="8.0",
             examples=["КоличествоЭлементов = Массив.Количество();"],
             source_file="Objects/Array/Count.html",
-            full_path="Массив.Количество"
         ),
         Documentation(
             id="object_array_clear",
             name="Очистить",
-            name_en="Clear",
             type=DocumentType.OBJECT_PROCEDURE,
             object="Массив",
-            object_en="Array",
-            syntax_ru="Массив.Очистить()",
-            syntax_en="Array.Clear()",
+            element_kind="процедура",
             description="Очищает массив",
-            parameters=[],
-            return_type=None,
+            variants=[
+                SyntaxVariant(syntax="Массив.Очистить()")
+            ],
             version_from="8.0",
             examples=["Массив.Очистить();"],
             source_file="Objects/Array/Clear.html",
-            full_path="Массив.Очистить"
         ),
         Documentation(
             id="event_before_write",
             name="ПередЗаписью",
-            name_en="BeforeWrite",
             type=DocumentType.GLOBAL_EVENT,
             object=None,
-            syntax_ru="Процедура ПередЗаписью(Отказ)",
-            syntax_en="Procedure BeforeWrite(Cancel)",
+            element_kind="событие",
             description="Событие перед записью объекта",
-            parameters=[
-                Parameter(
-                    name="Отказ",
-                    name_en="Cancel",
-                    type="Булево",
-                    description="Признак отказа от записи",
-                    required=True
+            variants=[
+                SyntaxVariant(
+                    syntax="Процедура ПередЗаписью(Отказ)",
+                    parameters=[
+                        Parameter(
+                            name="Отказ",
+                            type="Булево",
+                            description="Признак отказа от записи",
+                            required=True
+                        )
+                    ],
                 )
             ],
-            return_type=None,
             version_from="8.0",
             examples=["Процедура ПередЗаписью(Отказ)\n  // Код обработчика\nКонецПроцедуры"],
             source_file="Events/BeforeWrite.html",
-            full_path="События.ПередЗаписью"
         )
     ]
-    
+
+    # full_path, call_primary, variants[].call и id собирает sobrat_vyzovy() —
+    # фикстура не должна дублировать эту логику вручную.
+    for d in docs:
+        d.sobrat_vyzovy()
+
     # Создаём информацию о файле
     file_info = HBKFile(
         path="data/hbk/test.hbk",
@@ -175,7 +183,7 @@ def mock_parsed_hbk():
         modified=1234567890.0,
         entries_count=5
     )
-    
+
     # Создаём статистику
     stats = {
         'html_files': 5,
@@ -183,15 +191,15 @@ def mock_parsed_hbk():
         'total_docs': 5,
         'by_type': 5
     }
-    
+
     # Создаём категории
     from src.models.doc_models import CategoryInfo
     categories = {
-        'Глобальный контекст': CategoryInfo(name='Глобальный контекст', name_en='Global Context', count=2),
-        'Массив': CategoryInfo(name='Массив', name_en='Array', count=2),
-        'События': CategoryInfo(name='События', name_en='Events', count=1)
+        'Глобальный контекст': CategoryInfo(name='Глобальный контекст'),
+        'Массив': CategoryInfo(name='Массив'),
+        'События': CategoryInfo(name='События')
     }
-    
+
     return ParsedHBK(
         file_info=file_info,
         documentation=docs,

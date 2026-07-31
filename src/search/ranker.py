@@ -129,52 +129,52 @@ class SearchRanker:
     def _completeness_factor(self, doc: Dict[str, Any]) -> float:
         """Фактор полноты информации."""
         completeness_score = 1.0
-        
-        # Бонус за наличие синтаксиса
-        if doc.get("syntax_ru") or doc.get("syntax_en"):
+
+        varianty = doc.get("variants") or []
+
+        # Бонус за наличие синтаксиса. syntax_ru/syntax_en ушли вместе со
+        # старой моделью — call_primary (готовая строка вызова) и syntax_all
+        # (полный синтаксис по всем вариантам) теперь несут этот сигнал.
+        if doc.get("syntax_all") or doc.get("call_primary"):
             completeness_score += 0.3
-        
-        # Бонус за наличие параметров
-        parameters = doc.get("parameters", [])
-        if parameters:
+
+        # Бонус за наличие параметров. Параметры лежат внутри вариантов
+        # вызова (Task 7), а не плоским списком в документе.
+        parametry = [p for v in varianty for p in (v.get("parameters") or [])]
+        if parametry:
             completeness_score += 0.2
             # Дополнительный бонус за описания параметров
-            param_descriptions = sum(1 for p in parameters if p.get("description"))
-            if param_descriptions > 0:
-                completeness_score += 0.1 * (param_descriptions / len(parameters))
-        
+            s_opisaniem = sum(1 for p in parametry if p.get("description"))
+            if s_opisaniem:
+                completeness_score += 0.1 * (s_opisaniem / len(parametry))
+
         # Бонус за примеры
-        examples = doc.get("examples", [])
-        if examples:
+        if doc.get("examples"):
             completeness_score += 0.2
-        
-        # Бонус за тип возвращаемого значения
-        if doc.get("return_type"):
+
+        # Бонус за тип возвращаемого значения: у методов он лежит в варианте
+        # вызова (return_type), у свойств — в value_type документа.
+        if any(v.get("return_type") for v in varianty) or doc.get("value_type"):
             completeness_score += 0.1
-        
+
         return completeness_score
-    
+
     def _syntax_match_factor(self, doc: Dict[str, Any], query: str) -> float:
         """Фактор соответствия по синтаксису."""
-        syntax_ru = doc.get("syntax_ru", "").lower()
-        syntax_en = doc.get("syntax_en", "").lower()
+        sintaksis = (doc.get("syntax_all") or "").lower()
         query_lower = query.lower()
-        
+
         # Проверяем вхождение запроса в синтаксис
-        if query_lower in syntax_ru or query_lower in syntax_en:
+        if query_lower in sintaksis:
             return 1.4
-        
+
         # Проверяем частичное совпадение
         query_parts = query_lower.split()
         if len(query_parts) > 1:
-            matches = 0
-            for part in query_parts:
-                if part in syntax_ru or part in syntax_en:
-                    matches += 1
-            
-            if matches > 0:
+            matches = sum(1 for part in query_parts if part in sintaksis)
+            if matches:
                 return 1.0 + (matches / len(query_parts)) * 0.3
-        
+
         return 1.0
     
     def _apply_ranking_factors(

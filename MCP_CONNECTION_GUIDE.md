@@ -120,29 +120,38 @@ python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 - **Base URL**: `http://localhost:8000`
 - **MCP Endpoint**: `http://localhost:8000/mcp`
 
-Пример HTTP запроса:
+Пример HTTP запроса (реальный конверт JSON-RPC 2.0, см. `docs/API_REFERENCE_v2.md`):
 ```http
 POST http://localhost:8000/mcp
 Content-Type: application/json
 
 {
-  "tool": "find_1c_help",
-  "arguments": {
-    "query": "ТаблицаЗначений.Добавить",
-    "limit": 10
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "find_1c_help",
+    "arguments": {
+      "query": "ТаблицаЗначений.Добавить",
+      "limit": 10
+    }
   }
 }
 ```
 
 ## Доступные MCP инструменты
 
-Сервер предоставляет следующие инструменты:
+Сервер предоставляет три инструмента. Блоки ниже — не самостоятельное тело
+HTTP-запроса, а фрагмент `params` конверта `tools/call` (`{"name": ...,
+"arguments": {...}}`), обёрнутого в JSON-RPC 2.0 целиком так же, как в примере
+выше (`jsonrpc`, `id`, `method: "tools/call"`).
 
 ### 1. find_1c_help
-Поиск по справке 1С
+Поиск по справке 1С, когда точное имя элемента неизвестно. Возвращает список
+кандидатов по одной строке на элемент.
 ```json
 {
-  "tool": "find_1c_help",
+  "name": "find_1c_help",
   "arguments": {
     "query": "строка поиска",
     "limit": 10
@@ -150,49 +159,30 @@ Content-Type: application/json
 }
 ```
 
-### 2. get_syntax_info
-Получение синтаксической информации
+### 2. get_1c_element
+Полная карточка элемента: строка вызова, варианты вызова, параметры с типами
+и обязательностью, тип возврата, доступность по контекстам исполнения, версия,
+описание, примечание, пример. Требует точного имени; если имя неуникально,
+вместо карточки возвращается список кандидатов.
 ```json
 {
-  "tool": "get_syntax_info",
+  "name": "get_1c_element",
   "arguments": {
-    "object_name": "ТаблицаЗначений",
-    "element_name": "Добавить"
+    "name": "Добавить",
+    "object": "ТаблицаЗначений"
   }
 }
 ```
 
-### 3. list_object_members
-Список членов объекта
+### 3. list_1c_object_members
+Состав объекта: методы, свойства, события, конструкторы, по одной строке на
+элемент.
 ```json
 {
-  "tool": "list_object_members",
+  "name": "list_1c_object_members",
   "arguments": {
-    "object_name": "ТаблицаЗначений",
-    "member_type": "method"
-  }
-}
-```
-
-### 4. search_by_context
-Поиск по контексту
-```json
-{
-  "tool": "search_by_context",
-  "arguments": {
-    "context": "работа с таблицами",
-    "limit": 5
-  }
-}
-```
-
-### 5. get_quick_reference
-Быстрая справка
-```json
-{
-  "tool": "get_quick_reference",
-  "arguments": {
-    "topic": "ТаблицаЗначений"
+    "object": "ТаблицаЗначений",
+    "members": "methods"
   }
 }
 ```

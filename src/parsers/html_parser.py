@@ -4,10 +4,55 @@ import re
 from typing import Optional
 from bs4 import BeautifulSoup
 
-from src.models.doc_models import Documentation, Parameter, DocumentType, ObjectMethod, ObjectProperty, ObjectEvent
+from src.models.doc_models import (
+    Documentation, Parameter, SyntaxVariant, DocumentType,
+    ObjectMethod, ObjectProperty, ObjectEvent,
+)
 from src.core.logging import get_logger
+from src.parsers.tekst import (
+    izvlech_tip_i_poyasnenie, normalizovat_probely, pochistit_opisanie, tekst_iz_html,
+)
 
 logger = get_logger(__name__)
+
+
+def uzly_do_granitsy(nachalo, klassy_granitsy) -> list:
+    """Соседние узлы после nachalo — до первой границы.
+
+    Границей считается узел одного из классов klassy_granitsy или <HR>: этим
+    тегом справка отделяет подвал страницы («Методическая информация») от
+    содержимого, и без него сбор последней главы дотягивался до конца
+    документа.
+
+    Обход соседей был скопирован в четыре места файла, и границу по <HR>
+    приходилось добавлять в каждую копию отдельно — в двух она так и не
+    появилась. Поэтому обход живёт здесь один.
+    """
+    uzly = []
+    elem = getattr(nachalo, "next_sibling", None)
+    while elem is not None:
+        if getattr(elem, 'name', None) == 'hr':
+            break
+        klassy = elem.get('class') or [] if hasattr(elem, 'get') else []
+        if any(klass in klassy for klass in klassy_granitsy):
+            break
+        uzly.append(elem)
+        elem = elem.next_sibling
+    return uzly
+
+
+# Вид элемента по-русски: агент читает карточку, а не enum индекса.
+VID_ELEMENTA = {
+    DocumentType.GLOBAL_FUNCTION: "функция",
+    DocumentType.GLOBAL_PROCEDURE: "процедура",
+    DocumentType.GLOBAL_EVENT: "событие",
+    DocumentType.OBJECT_FUNCTION: "функция",
+    DocumentType.OBJECT_PROCEDURE: "процедура",
+    DocumentType.OBJECT_PROPERTY: "свойство",
+    DocumentType.OBJECT_EVENT: "событие",
+    DocumentType.OBJECT_CONSTRUCTOR: "конструктор",
+    DocumentType.OBJECT: "объект",
+}
 
 
 class HTMLParser:
@@ -38,7 +83,7 @@ class HTMLParser:
             
             # Создаем базовый объект документации
             doc = Documentation(
-                id="",  # Будет заполнен в __post_init__
+                id="",  # Будет заполнен в sobrat_vyzovy
                 type=doc_type,
                 name=item_name,
                 object=object_name,
@@ -51,27 +96,28 @@ class HTMLParser:
             # Для всех типов кроме глобальных переопределяем object из заголовка
             if doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
                 doc.object = self._extract_object_name_from_title(soup)
-            
-            # Для свойств объектов дополнительно извлекаем информацию об использовании
+
+            doc.element_kind = VID_ELEMENTA.get(doc.type, "")
+            doc.object_ru = self._izvlech_russkoe_imya_obekta(soup) or doc.object
+            self._izvlech_razdely_elementa(soup, doc)
+
             if doc.type == DocumentType.OBJECT_PROPERTY:
-                self._extract_usage(soup, doc)
-            
+                self._izvlech_tip_svoystva(soup, doc)
+
             # Для объектов извлекаем методы, свойства и события
             if doc.type == DocumentType.OBJECT:
                 self._extract_object_methods(soup, doc)
                 self._extract_object_properties(soup, doc)
                 self._extract_object_events(soup, doc)
             else:
-                # Для функций/методов/событий извлекаем синтаксис, параметры и примеры
-                self._extract_syntax(soup, doc)
-                self._extract_parameters(soup, doc)
-                self._extract_return_type(soup, doc)
+                # Для функций/методов/событий извлекаем варианты вызова и примеры
+                self._izvlech_varianty(soup, doc)
                 self._extract_examples(soup, doc)
             
             self._extract_version(soup, doc)
             
             # Автоматически заполняем служебные поля
-            doc.__post_init__()
+            doc.sobrat_vyzovy()
             
             logger.debug(f"Обработан HTML файл: {file_path} -> {doc.name}")
             return doc
@@ -255,18 +301,6 @@ class HTMLParser:
             
         return title_text.strip()
     
-    def _extract_usage(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает информацию об использовании для свойств."""
-        # Получаем HTML контент после заголовка "Использование"
-        usage_content = self._get_content_after_chapter(soup, ['использование'])
-        if not usage_content:
-            return
-            
-        # Извлекаем текст из HTML
-        from bs4 import BeautifulSoup as BS
-        clean_usage = BS(usage_content, 'html.parser').get_text()
-        doc.usage = clean_usage.strip()
-    
     def _get_content_after_chapter(self, soup: BeautifulSoup, chapter_keywords: list) -> str:
         """
         Универсальный метод для получения HTML контента после заголовка V8SH_chapter.
@@ -351,14 +385,8 @@ class HTMLParser:
             if 'описание' in header_text or 'description' in header_text:
                 # Ищем в тексте после заголовка до следующего V8SH_chapter
                 description_parts = []
-                elem = header.next_sibling
-                
-                while elem:
-                    # Если нашли следующий заголовок - прерываем
-                    if (hasattr(elem, 'get') and hasattr(elem, 'get_text') and 
-                        elem.get('class') == ['V8SH_chapter']):
-                        break
-                    
+
+                for elem in uzly_do_granitsy(header, ('V8SH_chapter',)):
                     if hasattr(elem, 'get_text'):
                         text = elem.get_text().strip()  # Сохраняем внутренние пробелы
                         if text and len(text) > 3:  # Игнорируем короткие фрагменты
@@ -367,128 +395,186 @@ class HTMLParser:
                         text = elem.strip()
                         if text and len(text) > 3:
                             description_parts.append(text)
-                    
-                    elem = elem.next_sibling
-                
+
                 if description_parts:
-                    doc.description = ' '.join(description_parts)
+                    doc.description = pochistit_opisanie(' '.join(description_parts))
                     break
     
-    def _extract_syntax(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает синтаксис вызова."""
-        # Ищем заголовок "Синтаксис:" с классом V8SH_chapter  
-        chapter_headers = soup.find_all('p', class_='V8SH_chapter')
-        
-        for header in chapter_headers:
-            header_text = header.get_text(strip=True).lower()
-            if 'синтаксис' in header_text or 'syntax' in header_text:
-                # Проверяем следующий элемент после заголовка
-                next_elem = header.next_sibling
-                if next_elem:
-                    syntax_text = next_elem.get_text().strip() if hasattr(next_elem, 'get_text') else str(next_elem).strip()
-                    if '(' in syntax_text and syntax_text:
-                        doc.syntax_ru = syntax_text
-                        return
-                
-                # Альтернативный поиск в тексте после заголовка
-                remaining_text = ""
-                elem = header.next_sibling
-                while elem and not (hasattr(elem, 'get') and hasattr(elem, 'get_text') and elem.get('class') == ['V8SH_chapter']):
-                    if hasattr(elem, 'get_text'):
-                        remaining_text += elem.get_text().strip() + " "
-                    elif isinstance(elem, str):
-                        remaining_text += elem.strip() + " "
-                    elem = elem.next_sibling
-                
-                # Ищем синтаксис в собранном тексте
-                lines = remaining_text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if '(' in line and ')' in line and len(line) < 200:
-                        doc.syntax_ru = line
-                        return
-                break
-    
-    def _extract_parameters(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает параметры функции."""
-        # Получаем HTML контент после заголовка "Параметры"
-        remaining_html = self._get_content_after_chapter(soup, ['параметр', 'parameter'])
-        
-        if remaining_html:
-            # Ищем блоки V8SH_rubric с параметрами
-            # Первый паттерн - с информацией об обязательности: &lt;Строка&gt; (обязательный)
-            rubric_pattern_with_required = r'<div class="V8SH_rubric"[^>]*>.*?&lt;([^&]+)&gt;\s*\(([^)]+)\).*?</div>(.*?)(?=<[^>]+class="V8SH_|$)'
-            matches_with_required = re.findall(rubric_pattern_with_required, remaining_html, re.DOTALL)
-            
-            # Второй паттерн - без информации об обязательности: &lt;ВидФормы&gt;
-            rubric_pattern_simple = r'<div class="V8SH_rubric"[^>]*>.*?&lt;([^&]+)&gt;[^(]*?</div>(.*?)(?=<[^>]+class="V8SH_|$)'
-            matches_simple = re.findall(rubric_pattern_simple, remaining_html, re.DOTALL)
-            
-            # Обрабатываем параметры с информацией об обязательности
-            for param_name, param_required, param_info in matches_with_required:
-                self._process_parameter(doc, param_name, param_info, param_required)
-            
-            # Обрабатываем параметры без информации об обязательности
-            for param_name, param_info in matches_simple:
-                # Проверяем, что этот параметр еще не был добавлен
-                if not any(p.name == param_name for p in doc.parameters):
-                    self._process_parameter(doc, param_name, param_info, "")
-    
-    def _process_parameter(self, doc: Documentation, param_name: str, param_info: str, param_required: str):
-        """Обрабатывает отдельный параметр."""
-        # Извлекаем тип из ссылки на def_
-        param_type = "Произвольный"
-        type_match = re.search(r'<a\s+href="[^"]*def_[^"]*"[^>]*>([^<]+)</a>', param_info)
-        if type_match:
-            param_type = type_match.group(1).strip()
-        
-        # Извлекаем полное описание (весь текст после типа)
-        # Удаляем HTML теги и получаем чистый текст
+    def _glavy(self, soup: BeautifulSoup):
+        """Главы страницы: [(заголовок, html после заголовка), …].
+
+        Идём по узлам-соседям, а не поиском подстроки в HTML родителя: на
+        странице с вариантами заголовки «Синтаксис:» текстуально одинаковы, и
+        поиск подстроки возвращал бы для каждого позицию первого.
+        """
+        glavy = []
+        for header in soup.find_all('p', class_='V8SH_chapter'):
+            chasti = [str(u) for u in uzly_do_granitsy(header, ('V8SH_chapter',))]
+            glavy.append((header.get_text(strip=True), "".join(chasti)))
+        return glavy
+
+    def _izvlech_razdely_elementa(self, soup: BeautifulSoup, doc: Documentation):
+        """Разделы, относящиеся к элементу целиком, а не к варианту вызова."""
+        for zagolovok, html in self._glavy(soup):
+            nizhniy = zagolovok.lower().rstrip(':').strip()
+
+            if nizhniy == 'доступность':
+                doc.availability = self._razobrat_dostupnost(html)
+            elif nizhniy == 'примечание':
+                doc.note = pochistit_opisanie(tekst_iz_html(html))
+            elif nizhniy == 'использование':
+                # Ровно «Использование:». Заголовок «Использование в версии:»
+                # говорит о версии платформы и в доступ к свойству не годится.
+                doc.usage = normalizovat_probely(tekst_iz_html(html)).rstrip('.').lower()
+
+    @staticmethod
+    def _razobrat_dostupnost(html: str):
+        """«Сервер, толстый клиент, внешнее соединение.» → список контекстов.
+
+        Перечень контекстов — всегда первое предложение раздела, поэтому текст
+        обрезается по его границе ДО разбиения по запятым. Снятия одной точки
+        на конце (rstrip) не хватало: если после перечня стоит проза («Вызов
+        метода выполняет обращение к серверу», «Данный объект может быть
+        сериализован в/из XML»), она вливалась в последний контекст, и агент
+        читал «мобильный автономный сервер. вызов метода выполняет обращение к
+        серверу» как место, где вызов законен. Замер по индексу: так было у
+        1 106 из 19 156 документов с непустой доступностью.
+        """
+        tekst = normalizovat_probely(tekst_iz_html(html))
+        granitsa = tekst.find('. ')
+        if granitsa != -1:
+            tekst = tekst[:granitsa]
+        tekst = tekst.rstrip('.')
+        return [chast.strip().lower() for chast in tekst.split(',') if chast.strip()]
+
+    def _izvlech_tip_svoystva(self, soup: BeautifulSoup, doc: Documentation):
+        """Вынимает «Тип: X.» из начала описания свойства в отдельное поле.
+
+        В справке тип значения свойства стоит первой фразой раздела «Описание:»,
+        причём в HTML это россыпь узлов (текст, ссылка, <br>) без общего
+        родителя-<p>. Общий сборщик _extract_title_and_description отбрасывает
+        короткие текстовые фрагменты (в т.ч. точку после ссылки на тип) и рвёт
+        границу между типом и пояснением, поэтому раздел разбирается заново из
+        собственного HTML, а не из уже собранного doc.description.
+        """
+        for zagolovok, html in self._glavy(soup):
+            if zagolovok.lower().rstrip(':').strip() != 'описание':
+                continue
+
+            tekst = tekst_iz_html(html).strip()
+            if tekst.startswith('Тип:'):
+                doc.value_type, doc.description = izvlech_tip_i_poyasnenie(html)
+            break
+
+    def _izvlech_russkoe_imya_obekta(self, soup: BeautifulSoup) -> Optional[str]:
+        """«ТаблицаЗначений (ValueTable)» → «ТаблицаЗначений»."""
+        title = soup.find('p', class_='V8SH_title')
+        if not title:
+            return None
+        tekst = title.get_text(strip=True)
+        return tekst.split(' (')[0].strip() or None
+
+    # Обязательность параметра справка пишет в скобке после имени:
+    # "<Индекс> (обязательный)". У вариативных параметров конструкторов
+    # разметка бита: "<КоличествоЭлементов1>,...,<КоличествоЭлементовN>" — часть
+    # угловых скобок экранирована как &lt;/&gt;, часть — нет, и после разбора
+    # BeautifulSoup внутри текста рубрики остаются лишние литеральные '<' и '>'.
+    # Имя не должно пересекать эти внутренние скобки (иначе в него попадает
+    # обломок разметки вроде "КоличествоЭлементов1>,...,<КоличествоЭлементовN"),
+    # но искать его надо от пары <...>, что стоит прямо перед концом строки
+    # (или перед флагом) — то есть от последней настоящей пары скобок, а не от
+    # первой встречной: иначе на этом же случае теряется флаг обязательности.
+    _ZAGOLOVOK_PARAMETRA = re.compile(
+        r'<\s*(?P<imya>[^<>]*)\s*>\s*(?:\((?P<flag>обязательный|необязательный)\))?\s*\Z'
+    )
+
+    def _razobrat_zagolovok_parametra(self, tekst: str):
+        """Возвращает (имя, обязательность) из '<Индекс> (обязательный)'.
+
+        BeautifulSoup уже превратил &lt; в <, поэтому имя ищется в угловых
+        скобках. Обязательность None — справка о ней молчит.
+        """
+        sovpadenie = self._ZAGOLOVOK_PARAMETRA.search(tekst.replace('\xa0', ' '))
+        if not sovpadenie:
+            return "", None
+
+        imya = sovpadenie.group('imya').strip()
+        flag = sovpadenie.group('flag')
+        if flag == 'обязательный':
+            return imya, True
+        if flag == 'необязательный':
+            return imya, False
+        return imya, None
+
+    def _razobrat_parametry(self, html: str):
+        """Параметры одной главы «Параметры:»."""
         from bs4 import BeautifulSoup as BS
-        clean_info = BS(param_info, 'html.parser').get_text()
-        
-        # Убираем начальную часть "Тип: [тип]."
-        param_desc = re.sub(r'^Тип:\s*[^.]+\.\s*', '', clean_info.strip())
-        
-        # Добавляем информацию об обязательности
-        required_info = param_required.strip()
-        if required_info:
-            param_desc = f"({required_info}) {param_desc}"
-        
-        if param_name:
-            param = Parameter(
-                name=param_name,
-                type=param_type,
-                description=param_desc.strip()
+
+        sup = BS(html or "", 'html.parser')
+        parametry = []
+        for rubric in sup.find_all('div', class_='V8SH_rubric'):
+            imya, obyazatelnyy = self._razobrat_zagolovok_parametra(
+                rubric.get_text(' ', strip=True)
             )
-            doc.parameters.append(param)
-    
-    def _extract_return_type(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает тип и описание возвращаемого значения."""
-        # Получаем HTML контент после заголовка "Возвращаемое значение"
-        remaining_html = self._get_content_after_chapter(soup, ['возвращаемое', 'return'])
-        
-        if remaining_html:
-            # Извлекаем полное описание возвращаемого значения
-            from bs4 import BeautifulSoup as BS
-            clean_info = BS(remaining_html, 'html.parser').get_text()
-            
-            # Ищем тип в ссылках на def_
-            type_pattern = r'<a\s+href="[^"]*def_[^"]*"[^>]*>([^<]+)</a>'
-            type_matches = re.findall(type_pattern, remaining_html)
-            
-            if type_matches:
-                # Берем первый найденный тип как основной
-                doc.return_type = type_matches[0].strip()
-                
-                # Добавляем полное описание
-                clean_desc = re.sub(r'Тип:\s*[^.]+\.\s*', '', clean_info.strip())
-                if clean_desc:
-                    doc.return_type = f"{doc.return_type}. {clean_desc}"
-            else:
-                # Если тип не найден, используем весь текст как описание
-                doc.return_type = clean_info.strip()
-    
+            if not imya:
+                continue
+
+            chasti = [str(u) for u in uzly_do_granitsy(rubric, ('V8SH_rubric',))]
+            tip, opisanie = izvlech_tip_i_poyasnenie("".join(chasti))
+            parametry.append(
+                Parameter(name=imya, type=tip, description=opisanie,
+                          required=obyazatelnyy)
+            )
+        return parametry
+
+    def _izvlech_varianty(self, soup: BeautifulSoup, doc: Documentation):
+        """Собирает варианты вызова.
+
+        «Синтаксис», «Параметры» и «Возвращаемое значение» принадлежат текущему
+        варианту — последнему встреченному «Вариант синтаксиса». Всё остальное
+        относится к элементу целиком.
+        """
+        varianty = []
+        tekushchiy = None
+
+        def vzyat_tekushchiy():
+            nonlocal tekushchiy
+            if tekushchiy is None:
+                tekushchiy = SyntaxVariant()
+                varianty.append(tekushchiy)
+            return tekushchiy
+
+        for zagolovok, html in self._glavy(soup):
+            nizhniy = zagolovok.lower().rstrip(':').strip()
+
+            if nizhniy.startswith('вариант синтаксиса'):
+                imya = zagolovok.split(':', 1)[1].strip() if ':' in zagolovok else ""
+                tekushchiy = SyntaxVariant(variant=imya)
+                varianty.append(tekushchiy)
+            elif nizhniy == 'синтаксис':
+                vzyat_tekushchiy().syntax = normalizovat_probely(tekst_iz_html(html))
+            elif nizhniy.startswith('параметр'):
+                vzyat_tekushchiy().parameters = self._razobrat_parametry(html)
+            elif nizhniy.startswith('возвращаемое значение'):
+                variant = vzyat_tekushchiy()
+                variant.return_type, variant.return_description = \
+                    izvlech_tip_i_poyasnenie(html)
+
+        if doc.type == DocumentType.OBJECT_CONSTRUCTOR:
+            # У конструкторов варианты разложены по отдельным страницам справки,
+            # и заголовка «Вариант синтаксиса» на них нет: имя варианта («По
+            # количеству элементов») — это имя самой страницы. Раньше оно
+            # выдавалось за имя элемента, и путь получался бессмысленный:
+            # «Массив.По количеству элементов» вместо «Новый Массив(...)».
+            if not varianty:
+                varianty.append(SyntaxVariant())
+            for v in varianty:
+                if not v.variant:
+                    v.variant = doc.imya_ru()
+
+        doc.variants = varianty
+        doc.syntax_all = " | ".join(v.syntax for v in varianty if v.syntax)
+
     def _extract_examples(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает примеры кода."""
         # Ищем заголовок "Пример:" с классом V8SH_chapter
@@ -500,18 +586,11 @@ class HTMLParser:
                 continue
                 
             # Ищем таблицы с кодом после заголовка
-            elem = header.next_sibling
-            while elem:
-                # Если нашли следующий заголовок - прерываем
-                if (hasattr(elem, 'get') and hasattr(elem, 'get_text') and 
-                    elem.get('class') == ['V8SH_chapter']):
-                    break
-                
+            for elem in uzly_do_granitsy(header, ('V8SH_chapter',)):
                 # Пропускаем текстовые узлы и элементы без методов find
                 if not (hasattr(elem, 'name') and elem.name and hasattr(elem, 'find')):
-                    elem = elem.next_sibling
                     continue
-                
+
                 tables = elem.find_all('table') if elem.name != 'table' else [elem]
                 for table in tables:
                     # Ищем ячейки с кодом (обычно с моноширинным шрифтом)
@@ -541,7 +620,17 @@ class HTMLParser:
                             full_code = '\n'.join(clean_lines)
                             
                             if full_code.strip():
-                                doc.examples.append(full_code.strip())
+                                # Неразрывные пробелы в коде 1С — синтаксическая
+                                # ошибка: агент скопирует пример и получит отказ
+                                # компиляции. normalizovat_probely тут не годится:
+                                # она схлопывает пробельные последовательности через
+                                # .split() и срезает ведущий отступ — а отступ вложенных
+                                # строк примера значим и должен остаться дословным.
+                                stroki = [
+                                    stroka.replace('\xa0', ' ').rstrip()
+                                    for stroka in full_code.strip().split('\n')
+                                ]
+                                doc.examples.append('\n'.join(stroki))
                 
                 elem = elem.next_sibling
             break

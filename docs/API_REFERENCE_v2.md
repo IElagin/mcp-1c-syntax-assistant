@@ -109,9 +109,10 @@ API использует ограничение скорости запросо�
 
 ### 4. Получение доступных инструментов
 
-**GET** `/tools`
+**GET** `/tools` (то же самое отдаёт JSON-RPC метод `tools/list` на `/mcp`, см. ниже)
 
-Возвращает список доступных MCP инструментов.
+Возвращает список из трёх доступных MCP инструментов в виде JSON Schema
+(источник истины — `src/api/mcp_tools.py`).
 
 #### Ответ
 
@@ -119,17 +120,22 @@ API использует ограничение скорости запросо�
 {
   "tools": [
     {
-      "name": "search_1c_syntax",
-      "description": "Поиск по синтаксису и документации 1С",
-      "parameters": {
-        "query": {
-          "type": "string",
-          "description": "Поисковый запрос"
+      "name": "find_1c_help",
+      "description": "Поиск по справке 1С, когда точное имя элемента неизвестно. Ищет по русским и английским именам, описаниям и синтаксису. Возвращает список кандидатов по одной строке на элемент...",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "description": "Имя элемента, фрагмент имени или описание задачи"},
+          "kind": {
+            "type": "string",
+            "enum": ["any", "global", "method", "property", "event", "constructor"],
+            "default": "any"
+          },
+          "object": {"type": "string", "description": "Искать только у этого объекта справки"},
+          "limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 200}
         },
-        "limit": {
-          "type": "integer",
-          "description": "Максимальное количество результатов (по умолчанию: 20)"
-        }
+        "required": ["query"],
+        "additionalProperties": false
       }
     }
   ]
@@ -142,45 +148,76 @@ API использует ограничение скорости запросо�
 
 **POST** `/mcp`
 
-Выполняет MCP запрос для поиска по документации.
+Эндпоинт реализует [MCP JSON-RPC 2.0](https://modelcontextprotocol.io/specification/2025-06-18/index)
+(`src/api/routes/mcp.py`). Тело запроса — не произвольный `{"tool": ..., "arguments": ...}`,
+а JSON-RPC конверт с методами `initialize`, `tools/list`, `tools/call`,
+`notifications/initialized`.
 
-#### Тело запроса
+#### Тело запроса (`tools/call`)
 
 ```json
 {
-  "tool": "search_1c_syntax",
-  "arguments": {
-    "query": "СтрДлина",
-    "limit": 10,
-    "categories": ["functions"]
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "find_1c_help",
+    "arguments": {
+      "query": "СтрДлина",
+      "limit": 10
+    }
   }
 }
 ```
 
 #### Параметры
 
-- `tool` (string, required) - Имя инструмента
-- `arguments` (object, required) - Аргументы для инструмента
+- `jsonrpc` (string, required) - всегда `"2.0"`
+- `id` (any, required для запросов, ожидающих ответа)
+- `method` (string, required) - `initialize` / `tools/list` / `tools/call` / `notifications/initialized`
+- `params.name` (string, required для `tools/call`) - имя инструмента: `find_1c_help`, `get_1c_element` или `list_1c_object_members`
+- `params.arguments` (object, required для `tools/call`) - аргументы инструмента
 
-#### Валидация query
+#### Валидация аргументов
 
-- Минимальная длина: 1 символ
-- Максимальная длина: 1000 символов
-- Запрещенные символы: `< > { } \ ; & | `
+Каждый инструмент валидирует `arguments` своей pydantic-моделью
+(`Find1CHelpRequest`/`Get1CElementRequest`/`List1CObjectMembersRequest` в
+`src/models/mcp_models.py`):
+
+- `extra="forbid"` — незнакомое поле в `arguments` (например, устаревшее
+  `object_name` вместо `object`) возвращает ошибку валидации, а не тихо
+  отбрасывается
+- `kind` (`find_1c_help`) и `members` (`list_1c_object_members`) — только
+  значения из `enum` схемы, иное отклоняется
+- `limit` — `find_1c_help`: от 1 до 200 (по умолчанию 10); `list_1c_object_members`:
+  от 1 до 1000 (по умолчанию 100)
+
+Ограничений на длину или состав символов `query`/`name`/`object` в текущем
+контракте нет: класс `SearchRequest` с проверкой длины и запрещённых символов
+(`src/core/validation.py`) существует в коде, но не используется ни одним из
+трёх инструментов — это модель для прежнего REST-эндпоинта `search_1c_syntax`,
+оставшаяся невостребованной.
 
 #### Ответ
 
 ```json
 {
-  "content": [
-    {
-      "type": "text",
-      "text": "Результат поиска по документации 1С"
-    }
-  ],
-  "error": null
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Результат поиска по документации 1С"
+      }
+    ],
+    "isError": false
+  }
 }
 ```
+
+При ошибке `isError: true`, а текст ошибки — в `content`, а не только в отдельном
+поле: агент не должен принимать пустой `content` за успешный пустой ответ.
 
 ---
 
@@ -261,47 +298,59 @@ API использует ограничение скорости запросо�
 
 ## Инструменты MCP
 
-### search_1c_syntax
+Три инструмента, без пересечения ролей (полное описание, схемы и примеры
+ответов — в `docs/MCP_TOOLS_SPECIFICATION.md`).
 
-Поиск по синтаксису и документации 1С.
+### find_1c_help
+
+Поиск по справке 1С, когда точное имя элемента неизвестно.
 
 #### Параметры
 
 - `query` (string, required) - Поисковый запрос
-- `limit` (integer, optional) - Максимальное количество результатов (1-100, по умолчанию: 20)
-- `offset` (integer, optional) - Смещение для пагинации (по умолчанию: 0)
-- `timeout` (integer, optional) - Таймаут поиска в секундах (1-300, по умолчанию: 30)
-- `min_score` (float, optional) - Минимальный скор для результатов (0.0-1.0, по умолчанию: 0.1)
-- `categories` (array[string], optional) - Фильтр по категориям
+- `kind` (string, optional) - Фильтр по виду элемента: `any` (по умолчанию), `global`, `method`, `property`, `event`, `constructor`
+- `object` (string, optional) - Искать только у этого объекта справки
+- `limit` (integer, optional) - Сколько кандидатов вернуть (1-200, по умолчанию: 10)
 
 #### Пример использования
 
 ```json
 {
-  "tool": "search_1c_syntax",
-  "arguments": {
-    "query": "СтрДлина строка",
-    "limit": 5,
-    "categories": ["functions", "methods"]
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "find_1c_help",
+    "arguments": {
+      "query": "СтрДлина строка",
+      "limit": 5
+    }
   }
 }
 ```
 
-### get_1c_function_details
+### get_1c_element
 
-Получение детальной информации о функции 1С.
-
-#### Параметры
-
-- `function_name` (string, required) - Название функции
-
-### get_1c_object_info
-
-Получение информации об объекте 1С.
+Полная карточка элемента справки 1С: строка вызова, варианты вызова, параметры
+с типами и обязательностью, тип возврата, доступность по контекстам
+исполнения, версия, описание, примечание, пример. Требует точного имени; при
+неуникальном имени вместо карточки возвращается список кандидатов.
 
 #### Параметры
 
-- `object_name` (string, required) - Название объекта
+- `name` (string, required) - Точное имя элемента, русское или английское
+- `object` (string, optional) - Объект справки — обязателен, если имя неуникально
+- `variant` (string, optional) - Имя варианта вызова, если у элемента их несколько
+
+### list_1c_object_members
+
+Состав объекта 1С: методы, свойства, события, конструкторы.
+
+#### Параметры
+
+- `object` (string, required) - Имя объекта справки
+- `members` (string, optional) - `all` (по умолчанию), `methods`, `properties`, `events`, `constructors`
+- `limit` (integer, optional) - Сколько элементов вернуть (1-1000, по умолчанию: 100)
 
 ## Мониторинг и метрики
 
@@ -361,7 +410,12 @@ API использует ограничение скорости запросо�
 - Максимальный размер файла: 50MB
 - Размер батча для индексации: 100 документов
 - Таймаут Elasticsearch: 30 секунд
-- Максимальное количество результатов поиска: 100
+- Максимальное количество результатов за один вызов — своё у каждого
+  инструмента (см. «Инструменты MCP» выше): `find_1c_help` — 200,
+  `list_1c_object_members` — 1000. Общего для всех инструментов лимита
+  «100» не существует — константа `MAX_SEARCH_RESULTS = 100`
+  (`src/core/constants.py`) относится к неиспользуемой модели `SearchRequest`
+  (`src/core/validation.py`), а не к текущему контракту.
 
 ## Примеры использования
 
@@ -371,10 +425,15 @@ API использует ограничение скорости запросо�
 curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -d '{
-    "tool": "search_1c_syntax",
-    "arguments": {
-      "query": "СтрДлина",
-      "limit": 5
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "find_1c_help",
+      "arguments": {
+        "query": "СтрДлина",
+        "limit": 5
+      }
     }
   }'
 ```

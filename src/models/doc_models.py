@@ -1,6 +1,6 @@
 """Модели для документации 1С."""
 
-from typing import List, Optional, Dict, Any
+from typing import ClassVar, List, Optional, Dict, Any, Tuple
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -42,9 +42,28 @@ class ObjectEvent(BaseModel):
 class Parameter(BaseModel):
     """Параметр функции/метода."""
     name: str
-    type: str
+    type: str = ""
     description: str = ""
-    required: bool = True
+    # None — справка об обязательности молчит. Раньше здесь стояло True по
+    # умолчанию, и карточка объявляла обязательными 2 677 параметров, которые
+    # справка помечает необязательными. Ложь хуже отсутствия данных: агент
+    # передаёт лишний аргумент и получает отказ платформы.
+    required: Optional[bool] = None
+
+
+class SyntaxVariant(BaseModel):
+    """Вариант вызова элемента.
+
+    У 247 методов справки несколько вариантов вызова с разными параметрами
+    («Удалить(<Индекс>)» и «Удалить(<Элемент>)»), а у конструкторов вариант
+    приходит отдельной страницей. Один вариант — один способ вызвать.
+    """
+    variant: str = ""
+    syntax: str = ""
+    call: str = ""
+    parameters: List[Parameter] = []
+    return_type: str = ""
+    return_description: str = ""
 
 
 class Documentation(BaseModel):
@@ -53,30 +72,118 @@ class Documentation(BaseModel):
     type: DocumentType
     name: str
     object: Optional[str] = None  # Для методов/свойств/событий объектов
-    syntax_ru: str = ""
-    syntax_en: str = ""
     description: str = ""
-    parameters: List[Parameter] = []
-    return_type: Optional[str] = None
-    usage: Optional[str] = None  # Для свойств - "Чтение и запись", "Только чтение" и т.д.
+    variants: List[SyntaxVariant] = []
+    call_primary: str = ""
+    syntax_all: str = ""
+    usage: Optional[str] = None  # Для свойств - "чтение и запись", "только чтение" и т.д.
+    element_kind: str = ""          # функция / процедура / свойство / событие / конструктор / объект
+    object_ru: Optional[str] = None  # «Глобальный контекст» вместо технического Global context
+    value_type: str = ""            # тип значения свойства
+    availability: List[str] = []    # контексты исполнения в нижнем регистре
+    note: str = ""                  # раздел «Примечание»
     version_from: Optional[str] = None
     examples: List[str] = []
     source_file: str = ""
     full_path: str = ""  # Полный путь типа "ТаблицаЗначений.Добавить"
-    
+
     # Для объектов - списки методов, свойств и событий
     methods: List[ObjectMethod] = []
     properties: List[ObjectProperty] = []
     events: List[ObjectEvent] = []
-    
-    def __post_init__(self):
-        """Автоматически заполняет full_path и id."""
-        if self.object:
-            self.full_path = f"{self.object}.{self.name}"
-            self.id = f"{self.object}_{self.name}_{self.type.value}"
+
+    def imya_ru(self) -> str:
+        """Русская часть имени: из «Добавить (Add)» — «Добавить»."""
+        imya = (self.name or "").strip()
+        if imya.endswith(')') and ' (' in imya:
+            return imya.rsplit(' (', 1)[0].strip()
+        return imya
+
+    # ClassVar — иначе pydantic 2 примет присвоение без аннотации типа за
+    # попытку объявить поле модели и упадёт с PydanticUserError.
+    GLOBALNYE: ClassVar[Tuple[DocumentType, ...]] = (
+        DocumentType.GLOBAL_FUNCTION,
+        DocumentType.GLOBAL_PROCEDURE,
+        DocumentType.GLOBAL_EVENT,
+    )
+
+    def _put_obekta(self, imya: str) -> str:
+        """Канонический путь документа объекта (спека §4.1).
+
+        У 2 286 из 2 506 объектов поле object равно имени страницы, и общая
+        склейка object + "." + имя давала «ТаблицаЗначений.ТаблицаЗначений»:
+        карточка советовала list_1c_object_members(object=<удвоенное имя>), а
+        такого объекта в справке нет — совет заводил агента в тупик. Остальные
+        220 объектов названы заполнителем («<Имя плана видов расчета>»), а тип
+        держат в object («БазовыеВидыРасчета») — там склейка и есть канонический
+        путь заголовка справки, и по нему же лежат члены таких объектов (17
+        документов против 1 по одному «БазовыеВидыРасчета»), так что терять её
+        нельзя.
+
+        Полное совпадение — частный случай перекрытия, а не единственный: у 16
+        объектов хвост object повторяет начало имени страницы
+        (object = «ВнешнийИсточникДанныхКубЗапись.<Имя внешнего источника>»,
+        имя = «<Имя внешнего источника>.<Имя куба>»). Прямая склейка давала
+        тройное имя, которого нет ни в одном поле object индекса: карточка и
+        советовала по нему неисполнимый перечень, и считала по нему же состав,
+        печатая «свойств: 0» при двух свойствах, лежащих под неудвоенным ключом.
+        Общую часть ищем по границе сегментов — точке: иначе «Таблица» съело бы
+        начало «ТаблицаЗначений», а это разные имена.
+        """
+        if not self.object:
+            return imya
+
+        segmenty = self.object.split(".")
+        for i in range(len(segmenty)):
+            hvost = ".".join(segmenty[i:])
+            if imya == hvost or imya.startswith(hvost + "."):
+                return ".".join(segmenty[:i] + [imya])
+        return f"{self.object}.{imya}"
+
+    def sobrat_vyzovy(self):
+        """Заполняет строки вызова и канонический путь.
+
+        Раньше full_path собирался как «Global context.ЗначениеЗаполнено
+        (ValueIsFilled)» — агент мог принять это за код вызова. Канонический
+        путь не содержит ни английского имени, ни технического Global context.
+        """
+        imya = self.imya_ru()
+
+        if self.type in self.GLOBALNYE:
+            self.full_path = imya
+        elif self.type == DocumentType.OBJECT:
+            self.full_path = self._put_obekta(imya)
+        elif self.object:
+            self.full_path = f"{self.object}.{imya}"
         else:
-            self.full_path = self.name
-            self.id = f"{self.name}_{self.type.value}"
+            self.full_path = imya
+
+        for variant in self.variants:
+            if self.type == DocumentType.OBJECT_CONSTRUCTOR:
+                variant.call = variant.syntax or f"Новый {self.object or imya}"
+            elif self.type in self.GLOBALNYE:
+                variant.call = variant.syntax
+            elif self.object and variant.syntax:
+                variant.call = f"{self.object}.{variant.syntax}"
+            else:
+                variant.call = variant.syntax
+
+        if self.variants:
+            self.call_primary = self.variants[0].call
+        elif self.type == DocumentType.OBJECT_PROPERTY:
+            # У свойства раздела «Синтаксис» нет: обращение — это путь.
+            self.call_primary = self.full_path
+        else:
+            self.call_primary = ""
+
+        # Обычно syntax_all уже выставлен парсером (_izvlech_varianty), но
+        # пересчитываем и здесь: sobrat_vyzovy вызывается и на документах,
+        # собранных напрямую (тесты, фикстуры) — без парсера поле осталось
+        # бы пустым по умолчанию.
+        self.syntax_all = " | ".join(v.syntax for v in self.variants if v.syntax)
+
+        self.id = f"{self.object}_{self.name}_{self.type.value}" if self.object \
+            else f"{self.name}_{self.type.value}"
 
 
 class HBKFile(BaseModel):

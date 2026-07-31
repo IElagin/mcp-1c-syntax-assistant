@@ -137,34 +137,50 @@ class ElasticsearchIndexer:
         """Подготавливает документ для индексации в Elasticsearch."""
         imya_ru, imya_en = razlozhit_imya(doc.name)
 
-        es_doc = {
+        return {
             "id": doc.id,
             "type": doc.type.value,
+            "element_kind": doc.element_kind,
             "name": doc.name,
             "name_ru": imya_ru,
             "name_en": imya_en or "",
             "object": doc.object,
-            "syntax_ru": doc.syntax_ru,
-            "syntax_en": doc.syntax_en,
-            "description": doc.description,
-            "parameters": [
+            "object_ru": doc.object_ru,
+            "full_path": doc.full_path,
+            "call_primary": doc.call_primary,
+            # Поисковое поле: строки синтаксиса всех вариантов. Заменило
+            # syntax_ru и syntax_en — последнее было пустым у 100% методов,
+            # но участвовало в бустах.
+            "syntax_all": doc.syntax_all,
+            "variants": [
                 {
-                    "name": param.name,
-                    "type": param.type,
-                    "description": param.description,
-                    "required": param.required
+                    "variant": v.variant,
+                    "syntax": v.syntax,
+                    "call": v.call,
+                    "parameters": [
+                        {
+                            "name": p.name,
+                            "type": p.type,
+                            "description": p.description,
+                            "required": p.required,
+                        }
+                        for p in v.parameters
+                    ],
+                    "return_type": v.return_type,
+                    "return_description": v.return_description,
                 }
-                for param in doc.parameters
+                for v in doc.variants
             ],
-            "return_type": doc.return_type,
+            "value_type": doc.value_type,
+            "usage": doc.usage,
+            "availability": doc.availability,
+            "description": doc.description,
+            "note": doc.note,
             "version_from": doc.version_from,
             "examples": doc.examples,
             "source_file": doc.source_file,
-            "full_path": doc.full_path,
-            "indexed_at": datetime.now().isoformat()
+            "indexed_at": datetime.now().isoformat(),
         }
-        
-        return es_doc
     
     async def reindex_all(
         self, 
@@ -239,7 +255,7 @@ class ElasticsearchIndexer:
                 "query": {
                     "multi_match": {
                         "query": query,
-                        "fields": ["name^3", "full_path^2", "description", "syntax_ru"],
+                        "fields": ["name^3", "full_path^2", "description", "syntax_all"],
                         "type": "best_fields"
                     }
                 },
