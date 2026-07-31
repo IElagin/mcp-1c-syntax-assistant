@@ -51,28 +51,49 @@ class Parameter(BaseModel):
     required: Optional[bool] = None
 
 
+class SyntaxVariant(BaseModel):
+    """Вариант вызова элемента.
+
+    У 247 методов справки несколько вариантов вызова с разными параметрами
+    («Удалить(<Индекс>)» и «Удалить(<Элемент>)»), а у конструкторов вариант
+    приходит отдельной страницей. Один вариант — один способ вызвать.
+    """
+    variant: str = ""
+    syntax: str = ""
+    call: str = ""
+    parameters: List[Parameter] = []
+    return_type: str = ""
+    return_description: str = ""
+
+
 class Documentation(BaseModel):
     """Базовая модель документации."""
     id: str = Field(..., description="Уникальный идентификатор")
     type: DocumentType
     name: str
     object: Optional[str] = None  # Для методов/свойств/событий объектов
-    syntax_ru: str = ""
-    syntax_en: str = ""
     description: str = ""
-    parameters: List[Parameter] = []
-    return_type: Optional[str] = None
+    variants: List[SyntaxVariant] = []
+    call_primary: str = ""
+    syntax_all: str = ""
     usage: Optional[str] = None  # Для свойств - "Чтение и запись", "Только чтение" и т.д.
     version_from: Optional[str] = None
     examples: List[str] = []
     source_file: str = ""
     full_path: str = ""  # Полный путь типа "ТаблицаЗначений.Добавить"
-    
+
     # Для объектов - списки методов, свойств и событий
     methods: List[ObjectMethod] = []
     properties: List[ObjectProperty] = []
     events: List[ObjectEvent] = []
-    
+
+    def imya_ru(self) -> str:
+        """Русская часть имени: из «Добавить (Add)» — «Добавить»."""
+        imya = (self.name or "").strip()
+        if imya.endswith(')') and ' (' in imya:
+            return imya.rsplit(' (', 1)[0].strip()
+        return imya
+
     def __post_init__(self):
         """Автоматически заполняет full_path и id."""
         if self.object:

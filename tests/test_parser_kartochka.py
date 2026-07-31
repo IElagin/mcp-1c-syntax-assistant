@@ -44,12 +44,8 @@ def razobrat(imya_fikstury):
 
 
 def parametry(doc):
-    """Параметры элемента.
-
-    В Task 3 параметры переезжают внутрь вариантов вызова, и эта функция
-    станет возвращать doc.variants[0].parameters. Пока — верхний уровень.
-    """
-    return doc.parameters
+    """Параметры первого варианта вызова."""
+    return doc.variants[0].parameters if doc.variants else []
 
 
 @pytest.mark.unit
@@ -99,3 +95,82 @@ def test_obyazatelnost_ne_dubliruetsya_v_opisanii():
     opisanie = parametry(doc)[0].description
     assert "(обязательный)" not in opisanie, opisanie
     assert opisanie.startswith("Задает условия поиска")
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_oba_varianta_vyzova_izvlekayutsya():
+    """У метода бывает несколько вариантов вызова с разными параметрами.
+
+    ДанныеФормыКоллекция.Удалить вызывается и по индексу, и по элементу.
+    Раньше второй вариант терялся молча: парсер брал первый «Синтаксис:» и
+    резал блок до следующего заголовка V8SH_. Агент узнавал ровно половину
+    способов вызвать метод и не знал, что есть вторая.
+    """
+    doc = razobrat("formdatacollection_delete.html")
+
+    assert len(doc.variants) == 2, [v.variant for v in doc.variants]
+
+    po_indeksu, po_elementu = doc.variants
+    assert po_indeksu.variant == "По индексу"
+    assert po_indeksu.syntax == "Удалить(<Индекс>)"
+    assert [p.name for p in po_indeksu.parameters] == ["Индекс"]
+    assert po_indeksu.parameters[0].type == "Число"
+
+    assert po_elementu.variant == "По элементу"
+    assert po_elementu.syntax == "Удалить(<Элемент>)"
+    assert [p.name for p in po_elementu.parameters] == ["Элемент"]
+    assert po_elementu.parameters[0].type == "ДанныеФормыЭлементКоллекции"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_odin_variant_bez_imeni():
+    """Страница без «Вариант синтаксиса» даёт один безымянный вариант."""
+    doc = razobrat("valuetable_findrows.html")
+
+    assert len(doc.variants) == 1
+    assert doc.variants[0].variant == ""
+    assert doc.variants[0].syntax == "НайтиСтроки(<ПараметрыОтбора>)"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_opisanie_obshchee_dlya_variantov():
+    """Описание и доступность относятся к элементу, а не к варианту."""
+    doc = razobrat("formdatacollection_delete.html")
+
+    assert doc.description.startswith("Удаляет элемент из коллекции")
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_konstruktor_neset_imya_varianta():
+    """У конструктора имя варианта — это имя страницы справки.
+
+    Заголовка «Вариант синтаксиса» на страницах конструкторов нет: варианты
+    разложены по отдельным страницам, и «По количеству элементов» попадало в
+    имя элемента, откуда собирался бессмысленный путь
+    «Массив.По количеству элементов».
+    """
+    doc = razobrat("array_ctor_bycount.html")
+
+    assert len(doc.variants) == 1
+    assert doc.variants[0].variant == "По количеству элементов"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_tip_vozvrata_otdelen_ot_poyasneniya():
+    """Тип возврата — «Массив», а не абзац в три предложения.
+
+    Раньше при отсутствии def_-ссылки в return_type писался весь раздел целиком,
+    и у половины заполненных значений «тип» был текстом с точками внутри —
+    прочитать из него тип машинно нельзя.
+    """
+    doc = razobrat("valuetable_findrows.html")
+
+    variant = doc.variants[0]
+    assert variant.return_type == "Массив"
+    assert variant.return_description.startswith("Массив строк таблицы значений")
+    assert "Замечание!" in variant.return_description

@@ -4,9 +4,14 @@ import re
 from typing import Optional
 from bs4 import BeautifulSoup
 
-from src.models.doc_models import Documentation, Parameter, DocumentType, ObjectMethod, ObjectProperty, ObjectEvent
+from src.models.doc_models import (
+    Documentation, Parameter, SyntaxVariant, DocumentType,
+    ObjectMethod, ObjectProperty, ObjectEvent,
+)
 from src.core.logging import get_logger
-from src.parsers.tekst import izvlech_tip_i_poyasnenie
+from src.parsers.tekst import (
+    izvlech_tip_i_poyasnenie, normalizovat_probely, pochistit_opisanie, tekst_iz_html,
+)
 
 logger = get_logger(__name__)
 
@@ -63,10 +68,8 @@ class HTMLParser:
                 self._extract_object_properties(soup, doc)
                 self._extract_object_events(soup, doc)
             else:
-                # Для функций/методов/событий извлекаем синтаксис, параметры и примеры
-                self._extract_syntax(soup, doc)
-                self._extract_parameters(soup, doc)
-                self._extract_return_type(soup, doc)
+                # Для функций/методов/событий извлекаем варианты вызова и примеры
+                self._izvlech_varianty(soup, doc)
                 self._extract_examples(soup, doc)
             
             self._extract_version(soup, doc)
@@ -375,114 +378,132 @@ class HTMLParser:
                     doc.description = ' '.join(description_parts)
                     break
     
-    def _extract_syntax(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает синтаксис вызова."""
-        # Ищем заголовок "Синтаксис:" с классом V8SH_chapter  
-        chapter_headers = soup.find_all('p', class_='V8SH_chapter')
-        
-        for header in chapter_headers:
-            header_text = header.get_text(strip=True).lower()
-            if 'синтаксис' in header_text or 'syntax' in header_text:
-                # Проверяем следующий элемент после заголовка
-                next_elem = header.next_sibling
-                if next_elem:
-                    syntax_text = next_elem.get_text().strip() if hasattr(next_elem, 'get_text') else str(next_elem).strip()
-                    if '(' in syntax_text and syntax_text:
-                        doc.syntax_ru = syntax_text
-                        return
-                
-                # Альтернативный поиск в тексте после заголовка
-                remaining_text = ""
-                elem = header.next_sibling
-                while elem and not (hasattr(elem, 'get') and hasattr(elem, 'get_text') and elem.get('class') == ['V8SH_chapter']):
-                    if hasattr(elem, 'get_text'):
-                        remaining_text += elem.get_text().strip() + " "
-                    elif isinstance(elem, str):
-                        remaining_text += elem.strip() + " "
-                    elem = elem.next_sibling
-                
-                # Ищем синтаксис в собранном тексте
-                lines = remaining_text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if '(' in line and ')' in line and len(line) < 200:
-                        doc.syntax_ru = line
-                        return
-                break
-    
-    def _extract_parameters(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает параметры функции."""
-        # Получаем HTML контент после заголовка "Параметры"
-        remaining_html = self._get_content_after_chapter(soup, ['параметр', 'parameter'])
-        
-        if remaining_html:
-            # Ищем блоки V8SH_rubric с параметрами
-            # Первый паттерн - с информацией об обязательности: &lt;Строка&gt; (обязательный)
-            rubric_pattern_with_required = r'<div class="V8SH_rubric"[^>]*>.*?&lt;([^&]+)&gt;\s*\(([^)]+)\).*?</div>(.*?)(?=<[^>]+class="V8SH_|$)'
-            matches_with_required = re.findall(rubric_pattern_with_required, remaining_html, re.DOTALL)
-            
-            # Второй паттерн - без информации об обязательности: &lt;ВидФормы&gt;
-            rubric_pattern_simple = r'<div class="V8SH_rubric"[^>]*>.*?&lt;([^&]+)&gt;[^(]*?</div>(.*?)(?=<[^>]+class="V8SH_|$)'
-            matches_simple = re.findall(rubric_pattern_simple, remaining_html, re.DOTALL)
-            
-            # Обрабатываем параметры с информацией об обязательности
-            for param_name, param_required, param_info in matches_with_required:
-                self._process_parameter(doc, param_name, param_info, param_required)
-            
-            # Обрабатываем параметры без информации об обязательности
-            for param_name, param_info in matches_simple:
-                # Проверяем, что этот параметр еще не был добавлен
-                if not any(p.name == param_name for p in doc.parameters):
-                    self._process_parameter(doc, param_name, param_info, "")
-    
-    def _process_parameter(self, doc: Documentation, param_name: str,
-                           param_info: str, param_required: str):
-        """Собирает параметр из имени, скобки обязательности и блока после неё."""
-        flag = (param_required or "").strip().lower()
-        if flag == 'обязательный':
-            obyazatelnyy = True
-        elif flag == 'необязательный':
-            obyazatelnyy = False
-        else:
-            # Справка молчит — так и запишем: это не то же самое, что
-            # «необязательный», и карточка обязана различать.
-            obyazatelnyy = None
+    def _glavy(self, soup: BeautifulSoup):
+        """Главы страницы: [(заголовок, html после заголовка), …].
 
-        tip, opisanie = izvlech_tip_i_poyasnenie(param_info)
-        if param_name.strip():
-            doc.parameters.append(Parameter(
-                name=param_name.strip(),
-                type=tip,
-                description=opisanie,
-                required=obyazatelnyy,
-            ))
-    
-    def _extract_return_type(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает тип и описание возвращаемого значения."""
-        # Получаем HTML контент после заголовка "Возвращаемое значение"
-        remaining_html = self._get_content_after_chapter(soup, ['возвращаемое', 'return'])
-        
-        if remaining_html:
-            # Извлекаем полное описание возвращаемого значения
-            from bs4 import BeautifulSoup as BS
-            clean_info = BS(remaining_html, 'html.parser').get_text()
-            
-            # Ищем тип в ссылках на def_
-            type_pattern = r'<a\s+href="[^"]*def_[^"]*"[^>]*>([^<]+)</a>'
-            type_matches = re.findall(type_pattern, remaining_html)
-            
-            if type_matches:
-                # Берем первый найденный тип как основной
-                doc.return_type = type_matches[0].strip()
-                
-                # Добавляем полное описание
-                clean_desc = re.sub(r'Тип:\s*[^.]+\.\s*', '', clean_info.strip())
-                if clean_desc:
-                    doc.return_type = f"{doc.return_type}. {clean_desc}"
-            else:
-                # Если тип не найден, используем весь текст как описание
-                doc.return_type = clean_info.strip()
-    
+        Идём по узлам-соседям, а не поиском подстроки в HTML родителя: на
+        странице с вариантами заголовки «Синтаксис:» текстуально одинаковы, и
+        поиск подстроки возвращал бы для каждого позицию первого.
+        """
+        glavy = []
+        for header in soup.find_all('p', class_='V8SH_chapter'):
+            chasti = []
+            elem = header.next_sibling
+            while elem is not None:
+                klassy = elem.get('class') or [] if hasattr(elem, 'get') else []
+                if 'V8SH_chapter' in klassy:
+                    break
+                chasti.append(str(elem))
+                elem = elem.next_sibling
+            glavy.append((header.get_text(strip=True), "".join(chasti)))
+        return glavy
+
+    # Обязательность параметра справка пишет в скобке после имени:
+    # "<Индекс> (обязательный)". У вариативных параметров конструкторов
+    # разметка бита: "<КоличествоЭлементов1>,...,<КоличествоЭлементовN>" — часть
+    # угловых скобок экранирована как &lt;/&gt;, часть — нет, и после разбора
+    # BeautifulSoup внутри имени остаются лишние литеральные '<' и '>'. Имя
+    # ищем не до первой '>', а до последней перед концом строки (или перед
+    # флагом), иначе на этом случае флаг обязательности молча теряется.
+    _ZAGOLOVOK_PARAMETRA = re.compile(
+        r'<\s*(?P<imya>.+?)\s*>\s*(?:\((?P<flag>обязательный|необязательный)\))?\s*$'
+    )
+
+    def _razobrat_zagolovok_parametra(self, tekst: str):
+        """Возвращает (имя, обязательность) из '<Индекс> (обязательный)'.
+
+        BeautifulSoup уже превратил &lt; в <, поэтому имя ищется в угловых
+        скобках. Обязательность None — справка о ней молчит.
+        """
+        sovpadenie = self._ZAGOLOVOK_PARAMETRA.search(tekst.replace('\xa0', ' '))
+        if not sovpadenie:
+            return "", None
+
+        imya = sovpadenie.group('imya').strip()
+        flag = sovpadenie.group('flag')
+        if flag == 'обязательный':
+            return imya, True
+        if flag == 'необязательный':
+            return imya, False
+        return imya, None
+
+    def _razobrat_parametry(self, html: str):
+        """Параметры одной главы «Параметры:»."""
+        from bs4 import BeautifulSoup as BS
+
+        sup = BS(html or "", 'html.parser')
+        parametry = []
+        for rubric in sup.find_all('div', class_='V8SH_rubric'):
+            imya, obyazatelnyy = self._razobrat_zagolovok_parametra(
+                rubric.get_text(' ', strip=True)
+            )
+            if not imya:
+                continue
+
+            chasti = []
+            elem = rubric.next_sibling
+            while elem is not None:
+                klassy = elem.get('class') or [] if hasattr(elem, 'get') else []
+                if 'V8SH_rubric' in klassy:
+                    break
+                chasti.append(str(elem))
+                elem = elem.next_sibling
+
+            tip, opisanie = izvlech_tip_i_poyasnenie("".join(chasti))
+            parametry.append(
+                Parameter(name=imya, type=tip, description=opisanie,
+                          required=obyazatelnyy)
+            )
+        return parametry
+
+    def _izvlech_varianty(self, soup: BeautifulSoup, doc: Documentation):
+        """Собирает варианты вызова.
+
+        «Синтаксис», «Параметры» и «Возвращаемое значение» принадлежат текущему
+        варианту — последнему встреченному «Вариант синтаксиса». Всё остальное
+        относится к элементу целиком.
+        """
+        varianty = []
+        tekushchiy = None
+
+        def vzyat_tekushchiy():
+            nonlocal tekushchiy
+            if tekushchiy is None:
+                tekushchiy = SyntaxVariant()
+                varianty.append(tekushchiy)
+            return tekushchiy
+
+        for zagolovok, html in self._glavy(soup):
+            nizhniy = zagolovok.lower().rstrip(':').strip()
+
+            if nizhniy.startswith('вариант синтаксиса'):
+                imya = zagolovok.split(':', 1)[1].strip() if ':' in zagolovok else ""
+                tekushchiy = SyntaxVariant(variant=imya)
+                varianty.append(tekushchiy)
+            elif nizhniy == 'синтаксис':
+                vzyat_tekushchiy().syntax = normalizovat_probely(tekst_iz_html(html))
+            elif nizhniy.startswith('параметр'):
+                vzyat_tekushchiy().parameters = self._razobrat_parametry(html)
+            elif nizhniy.startswith('возвращаемое значение'):
+                variant = vzyat_tekushchiy()
+                variant.return_type, variant.return_description = \
+                    izvlech_tip_i_poyasnenie(html)
+
+        if doc.type == DocumentType.OBJECT_CONSTRUCTOR:
+            # У конструкторов варианты разложены по отдельным страницам справки,
+            # и заголовка «Вариант синтаксиса» на них нет: имя варианта («По
+            # количеству элементов») — это имя самой страницы. Раньше оно
+            # выдавалось за имя элемента, и путь получался бессмысленный:
+            # «Массив.По количеству элементов» вместо «Новый Массив(...)».
+            if not varianty:
+                varianty.append(SyntaxVariant())
+            for v in varianty:
+                if not v.variant:
+                    v.variant = doc.imya_ru()
+
+        doc.variants = varianty
+        doc.syntax_all = " | ".join(v.syntax for v in varianty if v.syntax)
+
     def _extract_examples(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает примеры кода."""
         # Ищем заголовок "Пример:" с классом V8SH_chapter
