@@ -180,6 +180,71 @@ def test_index_name_generation():
 
 @pytest.mark.unit
 @pytest.mark.indexer
+def test_dokument_indeksa_neset_dostupnost_i_varianty():
+    """Поле, извлечённое парсером и не попавшее в индекс, бесполезно.
+
+    Так было с usage: парсер его читал, а _prepare_document не переносил.
+    """
+    from src.models.doc_models import Documentation, DocumentType, Parameter, SyntaxVariant
+    from src.parsers.indexer import ElasticsearchIndexer
+
+    doc = Documentation(
+        id="",
+        type=DocumentType.OBJECT_FUNCTION,
+        name="НайтиСтроки (FindRows)",
+        object="ТаблицаЗначений",
+        object_ru="ТаблицаЗначений",
+        element_kind="функция",
+        description="Осуществляет поиск строк.",
+        note="Метод эффективно использовать для выборки неуникальных значений.",
+        availability=["сервер", "толстый клиент"],
+        variants=[SyntaxVariant(
+            syntax="НайтиСтроки(<ПараметрыОтбора>)",
+            parameters=[Parameter(name="ПараметрыОтбора", type="Структура",
+                                  required=True, description="Задает условия поиска.")],
+            return_type="Массив",
+            return_description="Массив строк.",
+        )],
+    )
+    doc.sobrat_vyzovy()
+
+    es_doc = ElasticsearchIndexer(None)._prepare_document(doc)
+
+    assert es_doc["availability"] == ["сервер", "толстый клиент"]
+    assert es_doc["note"].startswith("Метод эффективно")
+    assert es_doc["element_kind"] == "функция"
+    assert es_doc["call_primary"] == "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)"
+    assert es_doc["syntax_all"] == "НайтиСтроки(<ПараметрыОтбора>)"
+    assert es_doc["variants"][0]["parameters"][0]["type"] == "Структура"
+    assert es_doc["variants"][0]["parameters"][0]["required"] is True
+    assert es_doc["variants"][0]["return_type"] == "Массив"
+    assert "syntax_ru" not in es_doc
+    assert "syntax_en" not in es_doc
+
+
+@pytest.mark.unit
+@pytest.mark.indexer
+def test_svoystvo_neset_tip_i_dostup():
+    from src.models.doc_models import Documentation, DocumentType
+    from src.parsers.indexer import ElasticsearchIndexer
+
+    doc = Documentation(
+        id="", type=DocumentType.OBJECT_PROPERTY,
+        name="Колонки (Columns)", object="ТаблицаЗначений",
+        value_type="КоллекцияКолонокТаблицыЗначений", usage="только чтение",
+        description="Содержит коллекцию колонок.",
+    )
+    doc.sobrat_vyzovy()
+
+    es_doc = ElasticsearchIndexer(None)._prepare_document(doc)
+
+    assert es_doc["value_type"] == "КоллекцияКолонокТаблицыЗначений"
+    assert es_doc["usage"] == "только чтение"
+    assert es_doc["call_primary"] == "ТаблицаЗначений.Колонки"
+
+
+@pytest.mark.unit
+@pytest.mark.indexer
 @pytest.mark.asyncio
 async def test_indexer_progress_callback(mock_parsed_hbk):
     """Тест callback для отслеживания прогресса индексации."""

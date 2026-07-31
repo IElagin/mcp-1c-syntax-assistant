@@ -1,6 +1,6 @@
 """Модели для документации 1С."""
 
-from typing import List, Optional, Dict, Any
+from typing import ClassVar, List, Optional, Dict, Any, Tuple
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -99,14 +99,56 @@ class Documentation(BaseModel):
             return imya.rsplit(' (', 1)[0].strip()
         return imya
 
-    def __post_init__(self):
-        """Автоматически заполняет full_path и id."""
-        if self.object:
-            self.full_path = f"{self.object}.{self.name}"
-            self.id = f"{self.object}_{self.name}_{self.type.value}"
+    # ClassVar — иначе pydantic 2 примет присвоение без аннотации типа за
+    # попытку объявить поле модели и упадёт с PydanticUserError.
+    GLOBALNYE: ClassVar[Tuple[DocumentType, ...]] = (
+        DocumentType.GLOBAL_FUNCTION,
+        DocumentType.GLOBAL_PROCEDURE,
+        DocumentType.GLOBAL_EVENT,
+    )
+
+    def sobrat_vyzovy(self):
+        """Заполняет строки вызова и канонический путь.
+
+        Раньше full_path собирался как «Global context.ЗначениеЗаполнено
+        (ValueIsFilled)» — агент мог принять это за код вызова. Канонический
+        путь не содержит ни английского имени, ни технического Global context.
+        """
+        imya = self.imya_ru()
+
+        if self.type in self.GLOBALNYE:
+            self.full_path = imya
+        elif self.object:
+            self.full_path = f"{self.object}.{imya}"
         else:
-            self.full_path = self.name
-            self.id = f"{self.name}_{self.type.value}"
+            self.full_path = imya
+
+        for variant in self.variants:
+            if self.type == DocumentType.OBJECT_CONSTRUCTOR:
+                variant.call = variant.syntax or f"Новый {self.object or imya}"
+            elif self.type in self.GLOBALNYE:
+                variant.call = variant.syntax
+            elif self.object and variant.syntax:
+                variant.call = f"{self.object}.{variant.syntax}"
+            else:
+                variant.call = variant.syntax
+
+        if self.variants:
+            self.call_primary = self.variants[0].call
+        elif self.type == DocumentType.OBJECT_PROPERTY:
+            # У свойства раздела «Синтаксис» нет: обращение — это путь.
+            self.call_primary = self.full_path
+        else:
+            self.call_primary = ""
+
+        # Обычно syntax_all уже выставлен парсером (_izvlech_varianty), но
+        # пересчитываем и здесь: sobrat_vyzovy вызывается и на документах,
+        # собранных напрямую (тесты, фикстуры) — без парсера поле осталось
+        # бы пустым по умолчанию.
+        self.syntax_all = " | ".join(v.syntax for v in self.variants if v.syntax)
+
+        self.id = f"{self.object}_{self.name}_{self.type.value}" if self.object \
+            else f"{self.name}_{self.type.value}"
 
 
 class HBKFile(BaseModel):

@@ -57,7 +57,7 @@ class HTMLParser:
             
             # Создаем базовый объект документации
             doc = Documentation(
-                id="",  # Будет заполнен в __post_init__
+                id="",  # Будет заполнен в sobrat_vyzovy
                 type=doc_type,
                 name=item_name,
                 object=object_name,
@@ -91,7 +91,7 @@ class HTMLParser:
             self._extract_version(soup, doc)
             
             # Автоматически заполняем служебные поля
-            doc.__post_init__()
+            doc.sobrat_vyzovy()
             
             logger.debug(f"Обработан HTML файл: {file_path} -> {doc.name}")
             return doc

@@ -59,17 +59,18 @@ def mock_parsed_hbk():
     from datetime import datetime
 
     # Создаём тестовые документы. Синтаксис, параметры и тип возврата лежат
-    # внутри variants (Task 3) — у модели больше нет отдельных полей
-    # syntax_ru/syntax_en/parameters/return_type на самом документе. Полей
-    # name_en/object_en (Documentation), name_en (Parameter), name_en/count
-    # (CategoryInfo) в моделях нет и не было — раньше pydantic молча их
-    # игнорировал, фикстура не должна делать вид, что они существуют.
+    # внутри variants (Task 3) — у модели больше нет отдельных полей для них
+    # на самом документе. Полей name_en/object_en (Documentation), name_en
+    # (Parameter), name_en/count (CategoryInfo) в моделях нет и не было —
+    # раньше pydantic молча их игнорировал, фикстура не должна делать вид,
+    # что они существуют.
     docs = [
         Documentation(
             id="global_func_add",
             name="Добавить",
             type=DocumentType.GLOBAL_FUNCTION,
             object=None,
+            element_kind="функция",
             description="Добавляет значение в массив",
             variants=[
                 SyntaxVariant(
@@ -88,13 +89,13 @@ def mock_parsed_hbk():
             version_from="8.3.5",
             examples=["Массив.Добавить(10);"],
             source_file="GlobalContext/Add.html",
-            full_path="Глобальный контекст.Добавить"
         ),
         Documentation(
             id="global_func_delete",
             name="Удалить",
             type=DocumentType.GLOBAL_FUNCTION,
             object=None,
+            element_kind="функция",
             description="Удаляет элемент из массива",
             variants=[
                 SyntaxVariant(
@@ -112,13 +113,13 @@ def mock_parsed_hbk():
             version_from="8.3.5",
             examples=["Массив.Удалить(0);"],
             source_file="GlobalContext/Delete.html",
-            full_path="Глобальный контекст.Удалить"
         ),
         Documentation(
             id="object_array_count",
             name="Количество",
             type=DocumentType.OBJECT_PROPERTY,
             object="Массив",
+            element_kind="свойство",
             description="Возвращает количество элементов в массиве",
             variants=[
                 SyntaxVariant(
@@ -129,13 +130,13 @@ def mock_parsed_hbk():
             version_from="8.0",
             examples=["КоличествоЭлементов = Массив.Количество();"],
             source_file="Objects/Array/Count.html",
-            full_path="Массив.Количество"
         ),
         Documentation(
             id="object_array_clear",
             name="Очистить",
             type=DocumentType.OBJECT_PROCEDURE,
             object="Массив",
+            element_kind="процедура",
             description="Очищает массив",
             variants=[
                 SyntaxVariant(syntax="Массив.Очистить()")
@@ -143,13 +144,13 @@ def mock_parsed_hbk():
             version_from="8.0",
             examples=["Массив.Очистить();"],
             source_file="Objects/Array/Clear.html",
-            full_path="Массив.Очистить"
         ),
         Documentation(
             id="event_before_write",
             name="ПередЗаписью",
             type=DocumentType.GLOBAL_EVENT,
             object=None,
+            element_kind="событие",
             description="Событие перед записью объекта",
             variants=[
                 SyntaxVariant(
@@ -167,9 +168,13 @@ def mock_parsed_hbk():
             version_from="8.0",
             examples=["Процедура ПередЗаписью(Отказ)\n  // Код обработчика\nКонецПроцедуры"],
             source_file="Events/BeforeWrite.html",
-            full_path="События.ПередЗаписью"
         )
     ]
+
+    # full_path, call_primary, variants[].call и id собирает sobrat_vyzovy() —
+    # фикстура не должна дублировать эту логику вручную.
+    for d in docs:
+        d.sobrat_vyzovy()
 
     # Создаём информацию о файле
     file_info = HBKFile(
