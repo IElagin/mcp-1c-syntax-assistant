@@ -47,12 +47,19 @@ class MCPResponseFormatter:
     
     @staticmethod
     def create_not_found_response(query: str, context: str = "") -> MCPResponse:
-        """Создаёт стандартизированный ответ для случая 'не найдено'."""
-        if context:
-            text = f"По запросу '{query}' в контексте '{context}' ничего не найдено."
-        else:
-            text = f"По запросу '{query}' ничего не найдено."
-        
+        """Ответ «не найдено» с указанием, что делать дальше.
+
+        Голое «ничего не найдено» оставляет агента без следующего шага, и он
+        либо выдумывает имя, либо сдаётся.
+        """
+        gde = f" в контексте '{context}'" if context else ""
+        text = (
+            f"По запросу '{query}'{gde} ничего не найдено.\n"
+            "Что можно сделать: проверить имя по-русски и по-английски; "
+            "поискать по описанию через find_1c_help; "
+            "если известен объект — посмотреть его состав через "
+            "list_1c_object_members."
+        )
         return MCPResponse(content=[{"type": "text", "text": text}])
     
     @staticmethod

@@ -151,3 +151,33 @@ def test_zaprosy_ne_ssylayutsya_na_udalennye_polya():
         assert pole not in tekst, f"запрос ссылается на удалённое поле {pole}"
 
     assert "syntax_all" in tekst, "поисковое поле синтаксиса не используется"
+
+
+@pytest.mark.unit
+@pytest.mark.search
+def test_formatter_ne_teryaet_polya_kartochki():
+    """Форматтер, вырезающий поля, делает карточку неполной ещё до рендера."""
+    from src.search.formatter import SearchFormatter
+
+    doc = {
+        "name": "НайтиСтроки (FindRows)", "name_ru": "НайтиСтроки",
+        "type": "object_function", "element_kind": "функция",
+        "object": "ТаблицаЗначений", "object_ru": "ТаблицаЗначений",
+        "full_path": "ТаблицаЗначений.НайтиСтроки",
+        "call_primary": "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)",
+        "variants": [{"variant": "", "syntax": "НайтиСтроки(<ПараметрыОтбора>)",
+                      "call": "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)",
+                      "parameters": [], "return_type": "Массив",
+                      "return_description": ""}],
+        "availability": ["сервер"], "usage": None, "value_type": "",
+        "note": "Примечание.", "description": "Поиск строк.",
+        "version_from": "8.0", "examples": [],
+    }
+
+    rezultat = SearchFormatter().format_search_results(
+        [{"document": doc, "score": 12.5}]
+    )[0]
+
+    for pole in ("availability", "variants", "call_primary", "note", "element_kind"):
+        assert pole in rezultat, f"форматтер потерял поле {pole}"
+    assert rezultat["_score"] == 12.5
