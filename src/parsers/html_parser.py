@@ -394,6 +394,12 @@ class HTMLParser:
             chasti = []
             elem = header.next_sibling
             while elem is not None:
+                if getattr(elem, 'name', None) == 'hr':
+                    # <HR> отделяет подвал страницы («Методическая информация»)
+                    # от содержимого. Если глава последняя на странице, следующего
+                    # заголовка V8SH_chapter нет, и без этой границы сбор дошёл
+                    # бы до конца документа, затянув подвал в текст главы.
+                    break
                 klassy = elem.get('class') or [] if hasattr(elem, 'get') else []
                 if 'V8SH_chapter' in klassy:
                     break

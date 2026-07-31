@@ -240,3 +240,50 @@ def test_vid_elementa_i_russkiy_vladelets():
     svoystvo = razobrat("valuetable_columns.html")
     assert svoystvo.element_kind == "свойство"
     assert svoystvo.object_ru == "ТаблицаЗначений"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_stroka_vyzova_metoda_s_obektom():
+    """Вызов должен быть готов к копированию в код."""
+    doc = razobrat("valuetable_findrows.html")
+
+    assert doc.variants[0].call == "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)"
+    assert doc.call_primary == "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_globalnaya_funktsiya_bez_prefiksa():
+    """«Global context.ЗначениеЗаполнено (ValueIsFilled)» — не строка вызова."""
+    doc = razobrat("global_valueisfilled.html")
+
+    assert doc.call_primary == "ЗначениеЗаполнено(<Значение>)"
+    assert doc.full_path == "ЗначениеЗаполнено"
+    assert "(" not in doc.full_path
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_konstruktor_uzhe_soderzhit_novyy():
+    doc = razobrat("array_ctor_bycount.html")
+
+    assert doc.call_primary.startswith("Новый Массив(")
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_konstruktor_po_umolchaniyu_dostraivaetsya():
+    """У «По умолчанию» синтаксис в справке пуст, но вызов существует."""
+    doc = razobrat("valuetable_ctor_auto.html")
+
+    assert doc.call_primary == "Новый ТаблицаЗначений"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_svoystvo_obrashchenie_bez_skobok():
+    doc = razobrat("valuetable_columns.html")
+
+    assert doc.call_primary == "ТаблицаЗначений.Колонки"
+    assert doc.full_path == "ТаблицаЗначений.Колонки"
