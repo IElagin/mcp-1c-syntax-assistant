@@ -345,72 +345,89 @@ class SearchService:
         object_name: Optional[str] = None,
         variant: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Находит элемент по точному имени, не выбирая молча при омонимии."""
-        if object_name:
-            est_obekt = await self._obekt_sushchestvuet(object_name)
-            if not est_obekt:
+        """Находит элемент по точному имени, не выбирая молча при омонимии.
+
+        Все обращения к Elasticsearch собраны под одним try/except: остальные
+        публичные методы класса (find_help_by_query и другие) не дают
+        исключению вылететь наружу, а превращают его в структурированный
+        ответ. kind="error" отличим от пяти обычных значений — обработчик
+        (Task 13) должен уметь отличить сбой связи от честного "не найдено".
+        """
+        try:
+            if object_name:
+                est_obekt = await self._obekt_sushchestvuet(object_name)
+                if not est_obekt:
+                    return {
+                        "kind": "object_not_found",
+                        "object": object_name,
+                        "similar": await self.pohozhie_obekty(object_name),
+                    }
+
+            filtry = [{
+                "bool": {
+                    "should": [
+                        {"term": {"name_ru.keyword": name}},
+                        {"term": {"name_en.keyword": name}},
+                    ],
+                    "minimum_should_match": 1,
+                }
+            }]
+            if object_name:
+                filtry.append({"term": {"object": object_name}})
+
+            otvet = await self.es_client.search({
+                "query": {"bool": {"filter": filtry}},
+                "size": 50,
+            })
+            hits = (otvet or {}).get("hits", {}).get("hits", [])
+            vsego = (otvet or {}).get("hits", {}).get("total", {})
+            vsego = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
+
+            if not hits:
                 return {
-                    "kind": "object_not_found",
-                    "object": object_name,
-                    "similar": await self.pohozhie_obekty(object_name),
+                    "kind": "not_found",
+                    "name": name,
+                    "similar": await self._pohozhie_elementy(name),
                 }
 
-        filtry = [{
-            "bool": {
-                "should": [
-                    {"term": {"name_ru.keyword": name}},
-                    {"term": {"name_en.keyword": name}},
-                ],
-                "minimum_should_match": 1,
-            }
-        }]
-        if object_name:
-            filtry.append({"term": {"object": object_name}})
+            dokumenty = [h["_source"] for h in hits]
 
-        otvet = await self.es_client.search({
-            "query": {"bool": {"filter": filtry}},
-            "size": 50,
-        })
-        hits = (otvet or {}).get("hits", {}).get("hits", [])
-        vsego = (otvet or {}).get("hits", {}).get("total", {})
-        vsego = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
+            if len(dokumenty) > 1:
+                dokumenty.sort(
+                    key=lambda d: (not _nastoyashchiy_tip(d.get("object")),
+                                   d.get("object") or "")
+                )
+                return {
+                    "kind": "ambiguous",
+                    "name": name,
+                    "candidates": dokumenty[:KANDIDATOV_V_OTVETE],
+                    "total": vsego,
+                }
 
-        if not hits:
-            return {
-                "kind": "not_found",
-                "name": name,
-                "similar": await self._pohozhie_elementy(name),
-            }
+            doc = dokumenty[0]
 
-        dokumenty = [h["_source"] for h in hits]
+            if variant:
+                imena = [v.get("variant", "") for v in (doc.get("variants") or [])]
+                if variant not in imena:
+                    return {"kind": "variant_not_found", "document": doc, "variants": imena}
+                doc = dict(doc)
+                doc["variants"] = [
+                    v for v in doc["variants"] if v.get("variant") == variant
+                ]
 
-        if len(dokumenty) > 1:
-            dokumenty.sort(
-                key=lambda d: (not _nastoyashchiy_tip(d.get("object")),
-                               d.get("object") or "")
-            )
-            return {
-                "kind": "ambiguous",
-                "name": name,
-                "candidates": dokumenty[:KANDIDATOV_V_OTVETE],
-                "total": vsego,
-            }
-
-        doc = dokumenty[0]
-
-        if variant:
-            imena = [v.get("variant", "") for v in (doc.get("variants") or [])]
-            if variant not in imena:
-                return {"kind": "variant_not_found", "document": doc, "variants": imena}
-            doc = dict(doc)
-            doc["variants"] = [
-                v for v in doc["variants"] if v.get("variant") == variant
-            ]
-
-        return {"kind": "card", "document": doc}
+            return {"kind": "card", "document": doc}
+        except Exception as e:
+            logger.error(f"Ошибка дизамбигуации элемента '{name}': {e}")
+            return {"kind": "error", "name": name, "error": str(e)}
 
     async def _obekt_sushchestvuet(self, object_name: str) -> bool:
-        """Есть ли в справке объект с таким именем."""
+        """Есть ли в справке объект с таким именем.
+
+        Исключение здесь намеренно не глушится: False означает «объекта в
+        справке нет», а при сбое ES мы этого не знаем — подмена сбоя на False
+        выдала бы kind="object_not_found" за достоверный факт. Пусть
+        исключение всплывёт к kartochka_elementa и станет честным kind="error".
+        """
         otvet = await self.es_client.search({
             "query": {"bool": {"filter": [{"term": {"object": object_name}}]}},
             "size": 0,
@@ -419,26 +436,62 @@ class SearchService:
         vsego = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
         return vsego > 0
 
-    async def pohozhie_obekty(self, object_name: str, limit: int = 5) -> list:
-        """Объекты с близким именем — вместо молчаливой подмены запроса."""
-        otvet = await self.es_client.search({
-            "query": {"match": {"name_ru": {"query": object_name, "fuzziness": "AUTO"}}},
-            "size": 50,
-            "_source": ["object"],
-        })
+    async def pohozhie_obekty(self, object_name: str, limit: int = 5) -> List[str]:
+        """Объекты с близким именем — вместо молчаливой подмены запроса.
+
+        Искать нужно среди имён объектов, а не имён элементов: name_ru у
+        элемента — это имя метода/свойства, и нечёткий поиск по нему находит
+        случайное совпадение корня в чужой фразе (например, «Строка» входит в
+        «Из строки» у конструктора), после чего в подсказку попадал владелец
+        найденного элемента, никак не похожий на запрос. Документы объектов
+        (type="object", 2506 штук) хранят имя объекта прямо в name_ru — их и
+        матчим.
+
+        Публичный метод: его вызывает и kartochka_elementa, и напрямую
+        обработчик состава объекта (Task 13) — вне try/except
+        kartochka_elementa. Поэтому ошибка ES ловится здесь же: список
+        похожих объектов — необязательная подсказка поверх уже установленного
+        факта "объект не найден", и при сбое честнее вернуть пустой список и
+        залогировать, чем уронить исключением вызывающий код.
+        """
+        try:
+            otvet = await self.es_client.search({
+                "query": {
+                    "bool": {
+                        "must": [{"match": {"name_ru": {"query": object_name, "fuzziness": "AUTO"}}}],
+                        "filter": [{"term": {"type": "object"}}],
+                    }
+                },
+                "size": 50,
+                "_source": ["name_ru"],
+            })
+        except Exception as e:
+            logger.error(f"Ошибка поиска похожих объектов для '{object_name}': {e}")
+            return []
+
         vidennye = []
         for h in (otvet or {}).get("hits", {}).get("hits", []):
-            obekt = h["_source"].get("object")
-            if obekt and _nastoyashchiy_tip(obekt) and obekt not in vidennye:
-                vidennye.append(obekt)
+            imya = h["_source"].get("name_ru")
+            if imya and imya not in vidennye:
+                vidennye.append(imya)
             if len(vidennye) >= limit:
                 break
         return vidennye
 
-    async def _pohozhie_elementy(self, name: str, limit: int = 5) -> list:
-        """Элементы с близким именем для ответа «точного совпадения нет»."""
-        otvet = await self.es_client.search({
-            "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
-            "size": limit,
-        })
+    async def _pohozhie_elementy(self, name: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Элементы с близким именем для ответа «точного совпадения нет».
+
+        Как и в pohozhie_obekty: это подсказка поверх уже подтверждённого
+        факта "точного совпадения нет" (основной поиск в kartochka_elementa
+        уже вернул пустые hits без исключения), поэтому при сбое ES отдаём
+        пустой список и логируем, а не роняем ответ целиком.
+        """
+        try:
+            otvet = await self.es_client.search({
+                "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
+                "size": limit,
+            })
+        except Exception as e:
+            logger.error(f"Ошибка поиска похожих элементов для '{name}': {e}")
+            return []
         return [h["_source"] for h in (otvet or {}).get("hits", {}).get("hits", [])]
