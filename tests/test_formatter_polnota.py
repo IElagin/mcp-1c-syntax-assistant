@@ -190,6 +190,57 @@ async def test_nesushchestvuyushchii_obekt_deistvitelno_ne_naiden():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
+async def test_obekt_bez_nastoyashchih_chlenov_pri_all_ne_lovit_sam_sebya():
+    """members="all" раньше фильтровал только по object, без ограничения по
+    видам, и ловил документ самого объекта (type="object" — у него поле
+    object тоже равно собственному имени). У объекта без единого настоящего
+    метода/свойства/события/конструктора (JSON, DOM, HTML, XDTO и другие — 359
+    из 2506) total выходил 1 вместо 0, и ветка "объект есть, но пуст" для all
+    не срабатывала никогда: агенту обещался элемент, которого нет.
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+        rezultat = await service.get_object_members_list("JSON", "all", limit=10)
+
+        assert rezultat["total"] == 0, (
+            f"Документ самого объекта JSON попал в выборку: total={rezultat['total']}"
+        )
+        assert rezultat.get("object_exists") is True, "JSON как объект в справке есть"
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_schetchik_all_ravna_summe_po_vidam_bez_lishnego_dokumenta():
+    """total для all обязан равняться сумме total по methods+properties+events,
+    без лишней единицы за документ-описание самого объекта.
+
+    Раньше у ТаблицаЗначений all выдавал 23 при 22 настоящих членах.
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+
+        vse = await service.get_object_members_list("ТаблицаЗначений", "all", limit=1)
+        metody = await service.get_object_members_list("ТаблицаЗначений", "methods", limit=1)
+        svoystva = await service.get_object_members_list("ТаблицаЗначений", "properties", limit=1)
+        sobytiya = await service.get_object_members_list("ТаблицаЗначений", "events", limit=1)
+
+        ozhidaemyi = metody["total"] + svoystva["total"] + sobytiya["total"]
+        assert vse["total"] == ozhidaemyi, (
+            f"all={vse['total']}, сумма по видам={ozhidaemyi} — "
+            "документ объекта снова считается членом"
+        )
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
 async def test_metody_za_dvadtsatym_vidny():
     """Методы из хвоста алфавита доходят до вывода."""
     assert await es_client.connect(), "Elasticsearch недоступен"

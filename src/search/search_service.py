@@ -15,6 +15,17 @@ logger = get_logger(__name__)
 # объект, а не чтобы прочитать все 275 — полный список он получит запросом.
 KANDIDATOV_V_OTVETE = 5
 
+# Настоящие виды членов объекта — в отличие от документа-описания самого
+# объекта (type="object"), у которого поле object тоже равно имени объекта.
+# Без фильтра по этому списку members="all" ловил и этот документ, выдавая
+# объекту без единого метода/свойства/события total=1 вместо 0 — ветка
+# "объект есть, но пуст" для all после этого не срабатывала никогда, а у
+# обычных объектов (ТаблицаЗначений) счётчик был завышен на единицу.
+VIDY_CHLENOV_OBEKTA = [
+    "object_function", "object_procedure", "object_constructor",
+    "object_property", "object_event",
+]
+
 
 def _nastoyashchiy_tip(imya_obekta) -> bool:
     """Похоже ли имя объекта на тип языка, а не на заголовок раздела справки.
@@ -185,8 +196,13 @@ class SearchService:
             # Базовый фильтр по объекту
             query_filters = [{"term": {"object": object_name}}]
             
-            # Добавляем фильтры по типу элементов
-            if member_type == "methods":
+            # Добавляем фильтры по типу элементов. "all" тоже фильтруется —
+            # без ограничения по VIDY_CHLENOV_OBEKTA запрос ловил документ
+            # самого объекта (type="object"), у которого object тоже равен
+            # имени объекта.
+            if member_type == "all":
+                query_filters.append({"terms": {"type": VIDY_CHLENOV_OBEKTA}})
+            elif member_type == "methods":
                 type_filters = [
                     {"term": {"type": "object_function"}},
                     {"term": {"type": "object_procedure"}},

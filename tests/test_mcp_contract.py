@@ -217,6 +217,31 @@ async def test_sostav_ne_otritsaet_obekt_iz_za_otsutstviya_odnogo_vida():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
+async def test_obekt_bez_chlenov_pri_members_all_ne_obeshchaet_prizrachnyi_element():
+    """members="all" — значение по умолчанию, основной путь. У JSON нет ни
+    одного настоящего метода/свойства/события/конструктора: раньше запрос
+    ловил документ самого объекта (у него object тоже равен "JSON"), и ответ
+    выглядел как "Показано 0 из 1" — агенту обещался скрытый элемент, а
+    ветка "объект есть, но пуст" не срабатывала."""
+    import httpx
+
+    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
+        otvet = await client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 46, "method": "tools/call",
+            "params": {"name": "list_1c_object_members",
+                       "arguments": {"object": "JSON", "members": "all"}},
+        })
+
+    text = otvet.json()["result"]["content"][0]["text"]
+    assert "Показано 0 из 1" not in text, (
+        "документ самого объекта не должен обещаться как скрытый член: " + text
+    )
+    assert "ни методов, ни свойств, ни событий, ни конструкторов у него не найдено" in text, text
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
 async def test_sovet_v_kartochke_omonima_vypolnim():
     """Совет "вызовите find_1c_help с limit=N" обязан укладываться в тот же
     потолок, что и схема find_1c_help, иначе агент получит validation error
