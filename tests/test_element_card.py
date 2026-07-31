@@ -13,11 +13,23 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.handlers.element_card import (
+    NET_V_SPRAVKE,
     kartochka,
     kartochka_obekta,
     spisok_kandidatov,
     stroka_spiska,
 )
+
+# Реальный документ индекса: сам объект ТаблицаЗначений. variants у документов
+# объектов пусты всегда — конструкторы лежат отдельными документами.
+OBEKT_TABLITSA_ZNACHENIY = {
+    "name": "ТаблицаЗначений", "name_ru": "ТаблицаЗначений",
+    "type": "object", "element_kind": "объект",
+    "object": "ТаблицаЗначений", "object_ru": "ТаблицаЗначений",
+    "full_path": "ТаблицаЗначений", "call_primary": "",
+    "variants": [], "availability": ["сервер"], "version_from": "8.0",
+    "description": "Таблица значений.", "examples": [],
+}
 
 NAYTI_STROKI = {
     "name": "НайтиСтроки (FindRows)",
@@ -301,21 +313,85 @@ def test_spisok_kandidatov_nazyvaet_chislo_i_sposob_utochnit():
     assert "275" in text
     assert "get_1c_element" in text
     assert "Показано 2 из 275" in text
-    assert "Массив" not in text.split("Наиболее вероятные:")[0], \
+    assert "Массив" not in text.split("Кандидаты")[0], \
         "в шапке ответа не должно быть произвольно выбранного кандидата"
 
 
 @pytest.mark.unit
-def test_kartochka_obekta_ne_pechataet_spiski_chlenov():
-    obekt = {
-        "name": "ТаблицаЗначений", "name_ru": "ТаблицаЗначений",
-        "type": "object", "element_kind": "объект",
-        "object": "ТаблицаЗначений", "object_ru": "ТаблицаЗначений",
-        "full_path": "ТаблицаЗначений", "call_primary": "",
-        "variants": [], "availability": ["сервер"], "version_from": "8.0",
-        "description": "Таблица значений.", "examples": [],
-    }
+def test_zagolovok_kandidatov_ne_obeshchaet_veroyatnosti():
+    """Заголовок обязан называть порядок, а не обещать ранжирование.
 
-    text = kartochka_obekta(obekt, {"methods": 46, "properties": 5, "events": 0})
+    «Наиболее вероятные» были заявкой без покрытия: окно набиралось
+    фильтрующим запросом с равными оценками, а сортировка шла по алфавиту.
+    """
+    text = spisok_kandidatov("Количество", [NAYTI_STROKI, KOLONKI], vsego=275)
+
+    assert "Наиболее вероятные" not in text
+    assert "числом элементов в справке" in text
+
+
+@pytest.mark.unit
+def test_kandidaty_govoryat_kogda_poryadok_ne_po_vsem_sovpadeniyam():
+    """Если упорядочены не все совпадения — об этом сказано, а не умолчано."""
+    text = spisok_kandidatov(
+        "Количество", [NAYTI_STROKI], vsego=900, poryadok_polnyy=False
+    )
+
+    assert "не по всем совпадениям" in text
+
+
+@pytest.mark.unit
+def test_kartochka_obekta_ne_pechataet_spiski_chlenov():
+    text = kartochka_obekta(
+        OBEKT_TABLITSA_ZNACHENIY, {"methods": 46, "properties": 5, "events": 0}, []
+    )
 
     assert "46" in text and "list_1c_object_members" in text
+
+
+@pytest.mark.unit
+def test_kartochka_obekta_nazyvaet_konstruktory():
+    """Конструкторы объекта лежат отдельными документами, и карточка их печатает.
+
+    Раньше карточка читала variants самого объекта — а они пусты у всех 2 506
+    документов объектов — и печатала «Конструкторы: в справке не указано».
+    Про 307 объектов, конструкторы которых есть в индексе, это была неправда:
+    у ТаблицаЗначений там лежит «Новый ТаблицаЗначений».
+    """
+    text = kartochka_obekta(
+        OBEKT_TABLITSA_ZNACHENIY, {"methods": 22, "properties": 2, "events": 0},
+        ["Новый ТаблицаЗначений"],
+    )
+
+    assert "Конструкторы:" in text
+    assert "Новый ТаблицаЗначений" in text
+    assert NET_V_SPRAVKE not in text.split("Описание:")[0]
+
+
+@pytest.mark.unit
+def test_kartochka_obekta_bez_konstruktorov_govorit_eto_tolko_posle_proverki():
+    """Пустой список — «проверено, конструкторов нет»; None — «не проверялись».
+
+    Разница не косметическая: утверждать «в справке не указано», не спросив
+    индекс, — ровно тот дефект, ради которого написана вся ветка.
+    """
+    proveryali = kartochka_obekta(OBEKT_TABLITSA_ZNACHENIY, {}, [])
+    ne_proveryali = kartochka_obekta(OBEKT_TABLITSA_ZNACHENIY, {})
+
+    assert f"Конструкторы: {NET_V_SPRAVKE}" in proveryali
+    assert "Конструкторы: не проверялись" in ne_proveryali
+
+
+@pytest.mark.unit
+def test_sovet_kartochki_obekta_ne_udvaivaet_imya():
+    """Совет обязан быть исполнимым: object="ТаблицаЗначений", а не удвоенное имя.
+
+    full_path объекта собирался как object + "." + имя, а у документа объекта
+    это одно и то же — карточка советовала
+    list_1c_object_members(object="ТаблицаЗначений.ТаблицаЗначений"), и такой
+    вызов отвечал «объект в справке не найден».
+    """
+    text = kartochka_obekta(OBEKT_TABLITSA_ZNACHENIY, {"methods": 22}, [])
+
+    assert 'list_1c_object_members(object="ТаблицаЗначений")' in text
+    assert "ТаблицаЗначений.ТаблицаЗначений" not in text

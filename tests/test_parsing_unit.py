@@ -154,3 +154,41 @@ def test_documentation_examples(mock_parsed_hbk):
     # Проверяем что примеры не пустые
     for doc in docs_with_examples:
         assert len(doc.examples) > 0
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
+    """У документа самого объекта object равен его имени — склеивать нельзя.
+
+    Склейка object + "." + имя давала «ТаблицаЗначений.ТаблицаЗначений» у 2 286
+    из 2 506 объектов, и карточка советовала
+    list_1c_object_members(object="ТаблицаЗначений.ТаблицаЗначений") — вызов,
+    который отвечает «объект в справке не найден».
+    """
+    from src.models.doc_models import Documentation
+
+    doc = Documentation(id="", type=DocumentType.OBJECT, name="ТаблицаЗначений",
+                        object="ТаблицаЗначений")
+    doc.sobrat_vyzovy()
+
+    assert doc.full_path == "ТаблицаЗначений"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_kanonicheskiy_put_obekta_s_shablonnym_imenem_sohranyaet_tip():
+    """У 220 объектов имя страницы — заполнитель, а тип лежит в object.
+
+    Там склейка и есть канонический путь заголовка справки, и по нему же лежат
+    члены таких объектов: под ключом «БазовыеВидыРасчета.<Имя плана видов
+    расчета>» 17 документов против одного под голым «БазовыеВидыРасчета».
+    """
+    from src.models.doc_models import Documentation
+
+    doc = Documentation(id="", type=DocumentType.OBJECT,
+                        name="<Имя плана видов расчета>",
+                        object="БазовыеВидыРасчета")
+    doc.sobrat_vyzovy()
+
+    assert doc.full_path == "БазовыеВидыРасчета.<Имя плана видов расчета>"

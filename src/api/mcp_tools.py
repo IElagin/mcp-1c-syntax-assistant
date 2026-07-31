@@ -20,6 +20,10 @@ LIMIT_SOSTAVA = 100
 # «Количество» (275 совпадений) совет упирался в validation error схемы же.
 LIMIT_POISKA_MAX = 200
 
+# Тот же потолок для состава объекта: совет «повторите с limit=N» обязан
+# укладываться в схему list_1c_object_members.
+LIMIT_SOSTAVA_MAX = 1000
+
 TOOLS = [
     {
         "name": "find_1c_help",
@@ -124,7 +128,7 @@ TOOLS = [
                     "type": "integer",
                     "default": LIMIT_SOSTAVA,
                     "minimum": 1,
-                    "maximum": 1000,
+                    "maximum": LIMIT_SOSTAVA_MAX,
                     "description": "Сколько элементов вернуть",
                 },
             },

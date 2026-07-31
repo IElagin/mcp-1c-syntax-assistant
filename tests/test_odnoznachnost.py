@@ -88,6 +88,80 @@ async def test_kandidaty_nachinayutsya_s_nastoyashchih_tipov():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
+async def test_poryadok_kandidatov_stroitsya_po_vsem_sovpadeniyam():
+    """Порядок не должен зависеть от произвольного окна выдачи.
+
+    Прежде кандидаты брались запросом size:50 с одинаковыми оценками у всех
+    совпадений (то есть окно произвольно) и сортировались по алфавиту: для
+    «Количество» ответ начинался с АгрегатыРегистраНакопления, а
+    ТаблицаЗначений и СписокЗначений — коллекции, ради которых имя и
+    спрашивают, — в пятёрку не попадали вовсе.
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        otvet = await SearchService(es_client).kartochka_elementa("Количество")
+
+        assert otvet["poryadok_polnyy"] is True, (
+            "275 совпадений обязаны упорядочиваться целиком, а не окном"
+        )
+        obekty = [k.get("object") for k in otvet["candidates"]]
+        assert "ТаблицаЗначений" in obekty, obekty
+        assert "СписокЗначений" in obekty, obekty
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_konstruktory_berutsya_iz_otdelnyh_dokumentov():
+    """У документа объекта variants пуст — конструкторы лежат отдельно.
+
+    Карточка объекта читала пустые variants и заявляла «Конструкторы: в справке
+    не указано». В индексе при этом 385 документов-конструкторов у 307
+    объектов, и у ТаблицаЗначений там «Новый ТаблицаЗначений».
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+
+        assert await service.stroki_konstruktorov("ТаблицаЗначений") == [
+            "Новый ТаблицаЗначений"
+        ]
+        assert await service.stroki_konstruktorov("ТаблицаЗначенийБезКонструкторов") == []
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
+    """full_path объекта — его имя, а не «ТаблицаЗначений.ТаблицаЗначений».
+
+    Удвоенное имя текло в совет карточки и в строки списков, а вызов с ним не
+    находил ничего: члены объекта лежат под ключом «ТаблицаЗначений».
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+        otvet = await service.kartochka_elementa("ТаблицаЗначений")
+
+        assert otvet["kind"] == "card", otvet.get("kind")
+        put = otvet["document"]["full_path"]
+        assert put == "ТаблицаЗначений", put
+
+        # Совет карточки строится из этого же пути — проверяем, что по нему
+        # действительно находится состав объекта.
+        sostav = await service.get_object_members_list(put, "all", limit=1)
+        assert sostav["total"] > 0, sostav
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
 async def test_neizvestnoe_imya_daet_not_found_a_ne_pustuyu_kartochku():
     """Точного совпадения по имени нет вообще — сервис называет это прямо."""
     assert await es_client.connect(), "Elasticsearch недоступен"

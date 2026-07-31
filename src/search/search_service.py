@@ -15,6 +15,20 @@ logger = get_logger(__name__)
 # объект, а не чтобы прочитать все 275 — полный список он получит запросом.
 KANDIDATOV_V_OTVETE = 5
 
+# Сколько совпадений упорядочивать при омонимии. Самое многозначное имя
+# справки — «Количество», 275 документов, поэтому 500 покрывает индекс целиком:
+# порядок строится по всем совпадениям, а не по произвольному окну. Если
+# однажды имя перевалит за потолок, ответ об этом скажет (poryadok_polnyy).
+POTOLOK_KANDIDATOV = 500
+
+# Поля, которых хватает строке списка. Карточке нужен документ целиком, а
+# перечню кандидатов — нет: тянуть 275 полных документов с параметрами всех
+# вариантов ради пяти строк расточительно.
+POLYA_STROKI_SPISKA = [
+    "type", "element_kind", "name_ru", "object", "object_ru",
+    "full_path", "call_primary", "description", "variants.variant",
+]
+
 # Настоящие виды членов объекта — в отличие от документа-описания самого
 # объекта (type="object"), у которого поле object тоже равно имени объекта.
 # Без фильтра по этому списку members="all" ловил и этот документ, выдавая
@@ -185,6 +199,45 @@ class SearchService:
             itogi[nazvanie] = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
         return itogi
 
+    async def stroki_konstruktorov(self, object_name: str) -> List[str]:
+        """Строки вызова конструкторов объекта — «Новый ТаблицаЗначений».
+
+        В документе самого объекта конструкторов нет: у справки конструктор —
+        отдельная страница (type="object_constructor", 385 документов у 307
+        объектов), и variants у всех 2 506 документов объектов пусты. Карточка
+        читала эти пустые variants и печатала «Конструкторы: в справке не
+        указано» — про 307 объектов это была неправда.
+
+        Имя варианта добавляется, только когда конструкторов несколько: тогда
+        оно и различает страницы, и годится в аргумент variant=… у
+        get_1c_element.
+        """
+        otvet = await self.es_client.search({
+            "query": {"bool": {"filter": [
+                {"term": {"object": object_name}},
+                {"term": {"type": "object_constructor"}},
+            ]}},
+            "size": 50,
+            "sort": [{"name.keyword": {"order": "asc"}}],
+            "_source": ["call_primary", "name_ru", "variants.variant"],
+        })
+
+        hits = (otvet or {}).get("hits", {}).get("hits", [])
+        stroki = []
+        for h in hits:
+            doc = h["_source"]
+            vyzov = doc.get("call_primary") or ""
+            if not vyzov:
+                continue
+            varianty = doc.get("variants") or []
+            imya_varianta = (varianty[0].get("variant") if varianty else "") \
+                or doc.get("name_ru") or ""
+            if len(hits) > 1 and imya_varianta:
+                stroki.append(f"{vyzov} — вариант «{imya_varianta}»")
+            else:
+                stroki.append(vyzov)
+        return stroki
+
     async def get_object_members_list(
         self, 
         object_name: str, 
@@ -271,10 +324,9 @@ class SearchService:
             # "события" у объекта без событий, или "конструкторы" почти у
             # любого объекта, кроме считаных типов). Раньше оба случая
             # выглядели одинаково — агент слышал «не найден» про объект,
-            # который есть, и тут же видел его в списке «похожих». Проверяем
-            # существование тем же запросом, что и _obekt_sushchestvuet.
+            # который есть, и тут же видел его в списке «похожих».
             if itogovyi_total == 0:
-                rezultat["object_exists"] = await self._obekt_sushchestvuet(object_name)
+                rezultat["object_exists"] = await self.obekt_sushchestvuet(object_name)
 
             return rezultat
 
@@ -306,7 +358,7 @@ class SearchService:
         """
         try:
             if object_name:
-                est_obekt = await self._obekt_sushchestvuet(object_name)
+                est_obekt = await self.obekt_sushchestvuet(object_name)
                 if not est_obekt:
                     return {
                         "kind": "object_not_found",
@@ -344,15 +396,13 @@ class SearchService:
             dokumenty = [h["_source"] for h in hits]
 
             if len(dokumenty) > 1:
-                dokumenty.sort(
-                    key=lambda d: (not _nastoyashchiy_tip(d.get("object")),
-                                   d.get("object") or "")
-                )
+                kandidaty = await self._uporyadochit_kandidatov(filtry, vsego)
                 return {
                     "kind": "ambiguous",
                     "name": name,
-                    "candidates": dokumenty[:KANDIDATOV_V_OTVETE],
+                    "candidates": kandidaty[:KANDIDATOV_V_OTVETE],
                     "total": vsego,
+                    "poryadok_polnyy": vsego <= POTOLOK_KANDIDATOV,
                 }
 
             doc = dokumenty[0]
@@ -371,13 +421,72 @@ class SearchService:
             logger.error(f"Ошибка дизамбигуации элемента '{name}': {e}")
             return {"kind": "error", "name": name, "error": str(e)}
 
-    async def _obekt_sushchestvuet(self, object_name: str) -> bool:
+    async def _uporyadochit_kandidatov(self, filtry: list, vsego: int) -> List[Dict[str, Any]]:
+        """Кандидаты при омонимии в защитимом порядке.
+
+        Порядок: сначала настоящие типы языка, внутри — объекты, у которых в
+        справке больше элементов. Прежний порядок был заявкой без покрытия:
+        окно из 50 документов набиралось фильтрующим запросом, где у всех
+        совпадений одинаковая оценка (то есть окно произвольно), и
+        сортировалось по имени объекта — по алфавиту. Для «Количество» это
+        давало АгрегатыРегистраНакопления и ВсеЭлементыФормы под заголовком
+        «Наиболее вероятные», а ТаблицаЗначений, Массив и Структура не
+        показывались вовсе: агент делал вывод, что у обычных коллекций
+        «Количество» нет.
+
+        Число членов объекта — дешёвый и проверяемый признак: одна агрегация на
+        все объекты-владельцы сразу. Ранжирование по релевантности сюда не
+        годится: запрос фильтрующий, оценки равны у всех.
+        """
+        otvet = await self.es_client.search({
+            "query": {"bool": {"filter": filtry}},
+            "size": min(max(vsego, 1), POTOLOK_KANDIDATOV),
+            "_source": {"includes": POLYA_STROKI_SPISKA},
+        })
+        dokumenty = [h["_source"] for h in (otvet or {}).get("hits", {}).get("hits", [])]
+
+        chleny = await self._chislo_chlenov(
+            [d.get("object") for d in dokumenty]
+        )
+        dokumenty.sort(key=lambda d: (
+            not _nastoyashchiy_tip(d.get("object")),
+            -chleny.get(d.get("object") or "", 0),
+            d.get("object") or "",
+        ))
+        return dokumenty
+
+    async def _chislo_chlenov(self, imena_obektov: list) -> Dict[str, int]:
+        """Сколько элементов справки у каждого из перечисленных объектов.
+
+        Одной агрегацией: пять сотен отдельных запросов ради сортировки пяти
+        строк ответа не окупились бы.
+        """
+        imena = sorted({i for i in imena_obektov if i})
+        if not imena:
+            return {}
+
+        otvet = await self.es_client.search({
+            "query": {"bool": {"filter": [
+                {"terms": {"object": imena}},
+                {"terms": {"type": VIDY_CHLENOV_OBEKTA}},
+            ]}},
+            "size": 0,
+            "aggs": {"po_obektu": {"terms": {"field": "object", "size": len(imena)}}},
+        })
+        buckets = (otvet or {}).get("aggregations", {}).get("po_obektu", {}).get("buckets", [])
+        return {b["key"]: b["doc_count"] for b in buckets}
+
+    async def obekt_sushchestvuet(self, object_name: str) -> bool:
         """Есть ли в справке объект с таким именем.
+
+        Публичный метод: его зовёт и kartochka_elementa, и обработчик поиска —
+        пустая выдача find_1c_help при заданном object обязана отличать «нет
+        такого элемента» от «нет такого объекта».
 
         Исключение здесь намеренно не глушится: False означает «объекта в
         справке нет», а при сбое ES мы этого не знаем — подмена сбоя на False
         выдала бы kind="object_not_found" за достоверный факт. Пусть
-        исключение всплывёт к kartochka_elementa и станет честным kind="error".
+        исключение всплывёт к вызывающему и станет честной ошибкой.
         """
         otvet = await self.es_client.search({
             "query": {"bool": {"filter": [{"term": {"object": object_name}}]}},

@@ -290,3 +290,109 @@ async def test_staroe_imya_parametra_daet_oshibku_a_ne_tihoe_otbrasyvanie():
 
     telo = otvet.json()
     assert telo["result"]["isError"] is True, telo
+
+
+# --- Фикс-раунд 2: находки итогового ревью ветки ---
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_pustaya_vydacha_poiska_razlichaet_net_elementa_i_net_obekta():
+    """find_1c_help с object= обязан отличать «нет элемента» от «нет объекта».
+
+    ФоновыеЗадания — канонический пример спеки §3.6: идентификатор из кода не
+    совпадает с именем объекта справки (МенеджерФоновыхЗаданий). get_1c_element
+    этот случай различал, а поиск с тем же аргументом отвечал «по запросу
+    ничего не найдено» и советовал посмотреть состав несуществующего объекта.
+    """
+    import httpx
+
+    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
+        otvet = await client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 47, "method": "tools/call",
+            "params": {"name": "find_1c_help",
+                       "arguments": {"query": "Выполнить", "object": "ФоновыеЗадания"}},
+        })
+
+    text = otvet.json()["result"]["content"][0]["text"]
+    assert "«ФоновыеЗадания» в справке не найден" in text, text
+    assert "МенеджерФоновыхЗаданий" in text, text
+    assert 'list_1c_object_members(object="ФоновыеЗадания")' not in text, (
+        "состав несуществующего объекта советовать нельзя: " + text
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_pustaya_vydacha_nazyvaet_filtr_po_vidu():
+    """Если выдачу обнулил фильтр kind, об этом сказано прямо."""
+    import httpx
+
+    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
+        otvet = await client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 48, "method": "tools/call",
+            "params": {"name": "find_1c_help",
+                       "arguments": {"query": "НайтиСтроки", "kind": "event"}},
+        })
+
+    text = otvet.json()["result"]["content"][0]["text"]
+    assert 'kind="event"' in text, text
+    assert 'kind="any"' in text, text
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_sovet_o_postranichnosti_ne_obeshchaet_nevozmozhnogo():
+    """«Повторите с limit=200 за остальными» вернёт те же первые 200.
+
+    Параметра смещения у find_1c_help нет, поэтому обещать «остальные» нельзя:
+    рядом, в карточке омонимов, та же ситуация давно описана честно.
+    """
+    import httpx
+
+    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
+        otvet = await client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 49, "method": "tools/call",
+            "params": {"name": "find_1c_help", "arguments": {"query": "Добавить"}},
+        })
+
+    text = otvet.json()["result"]["content"][0]["text"]
+    assert "за остальными" not in text, text
+    assert "За один вызов можно получить не более 200" in text, text
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_sovet_kartochki_obekta_vypolnim():
+    """Карточка объекта советует list_1c_object_members — совет обязан работать.
+
+    Раньше в совет уходил удвоенный full_path
+    («ТаблицаЗначений.ТаблицаЗначений»), и дословное исполнение совета
+    отвечало «объект в справке не найден».
+    """
+    import httpx
+
+    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
+        kartochka = await client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 50, "method": "tools/call",
+            "params": {"name": "get_1c_element",
+                       "arguments": {"name": "ТаблицаЗначений"}},
+        })
+        text = kartochka.json()["result"]["content"][0]["text"]
+
+        assert "Новый ТаблицаЗначений" in text, text
+        assert 'list_1c_object_members(object="ТаблицаЗначений")' in text, text
+
+        sostav = await client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 51, "method": "tools/call",
+            "params": {"name": "list_1c_object_members",
+                       "arguments": {"object": "ТаблицаЗначений"}},
+        })
+
+    otvet_sostava = sostav.json()["result"]["content"][0]["text"]
+    assert "не найден" not in otvet_sostava, otvet_sostava
+    assert "ТаблицаЗначений.НайтиСтроки" in otvet_sostava, otvet_sostava

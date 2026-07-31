@@ -34,6 +34,13 @@ PUTI_V_ARHIVE = {
         "objects/catalog234/Array/ctors/ctor13.html",
     "valuetable_ctor_auto.html":
         "objects/catalog234/catalog236/ValueTable/ctors/ctor_Auto.html",
+    # Доступность с прозой после перечня контекстов.
+    "global_findbyref.html":
+        "objects/Global context/methods/catalog570/FindByRef572.html",
+    # Страница вовсе без раздела «Доступность» — единственный такой метод в справке.
+    "formextension_compactmode.html":
+        "objects/catalog1649/catalog1890/Client application form extension "
+        "for reports/methods/method6189.html",
 }
 
 
@@ -199,6 +206,42 @@ def test_dostupnost_izvlekaetsya():
     assert "сервер" in doc.availability
     assert "толстый клиент" in doc.availability
     assert "тонкий клиент" not in doc.availability
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_dostupnost_ne_vbiraet_prozu_posle_perechnya():
+    """После перечня контекстов в справке бывает проза — она не контекст.
+
+    Настоящая страница НайтиПоСсылкам: «Сервер, толстый клиент, внешнее
+    соединение, мобильное приложение (сервер), мобильный автономный
+    сервер.<br>Вызов метода выполняет обращение к серверу.» Снятие одной точки
+    на конце склеивало последний контекст с прозой, и агент читал «мобильный
+    автономный сервер. вызов метода выполняет обращение к серверу» как место,
+    где вызов законен. Замер по индексу до правки: 1 106 таких документов.
+    """
+    doc = razobrat("global_findbyref.html")
+
+    assert doc.availability == [
+        "сервер", "толстый клиент", "внешнее соединение",
+        "мобильное приложение (сервер)", "мобильный автономный сервер",
+    ]
+    assert not any("." in kontekst for kontekst in doc.availability), doc.availability
+    assert not any("вызов метода" in kontekst for kontekst in doc.availability)
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_stranitsa_bez_razdela_dostupnosti_daet_pustoy_spisok():
+    """Раздела «Доступность» может не быть вовсе — тогда список пуст, а не выдуман.
+
+    Пустой список карточка печатает как «Доступность: в справке не указана»:
+    отличать «справка молчит» от «контексты такие-то» обязан сам парсер, иначе
+    отличать будет нечему.
+    """
+    doc = razobrat("formextension_compactmode.html")
+
+    assert doc.availability == []
 
 
 @pytest.mark.unit

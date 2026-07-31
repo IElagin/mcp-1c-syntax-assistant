@@ -15,6 +15,32 @@ from src.parsers.tekst import (
 
 logger = get_logger(__name__)
 
+
+def uzly_do_granitsy(nachalo, klassy_granitsy) -> list:
+    """Соседние узлы после nachalo — до первой границы.
+
+    Границей считается узел одного из классов klassy_granitsy или <HR>: этим
+    тегом справка отделяет подвал страницы («Методическая информация») от
+    содержимого, и без него сбор последней главы дотягивался до конца
+    документа.
+
+    Обход соседей был скопирован в четыре места файла, и границу по <HR>
+    приходилось добавлять в каждую копию отдельно — в двух она так и не
+    появилась. Поэтому обход живёт здесь один.
+    """
+    uzly = []
+    elem = getattr(nachalo, "next_sibling", None)
+    while elem is not None:
+        if getattr(elem, 'name', None) == 'hr':
+            break
+        klassy = elem.get('class') or [] if hasattr(elem, 'get') else []
+        if any(klass in klassy for klass in klassy_granitsy):
+            break
+        uzly.append(elem)
+        elem = elem.next_sibling
+    return uzly
+
+
 # Вид элемента по-русски: агент читает карточку, а не enum индекса.
 VID_ELEMENTA = {
     DocumentType.GLOBAL_FUNCTION: "функция",
@@ -359,14 +385,8 @@ class HTMLParser:
             if 'описание' in header_text or 'description' in header_text:
                 # Ищем в тексте после заголовка до следующего V8SH_chapter
                 description_parts = []
-                elem = header.next_sibling
-                
-                while elem:
-                    # Если нашли следующий заголовок - прерываем
-                    if (hasattr(elem, 'get') and hasattr(elem, 'get_text') and 
-                        elem.get('class') == ['V8SH_chapter']):
-                        break
-                    
+
+                for elem in uzly_do_granitsy(header, ('V8SH_chapter',)):
                     if hasattr(elem, 'get_text'):
                         text = elem.get_text().strip()  # Сохраняем внутренние пробелы
                         if text and len(text) > 3:  # Игнорируем короткие фрагменты
@@ -375,9 +395,7 @@ class HTMLParser:
                         text = elem.strip()
                         if text and len(text) > 3:
                             description_parts.append(text)
-                    
-                    elem = elem.next_sibling
-                
+
                 if description_parts:
                     doc.description = pochistit_opisanie(' '.join(description_parts))
                     break
@@ -391,20 +409,7 @@ class HTMLParser:
         """
         glavy = []
         for header in soup.find_all('p', class_='V8SH_chapter'):
-            chasti = []
-            elem = header.next_sibling
-            while elem is not None:
-                if getattr(elem, 'name', None) == 'hr':
-                    # <HR> отделяет подвал страницы («Методическая информация»)
-                    # от содержимого. Если глава последняя на странице, следующего
-                    # заголовка V8SH_chapter нет, и без этой границы сбор дошёл
-                    # бы до конца документа, затянув подвал в текст главы.
-                    break
-                klassy = elem.get('class') or [] if hasattr(elem, 'get') else []
-                if 'V8SH_chapter' in klassy:
-                    break
-                chasti.append(str(elem))
-                elem = elem.next_sibling
+            chasti = [str(u) for u in uzly_do_granitsy(header, ('V8SH_chapter',))]
             glavy.append((header.get_text(strip=True), "".join(chasti)))
         return glavy
 
@@ -424,8 +429,22 @@ class HTMLParser:
 
     @staticmethod
     def _razobrat_dostupnost(html: str):
-        """«Сервер, толстый клиент, внешнее соединение.» → список контекстов."""
-        tekst = normalizovat_probely(tekst_iz_html(html)).rstrip('.')
+        """«Сервер, толстый клиент, внешнее соединение.» → список контекстов.
+
+        Перечень контекстов — всегда первое предложение раздела, поэтому текст
+        обрезается по его границе ДО разбиения по запятым. Снятия одной точки
+        на конце (rstrip) не хватало: если после перечня стоит проза («Вызов
+        метода выполняет обращение к серверу», «Данный объект может быть
+        сериализован в/из XML»), она вливалась в последний контекст, и агент
+        читал «мобильный автономный сервер. вызов метода выполняет обращение к
+        серверу» как место, где вызов законен. Замер по индексу: так было у
+        1 106 из 19 156 документов с непустой доступностью.
+        """
+        tekst = normalizovat_probely(tekst_iz_html(html))
+        granitsa = tekst.find('. ')
+        if granitsa != -1:
+            tekst = tekst[:granitsa]
+        tekst = tekst.rstrip('.')
         return [chast.strip().lower() for chast in tekst.split(',') if chast.strip()]
 
     def _izvlech_tip_svoystva(self, soup: BeautifulSoup, doc: Documentation):
@@ -500,15 +519,7 @@ class HTMLParser:
             if not imya:
                 continue
 
-            chasti = []
-            elem = rubric.next_sibling
-            while elem is not None:
-                klassy = elem.get('class') or [] if hasattr(elem, 'get') else []
-                if 'V8SH_rubric' in klassy:
-                    break
-                chasti.append(str(elem))
-                elem = elem.next_sibling
-
+            chasti = [str(u) for u in uzly_do_granitsy(rubric, ('V8SH_rubric',))]
             tip, opisanie = izvlech_tip_i_poyasnenie("".join(chasti))
             parametry.append(
                 Parameter(name=imya, type=tip, description=opisanie,
@@ -575,18 +586,11 @@ class HTMLParser:
                 continue
                 
             # Ищем таблицы с кодом после заголовка
-            elem = header.next_sibling
-            while elem:
-                # Если нашли следующий заголовок - прерываем
-                if (hasattr(elem, 'get') and hasattr(elem, 'get_text') and 
-                    elem.get('class') == ['V8SH_chapter']):
-                    break
-                
+            for elem in uzly_do_granitsy(header, ('V8SH_chapter',)):
                 # Пропускаем текстовые узлы и элементы без методов find
                 if not (hasattr(elem, 'name') and elem.name and hasattr(elem, 'find')):
-                    elem = elem.next_sibling
                     continue
-                
+
                 tables = elem.find_all('table') if elem.name != 'table' else [elem]
                 for table in tables:
                     # Ищем ячейки с кодом (обычно с моноширинным шрифтом)

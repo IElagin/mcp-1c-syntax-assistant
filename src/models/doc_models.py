@@ -118,6 +118,19 @@ class Documentation(BaseModel):
 
         if self.type in self.GLOBALNYE:
             self.full_path = imya
+        elif self.type == DocumentType.OBJECT:
+            # Канонический путь объекта (спека §4.1) — его собственное имя. У
+            # 2 286 из 2 506 объектов поле object равно имени страницы, и общая
+            # склейка object + "." + имя давала «ТаблицаЗначений.ТаблицаЗначений»:
+            # карточка советовала list_1c_object_members(object=<удвоенное имя>),
+            # а такого объекта в справке нет — совет заводил агента в тупик.
+            # Остальные 220 объектов названы заполнителем («<Имя плана видов
+            # расчета>»), а тип держат в object («БазовыеВидыРасчета») — там
+            # склейка и есть канонический путь заголовка справки, и по нему же
+            # лежат члены таких объектов (17 документов против 1 по одному
+            # «БазовыеВидыРасчета»), так что терять её нельзя.
+            self.full_path = imya if not self.object or self.object == imya \
+                else f"{self.object}.{imya}"
         elif self.object:
             self.full_path = f"{self.object}.{imya}"
         else:
