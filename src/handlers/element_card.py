@@ -125,7 +125,7 @@ def kartochka(doc: Dict[str, Any]) -> str:
     stroki = [_zagolovok(doc), ""]
 
     if (doc.get("element_kind") or "") == "свойство":
-        stroki.append(f"Обращение: {doc.get('call_primary') or NET_V_SPRAVKE}")
+        stroki.append(f"{_yarlyk_vyzova(doc)}: {doc.get('call_primary') or NET_V_SPRAVKE}")
         stroki.append(f"Тип значения: {doc.get('value_type') or NET_V_SPRAVKE}")
         stroki.append(f"Доступ: {doc.get('usage') or NET_V_SPRAVKE}")
     else:
@@ -138,6 +138,9 @@ def kartochka(doc: Dict[str, Any]) -> str:
             stroki.append("")
         if not varianty:
             stroki.append(f"Вызов: {doc.get('call_primary') or NET_V_SPRAVKE}")
+            # Параметры — поле из списка «всегда печатаются»: пустые variants
+            # не повод его пропускать, иначе молчание неотличимо от «данных нет».
+            stroki.append("Параметры: нет")
         stroki.extend(_vozvrat(doc))
 
     stroki.append(_dostupnost(doc))
@@ -164,11 +167,12 @@ def kartochka_obekta(doc: Dict[str, Any], kolichestva: Dict[str, int]) -> str:
     stroki = [f"{imya} — объект", ""]
 
     konstruktory = [v.get("call") for v in (doc.get("variants") or []) if v.get("call")]
+    yarlyk = _yarlyk_vyzova(doc)
     if konstruktory:
-        stroki.append("Конструкторы:")
+        stroki.append(f"{yarlyk}:")
         stroki.extend(f"  {k}" for k in konstruktory)
     else:
-        stroki.append(f"Конструкторы: {NET_V_SPRAVKE}")
+        stroki.append(f"{yarlyk}: {NET_V_SPRAVKE}")
 
     stroki.append(_dostupnost(doc))
     if doc.get("version_from"):
