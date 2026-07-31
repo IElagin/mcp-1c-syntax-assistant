@@ -448,26 +448,25 @@ class SearchService:
         матчим.
 
         Публичный метод: его вызывает и kartochka_elementa, и напрямую
-        обработчик состава объекта (Task 13) — вне try/except
-        kartochka_elementa. Поэтому ошибка ES ловится здесь же: список
-        похожих объектов — необязательная подсказка поверх уже установленного
-        факта "объект не найден", и при сбое честнее вернуть пустой список и
-        залогировать, чем уронить исключением вызывающий код.
+        обработчик состава объекта (Task 13). Исключение ES здесь не
+        перехватывается: пустой список — это ответ "похожих объектов нет",
+        и подмена им сбоя связи сделала бы сбой неотличимым от честного
+        отсутствия данных — ровно тот дефект, ради которого написана вся
+        задача. Пусть исключение поднимется к вызывающему: kartochka_elementa
+        превратит его в kind="error", а обработчик Task 13, вызывающий этот
+        метод напрямую, получит то же исключение и не примет обрыв связи за
+        "похожих нет, проверь написание".
         """
-        try:
-            otvet = await self.es_client.search({
-                "query": {
-                    "bool": {
-                        "must": [{"match": {"name_ru": {"query": object_name, "fuzziness": "AUTO"}}}],
-                        "filter": [{"term": {"type": "object"}}],
-                    }
-                },
-                "size": 50,
-                "_source": ["name_ru"],
-            })
-        except Exception as e:
-            logger.error(f"Ошибка поиска похожих объектов для '{object_name}': {e}")
-            return []
+        otvet = await self.es_client.search({
+            "query": {
+                "bool": {
+                    "must": [{"match": {"name_ru": {"query": object_name, "fuzziness": "AUTO"}}}],
+                    "filter": [{"term": {"type": "object"}}],
+                }
+            },
+            "size": 50,
+            "_source": ["name_ru"],
+        })
 
         vidennye = []
         for h in (otvet or {}).get("hits", {}).get("hits", []):
@@ -481,17 +480,14 @@ class SearchService:
     async def _pohozhie_elementy(self, name: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Элементы с близким именем для ответа «точного совпадения нет».
 
-        Как и в pohozhie_obekty: это подсказка поверх уже подтверждённого
-        факта "точного совпадения нет" (основной поиск в kartochka_elementa
-        уже вернул пустые hits без исключения), поэтому при сбое ES отдаём
-        пустой список и логируем, а не роняем ответ целиком.
+        Вызывается только из kartochka_elementa, внутри её try/except.
+        Исключение здесь не перехватывается по той же причине, что и в
+        pohozhie_obekty: пустой список — это утверждение "похожих элементов
+        нет", и подменять им сбой связи значит выдавать ложь за факт. Пусть
+        поднимется наверх и станет честным kind="error".
         """
-        try:
-            otvet = await self.es_client.search({
-                "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
-                "size": limit,
-            })
-        except Exception as e:
-            logger.error(f"Ошибка поиска похожих элементов для '{name}': {e}")
-            return []
+        otvet = await self.es_client.search({
+            "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
+            "size": limit,
+        })
         return [h["_source"] for h in (otvet or {}).get("hits", {}).get("hits", [])]
