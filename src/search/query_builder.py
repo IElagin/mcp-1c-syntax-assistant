@@ -157,8 +157,9 @@ class QueryBuilder:
                         {"term": {"name_en.keyword": {"value": query, "boost": 10.0}}},
                         {"prefix": {"name_ru.keyword": {"value": query, "boost": 3.0}}},
                         {"match_phrase": {"name": {"query": query, "boost": 5.0}}},
-                        {"match_phrase": {"syntax_ru": {"query": query, "boost": 3.0}}},
-                        {"match_phrase": {"syntax_en": {"query": query, "boost": 3.0}}},
+                        # syntax_ru/syntax_en убраны Task 7 — вся строка вызова
+                        # теперь в syntax_all (одно поле вместо пары языков).
+                        {"match_phrase": {"syntax_all": {"query": query, "boost": 3.0}}},
                         {"match": {"description": {"query": query, "boost": 2.0}}}
                     ]
                 }
@@ -177,13 +178,14 @@ class QueryBuilder:
                     "must": {
                         "multi_match": {
                             "query": query,
+                            # parameters.name был плоским match по nested-полю —
+                            # 0 попаданий против 11 у настоящего nested-запроса;
+                            # syntax_ru/syntax_en заменены на общее syntax_all.
                             "fields": [
                                 "name^5",
-                                "full_path^4", 
-                                "syntax_ru^3",
-                                "syntax_en^3",
+                                "full_path^4",
+                                "syntax_all^3",
                                 "description^2",
-                                "parameters.name^1.5",
                                 "examples^1"
                             ],
                             "type": "best_fields",
@@ -246,13 +248,16 @@ class QueryBuilder:
                         {
                             "multi_match": {
                                 "query": query,
+                                # note добавлен осознанно: примечания справки несут
+                                # оговорки, которые ищут словами ("эффективно
+                                # использовать для выборки неуникальных значений").
                                 "fields": [
                                     "description^3",
                                     "name^2",
                                     "full_path^2",
-                                    "syntax_ru^1.5",
+                                    "syntax_all^1.5",
                                     "examples^1",
-                                    "parameters.description^1"
+                                    "note^1"
                                 ],
                                 "type": "most_fields",
                                 "minimum_should_match": "50%"
