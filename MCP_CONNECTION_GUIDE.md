@@ -120,30 +120,38 @@ python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 - **Base URL**: `http://localhost:8000`
 - **MCP Endpoint**: `http://localhost:8000/mcp`
 
-Пример HTTP запроса:
+Пример HTTP запроса (реальный конверт JSON-RPC 2.0, см. `docs/API_REFERENCE_v2.md`):
 ```http
 POST http://localhost:8000/mcp
 Content-Type: application/json
 
 {
-  "tool": "find_1c_help",
-  "arguments": {
-    "query": "ТаблицаЗначений.Добавить",
-    "limit": 10
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "find_1c_help",
+    "arguments": {
+      "query": "ТаблицаЗначений.Добавить",
+      "limit": 10
+    }
   }
 }
 ```
 
 ## Доступные MCP инструменты
 
-Сервер предоставляет три инструмента:
+Сервер предоставляет три инструмента. Блоки ниже — не самостоятельное тело
+HTTP-запроса, а фрагмент `params` конверта `tools/call` (`{"name": ...,
+"arguments": {...}}`), обёрнутого в JSON-RPC 2.0 целиком так же, как в примере
+выше (`jsonrpc`, `id`, `method: "tools/call"`).
 
 ### 1. find_1c_help
 Поиск по справке 1С, когда точное имя элемента неизвестно. Возвращает список
 кандидатов по одной строке на элемент.
 ```json
 {
-  "tool": "find_1c_help",
+  "name": "find_1c_help",
   "arguments": {
     "query": "строка поиска",
     "limit": 10
@@ -158,7 +166,7 @@ Content-Type: application/json
 вместо карточки возвращается список кандидатов.
 ```json
 {
-  "tool": "get_1c_element",
+  "name": "get_1c_element",
   "arguments": {
     "name": "Добавить",
     "object": "ТаблицаЗначений"
@@ -171,7 +179,7 @@ Content-Type: application/json
 элемент.
 ```json
 {
-  "tool": "list_1c_object_members",
+  "name": "list_1c_object_members",
   "arguments": {
     "object": "ТаблицаЗначений",
     "members": "methods"
