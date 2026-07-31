@@ -21,6 +21,22 @@ from src.handlers.mcp_handlers import (
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 logger = get_logger(__name__)
 
+# Перечень имён берётся из enum, а не переписывается рядом: разойдясь, копия
+# советовала бы агенту имя, которого маршрутизатор не знает.
+IMENA_INSTRUMENTOV = tuple(t.value for t in MCPToolType)
+
+
+def oshibka_vyzova(request_id, soobshchenie: str) -> JSONResponse:
+    """JSON-RPC -32602: виноват вызов, а не сервер."""
+    return JSONResponse(
+        status_code=400,
+        content={
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {"code": -32602, "message": soobshchenie},
+        },
+    )
+
 
 @router.get("/tools")
 async def get_mcp_tools():
@@ -108,8 +124,31 @@ async def mcp_jsonrpc_endpoint(
 
         # Обрабатываем tools/call запрос
         elif method == "tools/call":
+            if not isinstance(params, dict):
+                return oshibka_vyzova(request_id, "params must be an object")
+
             tool_name = params.get("name")
             arguments = params.get("arguments", {})
+
+            # Промах вызывающего нельзя объявлять поломкой сервера. Раньше
+            # MCPRequest бросал ValidationError на неизвестном имени или на
+            # arguments не-объектом, та долетала до общего except и уходила
+            # клиенту как -32603 Internal error с трейсом pydantic. Агент
+            # читает «internal error» как «сервер сломался» и бросает попытки,
+            # хотя чинилось это им самим — заменой имени. По MCP неизвестный
+            # инструмент и негодные аргументы — протокольная ошибка -32602.
+            if tool_name not in IMENA_INSTRUMENTOV:
+                return oshibka_vyzova(
+                    request_id,
+                    f"Unknown tool: {tool_name}. "
+                    f"Available tools: {', '.join(IMENA_INSTRUMENTOV)}",
+                )
+
+            if not isinstance(arguments, dict):
+                return oshibka_vyzova(
+                    request_id,
+                    f"arguments must be an object for tool {tool_name}",
+                )
 
             # Преобразуем в наш формат MCPRequest
             mcp_request = MCPRequest(tool=tool_name, arguments=arguments)

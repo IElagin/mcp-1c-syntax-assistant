@@ -396,3 +396,55 @@ async def test_sovet_kartochki_obekta_vypolnim():
     otvet_sostava = sostav.json()["result"]["content"][0]["text"]
     assert "не найден" not in otvet_sostava, otvet_sostava
     assert "ТаблицаЗначений.НайтиСтроки" in otvet_sostava, otvet_sostava
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_neizvestnyi_instrument_eto_oshibka_vyzova_a_ne_polomka_servera():
+    """Промах по имени инструмента обязан читаться как промах вызывающего.
+
+    Раньше MCPRequest бросал ValidationError на enum, тот долетал до общего
+    except и возвращался как -32603 Internal error с трейсом pydantic. Агент
+    делает из «internal error» вывод «сервер сломался» и прекращает попытки,
+    вместо того чтобы исправить имя — а исправить было можно.
+    """
+    import httpx
+
+    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
+        otvet = await client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 52, "method": "tools/call",
+            "params": {"name": "get_1c_help", "arguments": {"query": "x"}},
+        })
+
+    telo = otvet.json()
+    assert otvet.status_code == 400, telo
+    assert telo["error"]["code"] == -32602, telo
+
+    soobshchenie = telo["error"]["message"]
+    assert "get_1c_help" in soobshchenie, soobshchenie
+    # Перечень имён — то, чем промах чинится: без него агент знает только, что
+    # ошибся, но не знает чем заменить.
+    for imya in IMENA:
+        assert imya in soobshchenie, soobshchenie
+    assert "Internal error" not in soobshchenie, soobshchenie
+    assert "pydantic" not in soobshchenie, soobshchenie
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_arguments_ne_obektom_tozhe_oshibka_vyzova():
+    """arguments строкой вместо объекта — тот же класс: виноват вызов."""
+    import httpx
+
+    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
+        otvet = await client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 53, "method": "tools/call",
+            "params": {"name": "find_1c_help", "arguments": "query=x"},
+        })
+
+    telo = otvet.json()
+    assert otvet.status_code == 400, telo
+    assert telo["error"]["code"] == -32602, telo
+    assert "Internal error" not in telo["error"]["message"], telo
