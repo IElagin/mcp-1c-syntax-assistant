@@ -84,6 +84,25 @@ async def _pochemu_pusto(
     return "\n".join(stroki)
 
 
+async def sobrat_kartochku_obekta(service: SearchService, doc: dict) -> str:
+    """Карточка объекта: счётчики, конструкторы и совет — по одному ключу.
+
+    Ключ, по которому в индексе лежат члены объекта, — его канонический путь: у
+    2 286 объектов он совпадает с object, а у 220 объектов со «шаблонным» именем
+    страницы («<Имя плана видов расчета>») члены хранятся под полным путём
+    («БазовыеВидыРасчета.<Имя плана видов расчета>»), а не под одним object.
+
+    Ключ считается здесь один раз и передаётся и в запросы, и в карточку.
+    Раньше карточка выводила имя для совета сама, из своих полей документа, —
+    два независимых вычисления одного и того же расходились молча, и ответ
+    печатал состав по одному ключу, а перечень предлагал по другому.
+    """
+    klyuch = doc.get("full_path") or doc.get("object") or ""
+    kolichestva = await service.kolichestvo_chlenov(klyuch)
+    konstruktory = await service.stroki_konstruktorov(klyuch)
+    return kartochka_obekta(doc, kolichestva, konstruktory, klyuch)
+
+
 async def handle_find_1c_help(
     request: Find1CHelpRequest, es_client: ElasticsearchClient
 ) -> MCPResponse:
@@ -144,17 +163,7 @@ async def handle_get_1c_element(
         if vid == "card":
             doc = otvet["document"]
             if (doc.get("element_kind") or "") == "объект":
-                # Ключ, по которому в индексе лежат члены объекта, — его
-                # канонический путь: у 2 286 объектов он совпадает с object, а
-                # у 220 объектов со «шаблонным» именем страницы («<Имя плана
-                # видов расчета>») члены хранятся под полным путём
-                # («БазовыеВидыРасчета.<Имя плана видов расчета>»), а не под
-                # одним object. Тот же ключ уходит в совет карточки, поэтому
-                # совет исполним в обоих случаях.
-                klyuch = doc.get("full_path") or doc.get("object") or ""
-                kolichestva = await service.kolichestvo_chlenov(klyuch)
-                konstruktory = await service.stroki_konstruktorov(klyuch)
-                return _tekst(kartochka_obekta(doc, kolichestva, konstruktory))
+                return _tekst(await sobrat_kartochku_obekta(service, doc))
             return _tekst(kartochka(doc))
 
         if vid == "ambiguous":

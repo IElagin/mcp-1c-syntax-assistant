@@ -6,6 +6,7 @@
 чужую карточку за единственную.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.elasticsearch import es_client
+from src.handlers.mcp_handlers import sobrat_kartochku_obekta
 from src.search.search_service import SearchService
 
 
@@ -155,6 +157,40 @@ async def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
         # действительно находится состав объекта.
         sostav = await service.get_object_members_list(put, "all", limit=1)
         assert sostav["total"] > 0, sostav
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_sovet_kartochki_obekta_s_perekrytiem_ispolnim():
+    """У 16 объектов хвост object повторял начало имени страницы.
+
+    Склейка давала «…КубЗапись.<Имя внешнего источника>.<Имя внешнего
+    источника>.<Имя куба>» — такого значения object в индексе нет. Карточка
+    советовала по нему перечень (ответ: «объект в справке не найден») и по нему
+    же считала состав, печатая «свойств: 0» о двух свойствах индекса.
+
+    Совет из карточки выполняем как есть: проверять его пересобранной строкой
+    значило бы проверять сам тест.
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+        otvet = await service.kartochka_elementa(
+            "<Имя внешнего источника>.<Имя куба>",
+            "ВнешнийИсточникДанныхКубЗапись.<Имя внешнего источника>",
+        )
+        assert otvet["kind"] == "card", otvet.get("kind")
+
+        tekst = await sobrat_kartochku_obekta(service, otvet["document"])
+
+        sovet = re.search(r'list_1c_object_members\(object="(.+?)"\)', tekst)
+        assert sovet, tekst
+        sostav = await service.get_object_members_list(sovet.group(1), "all", 50)
+        assert sostav["total"] == 2, sostav["total"]
+        assert "свойств: 2" in tekst, tekst
     finally:
         await es_client.disconnect()
 

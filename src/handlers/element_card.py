@@ -170,6 +170,7 @@ def kartochka_obekta(
     doc: Dict[str, Any],
     kolichestva: Dict[str, int],
     konstruktory: Optional[List[str]] = None,
+    klyuch: Optional[str] = None,
 ) -> str:
     """Карточка самого объекта: без списков членов, но с их числом.
 
@@ -187,8 +188,15 @@ def kartochka_obekta(
     None означает «не проверялись» и отличим от пустого списка «проверено,
     конструкторов нет»: утверждать второе, не спросив индекс, — ровно тот
     дефект, ради которого написана эта ветка.
+
+    klyuch — имя, под которым члены объекта лежат в индексе; по нему же
+    посчитаны kolichestva. Он приходит аргументом, а не выводится здесь второй
+    раз из полей документа: счётчики и совет обязаны опираться на одно и то же
+    значение, иначе карточка через строку противоречит сама себе — печатает
+    «свойств: 0» по одному ключу и перечень по другому.
     """
     imya = doc.get("full_path") or doc.get("name_ru") or ""
+    klyuch = klyuch or imya
     stroki = [f"{imya} — объект", ""]
 
     yarlyk = _yarlyk_vyzova(doc)
@@ -208,18 +216,29 @@ def kartochka_obekta(
     stroki.append(f"Описание: {doc.get('description') or 'в справке отсутствует'}")
 
     if kolichestva:
-        chasti = ", ".join(
-            f"{nazvanie}: {chislo}"
-            for nazvanie, chislo in (
-                ("методов", kolichestva.get("methods", 0)),
-                ("свойств", kolichestva.get("properties", 0)),
-                ("событий", kolichestva.get("events", 0)),
-            )
+        po_vidam = (
+            ("методов", kolichestva.get("methods", 0)),
+            ("свойств", kolichestva.get("properties", 0)),
+            ("событий", kolichestva.get("events", 0)),
         )
+        chasti = ", ".join(f"{nazvanie}: {chislo}" for nazvanie, chislo in po_vidam)
         stroki.append(f"Состав — {chasti}.")
-        stroki.append(
-            f'Перечень: list_1c_object_members(object="{imya}")'
-        )
+
+        if sum(chislo for _, chislo in po_vidam):
+            stroki.append(f'Перечень: list_1c_object_members(object="{klyuch}")')
+        else:
+            # Совет печатается ровно тогда, когда под тем же ключом есть что
+            # перечислять. У 100 страниц справки (параметры формы вроде
+            # «Расширение формы клиентского приложения для документа.Ключ»)
+            # заголовок разобран как объект, но членов у него нет и само имя не
+            # встречается ни в одном поле object — совет по нему отвечал
+            # «объект в справке не найден». Подставить вместо него родителя
+            # нельзя: его методы и свойства принадлежат не этой странице, и
+            # выдать их за её состав значило бы заменить тупик на неправду.
+            stroki.append(
+                f"Перечень: запрашивать нечего — под именем «{klyuch}» в справке "
+                "нет ни одного метода, свойства или события."
+            )
 
     return "\n".join(stroki)
 

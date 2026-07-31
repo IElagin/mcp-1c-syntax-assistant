@@ -382,16 +382,74 @@ def test_kartochka_obekta_bez_konstruktorov_govorit_eto_tolko_posle_proverki():
     assert "Конструкторы: не проверялись" in ne_proveryali
 
 
-@pytest.mark.unit
-def test_sovet_kartochki_obekta_ne_udvaivaet_imya():
-    """Совет обязан быть исполнимым: object="ТаблицаЗначений", а не удвоенное имя.
+def _dokument_obekta(name: str, object_name: str) -> dict:
+    """Документ объекта в том виде, в каком он ложится в индекс.
 
-    full_path объекта собирался как object + "." + имя, а у документа объекта
-    это одно и то же — карточка советовала
-    list_1c_object_members(object="ТаблицаЗначений.ТаблицаЗначений"), и такой
-    вызов отвечал «объект в справке не найден».
+    Путь собирает боевой код — Documentation.sobrat_vyzovy() и
+    _prepare_document индексатора. Фикстура с проставленным вручную full_path
+    проверяла бы собственное эхо: регрессия в сборке пути прошла бы мимо теста,
+    ради которого он написан.
     """
-    text = kartochka_obekta(OBEKT_TABLITSA_ZNACHENIY, {"methods": 22}, [])
+    from src.models.doc_models import Documentation, DocumentType
+    from src.parsers.indexer import ElasticsearchIndexer
 
-    assert 'list_1c_object_members(object="ТаблицаЗначений")' in text
-    assert "ТаблицаЗначений.ТаблицаЗначений" not in text
+    doc = Documentation(id="", type=DocumentType.OBJECT, name=name,
+                        object=object_name, element_kind="объект")
+    doc.sobrat_vyzovy()
+    return ElasticsearchIndexer(None)._prepare_document(doc)
+
+
+# Пары (object, имя страницы) взяты из индекса как есть; ожидаемый ключ — тот,
+# под которым в индексе действительно лежат члены этих объектов.
+PARY_PUTEY_OBEKTOV = [
+    # 2 286 объектов: object равен имени страницы, склейка удваивала имя.
+    ("ТаблицаЗначений", "ТаблицаЗначений", "ТаблицаЗначений"),
+    # 104 объекта: имя страницы — заполнитель, тип в object, склейка нужна.
+    ("БазовыеВидыРасчета", "<Имя плана видов расчета>",
+     "БазовыеВидыРасчета.<Имя плана видов расчета>"),
+    # 16 объектов: хвост object повторяет начало имени страницы. Склейка
+    # давала «…КубЗапись.<Имя внешнего источника>.<Имя внешнего источника>.
+    # <Имя куба>» — такого значения object в индексе нет, и карточка вдобавок
+    # печатала «свойств: 0» о двух свойствах, лежащих под неудвоенным ключом.
+    ("ВнешнийИсточникДанныхКубЗапись.<Имя внешнего источника>",
+     "<Имя внешнего источника>.<Имя куба>",
+     "ВнешнийИсточникДанныхКубЗапись.<Имя внешнего источника>.<Имя куба>"),
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("object_name, name, klyuch", PARY_PUTEY_OBEKTOV)
+def test_sovet_kartochki_obekta_sobran_iz_puti_bez_povtorov(object_name, name, klyuch):
+    """Совет обязан быть исполнимым — то есть называть ключ индекса без повторов.
+
+    Раньше full_path объекта собирался как object + "." + имя, и удвоенное имя
+    текло в совет: list_1c_object_members(object="ТаблицаЗначений.ТаблицаЗначений")
+    отвечал «объект в справке не найден».
+    """
+    doc = _dokument_obekta(name, object_name)
+
+    text = kartochka_obekta(doc, {"methods": 22}, [])
+
+    assert doc["full_path"] == klyuch, doc["full_path"]
+    assert f'list_1c_object_members(object="{klyuch}")' in text
+    segmenty = klyuch.split(".")
+    povtory = [a for a, b in zip(segmenty, segmenty[1:]) if a == b]
+    assert not povtory, f"сегмент повторён подряд: {povtory}"
+
+
+@pytest.mark.unit
+def test_kartochka_bez_chlenov_ne_pechataet_neispolnimyy_sovet():
+    """У 100 страниц справки заголовок разобран как объект, а членов нет.
+
+    «Расширение формы клиентского приложения для документа.Ключ» не встречается
+    ни в одном поле object индекса, и совет по нему отвечал «объект в справке не
+    найден». Призыв к действию, который не сработает, хуже его отсутствия:
+    поле остаётся на месте и прямо говорит, что перечислять нечего.
+    """
+    doc = _dokument_obekta("Ключ", "Расширение формы клиентского приложения для документа")
+
+    text = kartochka_obekta(doc, {"methods": 0, "properties": 0, "events": 0}, [])
+
+    assert "Состав — методов: 0, свойств: 0, событий: 0." in text
+    assert "list_1c_object_members(" not in text
+    assert "запрашивать нечего" in text
