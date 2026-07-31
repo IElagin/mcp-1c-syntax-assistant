@@ -184,3 +184,59 @@ def test_tip_vozvrata_otdelen_ot_poyasneniya():
     assert variant.return_type == "Массив"
     assert variant.return_description.startswith("Массив строк таблицы значений")
     assert "Замечание!" in variant.return_description
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_dostupnost_izvlekaetsya():
+    """Где вызов законен — главный вопрос, на который справка отвечает, а сервер молчал.
+
+    НайтиСтроки недоступен на тонком клиенте: агент, не знающий этого,
+    напишет код, который не заработает.
+    """
+    doc = razobrat("valuetable_findrows.html")
+
+    assert "сервер" in doc.availability
+    assert "толстый клиент" in doc.availability
+    assert "тонкий клиент" not in doc.availability
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_primechanie_izvlekaetsya():
+    doc = razobrat("valuetable_findrows.html")
+
+    assert doc.note.startswith("Метод эффективно использовать")
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_svoystvo_tip_znacheniya_i_dostup():
+    """У свойства свои два вопроса: какого типа значение и можно ли писать."""
+    doc = razobrat("valuetable_columns.html")
+
+    assert doc.value_type == "КоллекцияКолонокТаблицыЗначений"
+    assert doc.usage == "только чтение"
+    assert doc.description.startswith("Содержит коллекцию колонок"), doc.description
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_ispolzovanie_v_versii_ne_putaetsya_s_dostupom():
+    """На странице два раздела со словом «Использование» — в usage идёт нужный."""
+    doc = razobrat("valuetable_columns.html")
+
+    assert "версии" not in (doc.usage or "")
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_vid_elementa_i_russkiy_vladelets():
+    """Вид элемента назван по-русски, владелец глобальной функции — «Глобальный контекст»."""
+    funktsiya = razobrat("global_valueisfilled.html")
+    assert funktsiya.element_kind == "функция"
+    assert funktsiya.object_ru == "Глобальный контекст"
+
+    svoystvo = razobrat("valuetable_columns.html")
+    assert svoystvo.element_kind == "свойство"
+    assert svoystvo.object_ru == "ТаблицаЗначений"

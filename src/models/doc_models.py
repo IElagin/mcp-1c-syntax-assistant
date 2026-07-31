@@ -76,7 +76,12 @@ class Documentation(BaseModel):
     variants: List[SyntaxVariant] = []
     call_primary: str = ""
     syntax_all: str = ""
-    usage: Optional[str] = None  # Для свойств - "Чтение и запись", "Только чтение" и т.д.
+    usage: Optional[str] = None  # Для свойств - "чтение и запись", "только чтение" и т.д.
+    element_kind: str = ""          # функция / процедура / свойство / событие / конструктор / объект
+    object_ru: Optional[str] = None  # «Глобальный контекст» вместо технического Global context
+    value_type: str = ""            # тип значения свойства
+    availability: List[str] = []    # контексты исполнения в нижнем регистре
+    note: str = ""                  # раздел «Примечание»
     version_from: Optional[str] = None
     examples: List[str] = []
     source_file: str = ""

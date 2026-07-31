@@ -15,6 +15,19 @@ from src.parsers.tekst import (
 
 logger = get_logger(__name__)
 
+# Вид элемента по-русски: агент читает карточку, а не enum индекса.
+VID_ELEMENTA = {
+    DocumentType.GLOBAL_FUNCTION: "функция",
+    DocumentType.GLOBAL_PROCEDURE: "процедура",
+    DocumentType.GLOBAL_EVENT: "событие",
+    DocumentType.OBJECT_FUNCTION: "функция",
+    DocumentType.OBJECT_PROCEDURE: "процедура",
+    DocumentType.OBJECT_PROPERTY: "свойство",
+    DocumentType.OBJECT_EVENT: "событие",
+    DocumentType.OBJECT_CONSTRUCTOR: "конструктор",
+    DocumentType.OBJECT: "объект",
+}
+
 
 class HTMLParser:
     """Парсер HTML документации 1С."""
@@ -57,11 +70,14 @@ class HTMLParser:
             # Для всех типов кроме глобальных переопределяем object из заголовка
             if doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
                 doc.object = self._extract_object_name_from_title(soup)
-            
-            # Для свойств объектов дополнительно извлекаем информацию об использовании
+
+            doc.element_kind = VID_ELEMENTA.get(doc.type, "")
+            doc.object_ru = self._izvlech_russkoe_imya_obekta(soup) or doc.object
+            self._izvlech_razdely_elementa(soup, doc)
+
             if doc.type == DocumentType.OBJECT_PROPERTY:
-                self._extract_usage(soup, doc)
-            
+                self._izvlech_tip_svoystva(soup, doc)
+
             # Для объектов извлекаем методы, свойства и события
             if doc.type == DocumentType.OBJECT:
                 self._extract_object_methods(soup, doc)
@@ -259,18 +275,6 @@ class HTMLParser:
             
         return title_text.strip()
     
-    def _extract_usage(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает информацию об использовании для свойств."""
-        # Получаем HTML контент после заголовка "Использование"
-        usage_content = self._get_content_after_chapter(soup, ['использование'])
-        if not usage_content:
-            return
-            
-        # Извлекаем текст из HTML
-        from bs4 import BeautifulSoup as BS
-        clean_usage = BS(usage_content, 'html.parser').get_text()
-        doc.usage = clean_usage.strip()
-    
     def _get_content_after_chapter(self, soup: BeautifulSoup, chapter_keywords: list) -> str:
         """
         Универсальный метод для получения HTML контента после заголовка V8SH_chapter.
@@ -397,6 +401,53 @@ class HTMLParser:
                 elem = elem.next_sibling
             glavy.append((header.get_text(strip=True), "".join(chasti)))
         return glavy
+
+    def _izvlech_razdely_elementa(self, soup: BeautifulSoup, doc: Documentation):
+        """Разделы, относящиеся к элементу целиком, а не к варианту вызова."""
+        for zagolovok, html in self._glavy(soup):
+            nizhniy = zagolovok.lower().rstrip(':').strip()
+
+            if nizhniy == 'доступность':
+                doc.availability = self._razobrat_dostupnost(html)
+            elif nizhniy == 'примечание':
+                doc.note = pochistit_opisanie(tekst_iz_html(html))
+            elif nizhniy == 'использование':
+                # Ровно «Использование:». Заголовок «Использование в версии:»
+                # говорит о версии платформы и в доступ к свойству не годится.
+                doc.usage = normalizovat_probely(tekst_iz_html(html)).rstrip('.').lower()
+
+    @staticmethod
+    def _razobrat_dostupnost(html: str):
+        """«Сервер, толстый клиент, внешнее соединение.» → список контекстов."""
+        tekst = normalizovat_probely(tekst_iz_html(html)).rstrip('.')
+        return [chast.strip().lower() for chast in tekst.split(',') if chast.strip()]
+
+    def _izvlech_tip_svoystva(self, soup: BeautifulSoup, doc: Documentation):
+        """Вынимает «Тип: X.» из начала описания свойства в отдельное поле.
+
+        В справке тип значения свойства стоит первой фразой раздела «Описание:»,
+        причём в HTML это россыпь узлов (текст, ссылка, <br>) без общего
+        родителя-<p>. Общий сборщик _extract_title_and_description отбрасывает
+        короткие текстовые фрагменты (в т.ч. точку после ссылки на тип) и рвёт
+        границу между типом и пояснением, поэтому раздел разбирается заново из
+        собственного HTML, а не из уже собранного doc.description.
+        """
+        for zagolovok, html in self._glavy(soup):
+            if zagolovok.lower().rstrip(':').strip() != 'описание':
+                continue
+
+            tekst = tekst_iz_html(html).strip()
+            if tekst.startswith('Тип:'):
+                doc.value_type, doc.description = izvlech_tip_i_poyasnenie(html)
+            break
+
+    def _izvlech_russkoe_imya_obekta(self, soup: BeautifulSoup) -> Optional[str]:
+        """«ТаблицаЗначений (ValueTable)» → «ТаблицаЗначений»."""
+        title = soup.find('p', class_='V8SH_title')
+        if not title:
+            return None
+        tekst = title.get_text(strip=True)
+        return tekst.split(' (')[0].strip() or None
 
     # Обязательность параметра справка пишет в скобке после имени:
     # "<Индекс> (обязательный)". У вариативных параметров конструкторов
