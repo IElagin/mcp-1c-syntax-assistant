@@ -618,9 +618,12 @@ class HTMLParser:
                             if full_code.strip():
                                 # Неразрывные пробелы в коде 1С — синтаксическая
                                 # ошибка: агент скопирует пример и получит отказ
-                                # компиляции.
+                                # компиляции. normalizovat_probely тут не годится:
+                                # она схлопывает пробельные последовательности через
+                                # .split() и срезает ведущий отступ — а отступ вложенных
+                                # строк примера значим и должен остаться дословным.
                                 stroki = [
-                                    normalizovat_probely(stroka)
+                                    stroka.replace('\xa0', ' ').rstrip()
                                     for stroka in full_code.strip().split('\n')
                                 ]
                                 doc.examples.append('\n'.join(stroki))

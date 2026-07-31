@@ -308,3 +308,9 @@ def test_primer_bez_nerazryvnyh_probelov():
     assert doc.examples, "у НайтиСтроки в справке есть пример"
     assert "\xa0" not in doc.examples[0]
     assert "Новый Структура()" in doc.examples[0]
+
+    # Отступ вложенной строки — значимое форматирование кода, а не мусор:
+    # схлопывание пробелов (как делает normalizovat_probely) срезало бы его.
+    assert "    ЭлементыФормы.СписокРаботников.ТекущаяСтрока = Строки[0];" in (
+        doc.examples[0]
+    )
