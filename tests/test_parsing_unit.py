@@ -46,7 +46,7 @@ def test_parsed_hbk_global_functions(mock_parsed_hbk):
     # Проверяем структуру первой функции
     func = global_funcs[0]
     assert func.name is not None
-    assert func.syntax_ru is not None
+    assert func.variants[0].syntax is not None
     assert func.description is not None
     assert func.object is None  # Глобальная функция
 
@@ -73,16 +73,16 @@ def test_parsed_hbk_object_members(mock_parsed_hbk):
 def test_parsed_hbk_parameters(mock_parsed_hbk):
     """Тест параметров функций."""
     funcs_with_params = [
-        doc for doc in mock_parsed_hbk.documentation 
-        if doc.parameters and len(doc.parameters) > 0
+        doc for doc in mock_parsed_hbk.documentation
+        if doc.variants and doc.variants[0].parameters
     ]
-    
+
     assert len(funcs_with_params) > 0
-    
+
     # Проверяем структуру параметров
     func = funcs_with_params[0]
-    param = func.parameters[0]
-    
+    param = func.variants[0].parameters[0]
+
     assert param.name is not None
     assert param.type is not None
     assert param.description is not None

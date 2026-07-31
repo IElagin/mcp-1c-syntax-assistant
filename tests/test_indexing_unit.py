@@ -38,7 +38,7 @@ def test_documentation_to_dict(mock_parsed_hbk):
         'name': doc.name,
         'type': doc.type.value if hasattr(doc.type, 'value') else str(doc.type),
         'description': doc.description,
-        'syntax_ru': doc.syntax_ru,
+        'syntax_ru': doc.variants[0].syntax if doc.variants else "",
     }
     
     assert doc_dict['id'] is not None
@@ -95,14 +95,18 @@ async def test_elasticsearch_bulk_operations():
 def test_prepare_document_for_indexing(mock_parsed_hbk):
     """Тест подготовки документа для индексации."""
     doc = mock_parsed_hbk.documentation[0]
-    
+
+    # Параметры теперь лежат внутри варианта вызова (Task 3), а не на самом
+    # документе.
+    variant_parametry = doc.variants[0].parameters if doc.variants else []
+
     # Эмулируем подготовку для индексации
     prepared = {
         'id': doc.id,
         'type': str(doc.type),
         'name': doc.name,
         'object': doc.object,
-        'syntax_ru': doc.syntax_ru,
+        'syntax_ru': doc.variants[0].syntax if doc.variants else "",
         'description': doc.description,
         'parameters': [
             {
@@ -111,17 +115,17 @@ def test_prepare_document_for_indexing(mock_parsed_hbk):
                 'description': p.description,
                 'required': p.required
             }
-            for p in (doc.parameters or [])
+            for p in variant_parametry
         ],
         'full_path': doc.full_path
     }
-    
+
     assert prepared['id'] is not None
     assert prepared['name'] is not None
-    
+
     # Проверяем что параметры корректно сериализованы
-    if doc.parameters:
-        assert len(prepared['parameters']) == len(doc.parameters)
+    if variant_parametry:
+        assert len(prepared['parameters']) == len(variant_parametry)
         assert all('name' in p for p in prepared['parameters'])
 
 
