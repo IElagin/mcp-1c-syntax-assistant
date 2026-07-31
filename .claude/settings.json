@@ -2,10 +2,8 @@
   "permissions": {
     "allow": [
       "mcp__syntax1c__find_1c_help",
-      "mcp__syntax1c__list_object_members",
-      "mcp__syntax1c__get_syntax_info",
-      "mcp__syntax1c__search_by_context",
-      "mcp__syntax1c__get_quick_reference"
+      "mcp__syntax1c__get_1c_element",
+      "mcp__syntax1c__list_1c_object_members"
     ]
   }
 }
