@@ -287,3 +287,24 @@ def test_svoystvo_obrashchenie_bez_skobok():
 
     assert doc.call_primary == "ТаблицаЗначений.Колонки"
     assert doc.full_path == "ТаблицаЗначений.Колонки"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_opisanie_bez_slipshihsya_fraz():
+    """«не по ссылке.Не работает» — 5,3% описаний в индексе слиплись так."""
+    doc = razobrat("global_valueisfilled.html")
+
+    assert ".Не работает" not in doc.description
+    assert ". Не работает" in doc.description
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_primer_bez_nerazryvnyh_probelov():
+    """Пример из справки должен компилироваться после копирования."""
+    doc = razobrat("valuetable_findrows.html")
+
+    assert doc.examples, "у НайтиСтроки в справке есть пример"
+    assert "\xa0" not in doc.examples[0]
+    assert "Новый Структура()" in doc.examples[0]

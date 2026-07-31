@@ -379,7 +379,7 @@ class HTMLParser:
                     elem = elem.next_sibling
                 
                 if description_parts:
-                    doc.description = ' '.join(description_parts)
+                    doc.description = pochistit_opisanie(' '.join(description_parts))
                     break
     
     def _glavy(self, soup: BeautifulSoup):
@@ -616,7 +616,14 @@ class HTMLParser:
                             full_code = '\n'.join(clean_lines)
                             
                             if full_code.strip():
-                                doc.examples.append(full_code.strip())
+                                # Неразрывные пробелы в коде 1С — синтаксическая
+                                # ошибка: агент скопирует пример и получит отказ
+                                # компиляции.
+                                stroki = [
+                                    normalizovat_probely(stroka)
+                                    for stroka in full_code.strip().split('\n')
+                                ]
+                                doc.examples.append('\n'.join(stroki))
                 
                 elem = elem.next_sibling
             break
