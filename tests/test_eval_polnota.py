@@ -16,7 +16,7 @@ from eval_search import neunikalnye_imena, zamer_odnoznachnosti, zamer_polnoty
 
 @pytest.mark.unit
 def test_protivorechie_obyazatelnosti_lovitsya():
-    """required=True при '(необязательный)' в описании — это противоречие."""
+    """required=True при '(необязательный)' префиксом описания — это противоречие."""
     docs = [
         {"type": "object_function", "parameters": [
             {"name": "А", "type": "Строка", "required": True,
@@ -33,6 +33,31 @@ def test_protivorechie_obyazatelnosti_lovitsya():
 
 
 @pytest.mark.unit
+def test_metka_vnutri_opisaniya_ne_protivorechie():
+    """Метка обязательности внутри описания (не префиксом) — не противоречие.
+
+    Так размечена справка структуры-аргумента: параметр 'Параметры' у
+    'ПолучитьДанныеВыбора' сам обязателен (required=True), а метка
+    '(необязательный)' внутри его описания относится к вложенному ключу
+    структуры, а не к самому параметру. Substring-проверка ловила это как
+    противоречие и как дубль — оба ложноположительные.
+    """
+    docs = [
+        {"type": "object_function", "parameters": [
+            {"name": "Параметры", "type": "Структура", "required": True,
+             "description": "Содержит ключи структуры: Отбор - тип Структура. "
+                             "ВыборГруппИЭлементов (необязательный) - тип "
+                             "ИспользованиеГруппИЭлементов."},
+        ]},
+    ]
+
+    itogi = zamer_polnoty(docs)
+
+    assert itogi["param_protivorechie"] == 0
+    assert itogi["param_dubl_v_opisanii"] == 0
+
+
+@pytest.mark.unit
 def test_tip_vozvrata_abzats_otlichaetsya_ot_tipa():
     """Тип длиной в три предложения типом не считается."""
     docs = [
@@ -46,6 +71,57 @@ def test_tip_vozvrata_abzats_otlichaetsya_ot_tipa():
     itogi = zamer_polnoty(docs)
 
     assert itogi["vozvrat_tip"] == 1
+    assert itogi["vozvrat_abzats"] == 1
+
+
+@pytest.mark.unit
+def test_perechislenie_tipov_cherez_zapyatuyu_eto_tip():
+    """Перечисление нескольких типов через запятую — тип, не абзац.
+
+    Выбирать один тип из перечисления сервер не вправе (спека §4.2), значит
+    метрика не должна штрафовать длинную строку из нескольких типов только
+    за длину — важно, что каждый элемент однословный.
+    """
+    docs = [
+        {"type": "object_function", "variants": [
+            {"return_type": "Null, Булево, Число, Строка, Дата, УникальныйИдентификатор"},
+        ]},
+    ]
+
+    itogi = zamer_polnoty(docs)
+
+    assert itogi["vozvrat_tip"] == 1
+    assert itogi["vozvrat_abzats"] == 0
+
+
+@pytest.mark.unit
+def test_dlinnoe_odnoslovnoe_imya_tipa_ne_rezhetsya_dlinoy():
+    """Настоящее имя типа длиннее 40 символов не должно резаться по длине."""
+    docs = [
+        {"type": "object_function", "variants": [
+            {"return_type": "ПериодРазделенияХраненияДанныхЖурналаРегистрации"},
+        ]},
+    ]
+
+    itogi = zamer_polnoty(docs)
+
+    assert itogi["vozvrat_tip"] == 1
+    assert itogi["vozvrat_abzats"] == 0
+
+
+@pytest.mark.unit
+def test_fraza_s_mnogoslovnymi_elementami_ne_tip():
+    """Перечисление, где среди элементов есть многословная фраза, — не тип."""
+    docs = [
+        {"type": "object_function", "variants": [
+            {"return_type": "ТабличныйДокумент, ТекстовыйДокумент, другой объект, "
+                            "который может быть макетом"},
+        ]},
+    ]
+
+    itogi = zamer_polnoty(docs)
+
+    assert itogi["vozvrat_tip"] == 0
     assert itogi["vozvrat_abzats"] == 1
 
 

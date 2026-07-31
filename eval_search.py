@@ -190,14 +190,6 @@ async def zamer_chastotnyh(service, limit=10):
     return itogi, pustye
 
 
-# Тип возврата длиной больше этого — почти наверняка абзац пояснения, а не тип.
-# Это лишь одно из двух условий классификации (см. _pohozhe_na_tip): тип — это
-# короткая строка И без внутренней точки, абзац — если нарушено любое из двух.
-# Замер по индексу (по обоим условиям вместе): 2410 из 4426 заполненных
-# return_type — абзац, слитый с типом (54,4%).
-PREDEL_TIPA = 40
-
-
 async def vzyat_vse_dokumenty(polya):
     """Выгружает весь индекс постранично через search_after."""
     docs, posle = [], None
@@ -219,11 +211,22 @@ async def vzyat_vse_dokumenty(polya):
 
 
 def _pohozhe_na_tip(znachenie):
-    """Тип — короткая строка без внутренней точки: 'Массив', 'Строка, Число'."""
+    """Тип — перечисление типов через запятую, не абзац пояснения.
+
+    Длину не мерим: настоящие имена типов 1С сами по себе бывают длиннее
+    сорока символов ('ПериодРазделенияХраненияДанныхЖурналаРегистрации' — 48),
+    а перечисление возможных типов возврата («Тип: Строка, Число.») по спеке
+    §4.2 сохраняется целиком, сколько бы типов в нём ни было — выбирать один
+    сервер не вправе. Абзац отличают не длина и не точка, а слова с пробелами
+    внутри: каждый элемент перечисления типов — одно слово ('Булево',
+    'ТабличныйДокумент'), а во фразе вроде 'другой объект, который может быть
+    макетом' у элементов внутри пробелы.
+    """
     tekst = (znachenie or "").strip()
-    if not tekst or len(tekst) > PREDEL_TIPA:
+    if not tekst:
         return False
-    return "." not in tekst.rstrip(".")
+    elementy = [e.strip() for e in tekst.rstrip(".").split(",")]
+    return all(e and " " not in e for e in elementy)
 
 
 def _varianty(doc):
@@ -271,12 +274,20 @@ def zamer_polnoty(docs):
 
         for p in _parametry(d):
             itogi["param_vsego"] += 1
-            opisanie = p.get("description") or ""
-            if p.get("required") is True and "(необязательный)" in opisanie:
+            opisanie = (p.get("description") or "").lstrip()
+            # Метка обязательности относится к самому параметру, только если
+            # стоит префиксом его описания. Та же метка встречается и внутри
+            # описания — 1С так помечает обязательность вложенных ключей
+            # структуры-аргумента ('...ВыборГруппИЭлементов (необязательный) -
+            # тип...'), и это не характеризует параметр, к которому она
+            # приклеена вхождением где угодно.
+            neobyazatelnyy_prefiks = opisanie.startswith("(необязательный)")
+            obyazatelnyy_prefiks = opisanie.startswith("(обязательный)")
+            if p.get("required") is True and neobyazatelnyy_prefiks:
                 itogi["param_protivorechie"] += 1
             if not p.get("type"):
                 itogi["param_bez_tipa"] += 1
-            if "(обязательный)" in opisanie or "(необязательный)" in opisanie:
+            if obyazatelnyy_prefiks or neobyazatelnyy_prefiks:
                 itogi["param_dubl_v_opisanii"] += 1
             # Отдельно от противоречия: после чистки описаний противоречие
             # исчезнет само, а вот известна ли обязательность — вопрос
