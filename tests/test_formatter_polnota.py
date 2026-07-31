@@ -121,6 +121,72 @@ async def test_nastoyashchiy_total_kogda_limit_rezhet():
         await es_client.disconnect()
 
 
+@pytest.mark.unit
+def test_konstruktory_pechatayutsya_pod_svoim_yarlykom():
+    """members="constructors" не должен подписываться "Методы".
+
+    get_object_members_list кладёт конструкторы в тот же список methods, что и
+    обычные методы (см. test_spisok_elementov_ne_rezhetsya_molcha) — иначе для
+    этого вида запроса вывод был бы пуст. Но ярлык в заголовке должен называть
+    вещи своими именами: конструктор — не то же самое, что метод.
+    """
+    konstruktory = [
+        {"name": "На основании фиксированного массива", "syntax_ru": "", "description": ""},
+        {"name": "По количеству элементов", "syntax_ru": "", "description": ""},
+    ]
+
+    text = mcp_formatter.format_object_members_list(
+        "Массив", "constructors", konstruktory, [], [], total=2
+    )
+
+    assert "Конструкторы (2)" in text
+    assert "Методы" not in text
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_sushchestvuyushchii_obekt_bez_nuzhnogo_vida_ne_schitaetsya_nenaidennym():
+    """total=0 при members="events" у ТаблицаЗначений — но объект есть.
+
+    Разграничение "объекта нет" от "объект есть, но не того вида" делает
+    get_object_members_list через отдельный ключ object_exists — раньше оба
+    случая одинаково звучали как "объект не найден", и агент слышал это про
+    объект, который тут же значился в списке "похожих" на самого себя.
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+        rezultat = await service.get_object_members_list("ТаблицаЗначений", "events", limit=10)
+
+        assert rezultat["total"] == 0
+        assert rezultat.get("object_exists") is True, (
+            "ТаблицаЗначений существует, даже если событий у неё нет"
+        )
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_nesushchestvuyushchii_obekt_deistvitelno_ne_naiden():
+    """Настоящее отсутствие объекта по-прежнему отличимо от «нет элементов
+    этого вида» — object_exists=False только тогда, когда объекта нет вовсе.
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+        rezultat = await service.get_object_members_list(
+            "НесуществующийОбъект123", "all", limit=10
+        )
+
+        assert rezultat["total"] == 0
+        assert rezultat.get("object_exists") is False
+    finally:
+        await es_client.disconnect()
+
+
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio

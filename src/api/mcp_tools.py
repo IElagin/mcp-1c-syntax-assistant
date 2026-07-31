@@ -13,6 +13,13 @@
 LIMIT_POISKA = 10
 LIMIT_SOSTAVA = 100
 
+# Потолок limit для find_1c_help. Вынесен в константу, чтобы совет "вызовите
+# ещё раз с limit=N" (в mcp_handlers и в spisok_kandidatov) физически не мог
+# предложить число больше того, что схема готова принять: раньше карточка
+# советовала limit=vsego без оглядки на потолок, и для омонимов вроде
+# «Количество» (275 совпадений) совет упирался в validation error схемы же.
+LIMIT_POISKA_MAX = 200
+
 TOOLS = [
     {
         "name": "find_1c_help",
@@ -49,7 +56,7 @@ TOOLS = [
                     "type": "integer",
                     "default": LIMIT_POISKA,
                     "minimum": 1,
-                    "maximum": 200,
+                    "maximum": LIMIT_POISKA_MAX,
                     "description": "Сколько кандидатов вернуть",
                 },
             },

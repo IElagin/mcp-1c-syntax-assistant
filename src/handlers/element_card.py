@@ -9,6 +9,7 @@
 
 from typing import Any, Dict, List
 
+from src.api.mcp_tools import LIMIT_POISKA_MAX
 from src.handlers.mcp_formatter import obrezat_do_frazy
 
 NET_V_SPRAVKE = "в справке не указано"
@@ -232,8 +233,21 @@ def spisok_kandidatov(imya: str, kandidaty: List[Dict[str, Any]], vsego: int) ->
     ]
     stroki.extend(f"  {stroka_spiska(k)}" for k in kandidaty)
     stroki.append("")
-    stroki.append(
-        f"Показано {len(kandidaty)} из {vsego}. "
-        f'Полный список: find_1c_help(query="{imya}", limit={vsego}).'
-    )
+
+    # find_1c_help не примет limit больше LIMIT_POISKA_MAX — совет с
+    # limit=vsego при омонимах вроде «Количество» (275 совпадений) сам
+    # упирался бы в validation error схемы, которую эта же задача вводит.
+    # Текст остаётся правдивым: если предел ниже vsego, так и говорим, что
+    # это не полный список, а максимум за один вызов.
+    predel = min(vsego, LIMIT_POISKA_MAX)
+    if predel < vsego:
+        stroki.append(
+            f"Показано {len(kandidaty)} из {vsego}. За один вызов можно получить "
+            f'не более {predel}: find_1c_help(query="{imya}", limit={predel}).'
+        )
+    else:
+        stroki.append(
+            f"Показано {len(kandidaty)} из {vsego}. "
+            f'Полный список: find_1c_help(query="{imya}", limit={predel}).'
+        )
     return "\n".join(stroki)

@@ -1,7 +1,7 @@
 """Модели для MCP Protocol."""
 
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
 
@@ -39,6 +39,13 @@ class MCPRequest(BaseModel):
 
 class Find1CHelpRequest(BaseModel):
     """Запрос поиска по справке."""
+    # extra="forbid" — схема обещает additionalProperties: false; без этого
+    # pydantic по умолчанию молча отбрасывает лишние поля вместо ошибки, и
+    # опечатка вроде старого object_name (упразднённое имя параметра) тихо
+    # превращалась в поиск без фильтра по объекту — агент получал не тот
+    # ответ, о котором просил, и не узнавал об этом.
+    model_config = ConfigDict(extra="forbid")
+
     query: str = Field(..., description="Поисковый запрос")
     kind: SearchKind = Field(SearchKind.ANY, description="Чем ограничить поиск")
     object: Optional[str] = Field(None, description="Искать только у этого объекта")
@@ -47,6 +54,8 @@ class Find1CHelpRequest(BaseModel):
 
 class Get1CElementRequest(BaseModel):
     """Запрос карточки элемента."""
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(..., description="Точное имя элемента")
     object: Optional[str] = Field(None, description="Объект справки")
     variant: Optional[str] = Field(None, description="Имя варианта вызова")
@@ -54,6 +63,8 @@ class Get1CElementRequest(BaseModel):
 
 class List1CObjectMembersRequest(BaseModel):
     """Запрос состава объекта."""
+    model_config = ConfigDict(extra="forbid")
+
     object: str = Field(..., description="Имя объекта справки")
     members: MemberType = Field(MemberType.ALL, description="Какие элементы перечислить")
     limit: int = Field(100, ge=1, le=1000, description="Сколько элементов вернуть")

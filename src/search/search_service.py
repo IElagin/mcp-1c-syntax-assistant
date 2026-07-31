@@ -236,19 +236,32 @@ class SearchService:
             vsego_v_indekse = (
                 vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
             )
+            itogovyi_total = max(
+                vsego_v_indekse,
+                len(methods) + len(properties) + len(events)
+            )
 
-            return {
+            rezultat = {
                 "object": object_name,
                 "member_type": member_type,
                 "methods": methods,
                 "properties": properties,
                 "events": events,
-                "total": max(
-                    vsego_v_indekse,
-                    len(methods) + len(properties) + len(events)
-                )
+                "total": itogovyi_total,
             }
-            
+
+            # total=0 неоднозначен: объекта может не быть вовсе, а может — он
+            # есть, просто у него нет элементов запрошенного вида (например,
+            # "события" у объекта без событий, или "конструкторы" почти у
+            # любого объекта, кроме считаных типов). Раньше оба случая
+            # выглядели одинаково — агент слышал «не найден» про объект,
+            # который есть, и тут же видел его в списке «похожих». Проверяем
+            # существование тем же запросом, что и _obekt_sushchestvuet.
+            if itogovyi_total == 0:
+                rezultat["object_exists"] = await self._obekt_sushchestvuet(object_name)
+
+            return rezultat
+
         except Exception as e:
             logger.error(f"Ошибка получения элементов объекта '{object_name}': {e}")
             return {

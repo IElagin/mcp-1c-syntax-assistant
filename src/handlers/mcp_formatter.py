@@ -83,9 +83,12 @@ class MCPResponseFormatter:
         # Методы. "constructors" тоже сюда: get_object_members_list кладёт
         # конструкторы в тот же список methods, и без constructors в этом
         # условии запрос members="constructors" молча вернул бы пустое тело —
-        # ровно та неполнота, от которой этот формат уходит.
+        # ровно та неполнота, от которой этот формат уходит. Ярлык подписи при
+        # этом меняем на «Конструкторы»: иначе он лжёт о виде элемента, когда
+        # запрошены только конструкторы.
         if member_type in ["all", "methods", "constructors"] and methods:
-            text += f"🔨 **Методы ({len(methods)}):**\n"
+            yarlyk_metodov = "Конструкторы" if member_type == "constructors" else "Методы"
+            text += f"🔨 **{yarlyk_metodov} ({len(methods)}):**\n"
             for method in methods:
                 name = method.get("name", "")
                 syntax = method.get("syntax_ru", "")

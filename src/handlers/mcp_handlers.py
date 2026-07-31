@@ -1,6 +1,6 @@
 """Обработчики MCP запросов."""
 
-from src.api.mcp_tools import KIND_V_TYPE
+from src.api.mcp_tools import KIND_V_TYPE, LIMIT_POISKA_MAX
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.handlers.element_card import (
@@ -13,6 +13,16 @@ from src.models.mcp_models import (
 from src.search.search_service import SearchService
 
 logger = get_logger(__name__)
+
+# Название вида элементов на русском для сообщения "у объекта нет элементов
+# этого вида". "all" сюда не входит — для него сообщение формулируется иначе:
+# просить попробовать members="all", когда уже запрошено all, бессмысленно.
+RU_VID_SOSTAVA = {
+    "methods": "методов",
+    "properties": "свойств",
+    "events": "событий",
+    "constructors": "конструкторов",
+}
 
 
 def _tekst(text: str) -> MCPResponse:
@@ -45,7 +55,7 @@ async def handle_find_1c_help(
         if vsego > len(nayden):
             stroki.append(
                 f"Показано {len(nayden)} из {vsego} — "
-                f"повторите вызов с limit={min(vsego, 200)} за остальными."
+                f"повторите вызов с limit={min(vsego, LIMIT_POISKA_MAX)} за остальными."
             )
         stroki.append("")
         stroki.extend(stroka_spiska(d) for d in nayden)
@@ -133,6 +143,26 @@ async def handle_list_1c_object_members(
             return mcp_formatter.create_error_response("Ошибка", rezultat["error"])
 
         if not rezultat.get("total"):
+            # total=0 неоднозначно само по себе: объекта может не быть вовсе,
+            # а может — он есть, просто нет элементов запрошенного вида
+            # (например, "события" у ТаблицаЗначений — событий у неё нет, а
+            # объект есть). service.get_object_members_list уже отличил один
+            # случай от другого запросом object_exists — раньше оба случая
+            # звучали как "объект не найден", и агент слышал это про объект,
+            # который тут же значился в списке "похожих" на самого себя.
+            if rezultat.get("object_exists"):
+                vid = request.members.value
+                if vid == "all":
+                    return _tekst(
+                        f"Объект «{request.object}» в справке есть, но ни методов, "
+                        "ни свойств, ни событий, ни конструкторов у него не найдено."
+                    )
+                return _tekst(
+                    f"Объект «{request.object}» в справке есть, но "
+                    f"{RU_VID_SOSTAVA[vid]} у него нет. "
+                    'Попробуйте members="all", чтобы увидеть весь состав.'
+                )
+
             # pohozhie_obekty вызывается здесь напрямую, вне try/except
             # kartochka_elementa, поэтому сбой Elasticsearch внутри неё долетит
             # сюда как исключение — ловим его отдельно веткой ниже, а не
