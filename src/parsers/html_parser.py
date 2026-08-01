@@ -9,8 +9,8 @@ from src.models.doc_models import (
     ObjectMethod, ObjectProperty, ObjectEvent,
 )
 from src.core.logging import get_logger
-from src.parsers.tekst import (
-    izvlech_tip_i_poyasnenie, normalizovat_probely, pochistit_opisanie, tekst_iz_html,
+from src.parsers.text_utils import (
+    split_type_and_note, normalize_whitespace, clean_description, text_from_html,
 )
 
 logger = get_logger(__name__)
@@ -397,7 +397,7 @@ class HTMLParser:
                             description_parts.append(text)
 
                 if description_parts:
-                    doc.description = pochistit_opisanie(' '.join(description_parts))
+                    doc.description = clean_description(' '.join(description_parts))
                     break
     
     def _glavy(self, soup: BeautifulSoup):
@@ -421,11 +421,11 @@ class HTMLParser:
             if nizhniy == 'доступность':
                 doc.availability = self._razobrat_dostupnost(html)
             elif nizhniy == 'примечание':
-                doc.note = pochistit_opisanie(tekst_iz_html(html))
+                doc.note = clean_description(text_from_html(html))
             elif nizhniy == 'использование':
                 # Ровно «Использование:». Заголовок «Использование в версии:»
                 # говорит о версии платформы и в доступ к свойству не годится.
-                doc.usage = normalizovat_probely(tekst_iz_html(html)).rstrip('.').lower()
+                doc.usage = normalize_whitespace(text_from_html(html)).rstrip('.').lower()
 
     @staticmethod
     def _razobrat_dostupnost(html: str):
@@ -440,7 +440,7 @@ class HTMLParser:
         серверу» как место, где вызов законен. Замер по индексу: так было у
         1 106 из 19 156 документов с непустой доступностью.
         """
-        tekst = normalizovat_probely(tekst_iz_html(html))
+        tekst = normalize_whitespace(text_from_html(html))
         granitsa = tekst.find('. ')
         if granitsa != -1:
             tekst = tekst[:granitsa]
@@ -461,9 +461,9 @@ class HTMLParser:
             if zagolovok.lower().rstrip(':').strip() != 'описание':
                 continue
 
-            tekst = tekst_iz_html(html).strip()
+            tekst = text_from_html(html).strip()
             if tekst.startswith('Тип:'):
-                doc.value_type, doc.description = izvlech_tip_i_poyasnenie(html)
+                doc.value_type, doc.description = split_type_and_note(html)
             break
 
     def _izvlech_russkoe_imya_obekta(self, soup: BeautifulSoup) -> Optional[str]:
@@ -520,7 +520,7 @@ class HTMLParser:
                 continue
 
             chasti = [str(u) for u in uzly_do_granitsy(rubric, ('V8SH_rubric',))]
-            tip, opisanie = izvlech_tip_i_poyasnenie("".join(chasti))
+            tip, opisanie = split_type_and_note("".join(chasti))
             parametry.append(
                 Parameter(name=imya, type=tip, description=opisanie,
                           required=obyazatelnyy)
@@ -552,13 +552,13 @@ class HTMLParser:
                 tekushchiy = SyntaxVariant(variant=imya)
                 varianty.append(tekushchiy)
             elif nizhniy == 'синтаксис':
-                vzyat_tekushchiy().syntax = normalizovat_probely(tekst_iz_html(html))
+                vzyat_tekushchiy().syntax = normalize_whitespace(text_from_html(html))
             elif nizhniy.startswith('параметр'):
                 vzyat_tekushchiy().parameters = self._razobrat_parametry(html)
             elif nizhniy.startswith('возвращаемое значение'):
                 variant = vzyat_tekushchiy()
                 variant.return_type, variant.return_description = \
-                    izvlech_tip_i_poyasnenie(html)
+                    split_type_and_note(html)
 
         if doc.type == DocumentType.OBJECT_CONSTRUCTOR:
             # У конструкторов варианты разложены по отдельным страницам справки,
@@ -622,7 +622,7 @@ class HTMLParser:
                             if full_code.strip():
                                 # Неразрывные пробелы в коде 1С — синтаксическая
                                 # ошибка: агент скопирует пример и получит отказ
-                                # компиляции. normalizovat_probely тут не годится:
+                                # компиляции. normalize_whitespace тут не годится:
                                 # она схлопывает пробельные последовательности через
                                 # .split() и срезает ведущий отступ — а отступ вложенных
                                 # строк примера значим и должен остаться дословным.
