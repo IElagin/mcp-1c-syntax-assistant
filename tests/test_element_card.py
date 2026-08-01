@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.handlers.element_card import (
     NET_V_SPRAVKE,
-    kartochka,
-    kartochka_obekta,
+    render_element_card,
+    render_object_card,
     spisok_kandidatov,
     stroka_spiska,
 )
@@ -171,7 +171,7 @@ PERED_NACHALOM_RABOTY_SISTEMY = {
 
 @pytest.mark.unit
 def test_kartochka_metoda_neset_vyzov_parametry_i_vozvrat():
-    text = kartochka(NAYTI_STROKI)
+    text = render_element_card(NAYTI_STROKI)
 
     assert "ТаблицаЗначений.НайтиСтроки" in text
     assert "Вызов: ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)" in text
@@ -184,7 +184,7 @@ def test_kartochka_metoda_neset_vyzov_parametry_i_vozvrat():
 @pytest.mark.unit
 def test_kartochka_pechataet_oba_varianta():
     """Второй способ вызова обязан быть виден: иначе агент о нём не узнает."""
-    text = kartochka(UDALIT_DVA_VARIANTA)
+    text = render_element_card(UDALIT_DVA_VARIANTA)
 
     assert "По индексу" in text
     assert "По элементу" in text
@@ -194,7 +194,7 @@ def test_kartochka_pechataet_oba_varianta():
 
 @pytest.mark.unit
 def test_protsedura_govorit_chto_nichego_ne_vozvrashchaet():
-    text = kartochka(UDALIT_DVA_VARIANTA)
+    text = render_element_card(UDALIT_DVA_VARIANTA)
     assert "нет (процедура)" in text
 
 
@@ -206,7 +206,7 @@ def test_pustye_varianty_ne_skryvayut_stroku_parametry():
     молчание неотличимо от «параметров нет» и агент об этом не узнает.
     """
     doc = dict(NAYTI_STROKI, variants=[])
-    text = kartochka(doc)
+    text = render_element_card(doc)
     assert "Параметры: нет" in text
 
 
@@ -220,7 +220,7 @@ def test_kartochka_konstruktora_nazyvaet_i_vyzyvaet_po_novomu():
     вызова — начинаться со слова «Новый» (так конструкторы объектов и
     вызываются, в отличие от Объект.Метод(...) у функций/процедур).
     """
-    text = kartochka(MASSIV_PO_KOLICHESTVU_ELEMENTOV)
+    text = render_element_card(MASSIV_PO_KOLICHESTVU_ELEMENTOV)
 
     assert "Массив.По количеству элементов — конструктор объекта Массив" in text
 
@@ -246,7 +246,7 @@ def test_kartochka_globalnogo_sobytiya_nazyvaet_kontekst():
     станет «событие объекта Глобальный контекст» вместо «событие глобального
     контекста» — эта строгая проверка формулировки поймает такую регрессию.
     """
-    text = kartochka(PERED_NACHALOM_RABOTY_SISTEMY)
+    text = render_element_card(PERED_NACHALOM_RABOTY_SISTEMY)
 
     assert "ПередНачаломРаботыСистемы — событие глобального контекста" in text
     assert "Отказ" in text
@@ -256,20 +256,20 @@ def test_kartochka_globalnogo_sobytiya_nazyvaet_kontekst():
 @pytest.mark.unit
 def test_otsutstvie_primerov_skazano_pryamo():
     """Примеры есть лишь у 6% элементов справки — молчать об этом нельзя."""
-    text = kartochka(NAYTI_STROKI)
+    text = render_element_card(NAYTI_STROKI)
     assert "Примеров в справке нет" in text
 
 
 @pytest.mark.unit
 def test_otsutstvie_dostupnosti_skazano_pryamo():
     doc = dict(NAYTI_STROKI, availability=[])
-    text = kartochka(doc)
+    text = render_element_card(doc)
     assert "Доступность: в справке не указана" in text
 
 
 @pytest.mark.unit
 def test_kartochka_svoystva_obrashchenie_tip_i_dostup():
-    text = kartochka(KOLONKI)
+    text = render_element_card(KOLONKI)
 
     assert "Обращение: ТаблицаЗначений.Колонки" in text
     assert "Вызов:" not in text, "свойство не вызывают"
@@ -286,7 +286,7 @@ def test_neizvestnaya_obyazatelnost_ne_vydaetsya_za_obyazatelnost():
         {"name": "Х", "type": "Строка", "required": None, "description": "Что-то."}
     ]
 
-    text = kartochka(doc)
+    text = render_element_card(doc)
 
     assert "обязательность в справке не указана" in text
     assert ", обязательный" not in text
@@ -342,7 +342,7 @@ def test_kandidaty_govoryat_kogda_poryadok_ne_po_vsem_sovpadeniyam():
 
 @pytest.mark.unit
 def test_kartochka_obekta_ne_pechataet_spiski_chlenov():
-    text = kartochka_obekta(
+    text = render_object_card(
         OBEKT_TABLITSA_ZNACHENIY, {"methods": 46, "properties": 5, "events": 0}, []
     )
 
@@ -358,7 +358,7 @@ def test_kartochka_obekta_nazyvaet_konstruktory():
     Про 307 объектов, конструкторы которых есть в индексе, это была неправда:
     у ТаблицаЗначений там лежит «Новый ТаблицаЗначений».
     """
-    text = kartochka_obekta(
+    text = render_object_card(
         OBEKT_TABLITSA_ZNACHENIY, {"methods": 22, "properties": 2, "events": 0},
         ["Новый ТаблицаЗначений"],
     )
@@ -375,8 +375,8 @@ def test_kartochka_obekta_bez_konstruktorov_govorit_eto_tolko_posle_proverki():
     Разница не косметическая: утверждать «в справке не указано», не спросив
     индекс, — ровно тот дефект, ради которого написана вся ветка.
     """
-    proveryali = kartochka_obekta(OBEKT_TABLITSA_ZNACHENIY, {}, [])
-    ne_proveryali = kartochka_obekta(OBEKT_TABLITSA_ZNACHENIY, {})
+    proveryali = render_object_card(OBEKT_TABLITSA_ZNACHENIY, {}, [])
+    ne_proveryali = render_object_card(OBEKT_TABLITSA_ZNACHENIY, {})
 
     assert f"Конструкторы: {NET_V_SPRAVKE}" in proveryali
     assert "Конструкторы: не проверялись" in ne_proveryali
@@ -428,7 +428,7 @@ def test_sovet_kartochki_obekta_sobran_iz_puti_bez_povtorov(object_name, name, k
     """
     doc = _dokument_obekta(name, object_name)
 
-    text = kartochka_obekta(doc, {"methods": 22}, [])
+    text = render_object_card(doc, {"methods": 22}, [])
 
     assert doc["full_path"] == klyuch, doc["full_path"]
     assert f'list_1c_object_members(object="{klyuch}")' in text
@@ -448,7 +448,7 @@ def test_kartochka_bez_chlenov_ne_pechataet_neispolnimyy_sovet():
     """
     doc = _dokument_obekta("Ключ", "Расширение формы клиентского приложения для документа")
 
-    text = kartochka_obekta(doc, {"methods": 0, "properties": 0, "events": 0}, [])
+    text = render_object_card(doc, {"methods": 0, "properties": 0, "events": 0}, [])
 
     assert "Состав — методов: 0, свойств: 0, событий: 0." in text
     assert "list_1c_object_members(" not in text

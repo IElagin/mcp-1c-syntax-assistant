@@ -4,7 +4,7 @@ from typing import Dict, List
 from src.models.mcp_models import MCPResponse
 
 
-def obrezat_do_frazy(text: str, predel: int) -> str:
+def truncate_at_sentence(text: str, limit: int) -> str:
     """Укорачивает текст, не разрывая фразу посередине.
 
     Обрыв на середине фразы меняет смысл на противоположный: «Два регламентных
@@ -12,20 +12,20 @@ def obrezat_do_frazy(text: str, predel: int) -> str:
     только последовательно». Поэтому режем по концу фразы, а если первая же
     фраза не влезает — по границе слова.
     """
-    tekst = " ".join((text or "").split())
-    if len(tekst) <= predel:
-        return tekst
+    normalized = " ".join((text or "").split())
+    if len(normalized) <= limit:
+        return normalized
 
-    okno = tekst[:predel]
+    window = normalized[:limit]
 
-    granitsa = max(okno.rfind(". "), okno.rfind("! "), okno.rfind("? "))
-    if granitsa >= predel // 3:
-        return okno[:granitsa + 1] + " …"
+    boundary = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+    if boundary >= limit // 3:
+        return window[:boundary + 1] + " …"
 
-    probel = okno.rfind(" ")
-    if probel <= 0:
-        return okno + "…"
-    return okno[:probel] + " …"
+    space = window.rfind(" ")
+    if space <= 0:
+        return window + "…"
+    return window[:space] + " …"
 
 
 class MCPResponseFormatter:

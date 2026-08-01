@@ -331,7 +331,7 @@ async def zamer_odnoznachnosti(service, docs, razmer=40, seed=20260730):
     itogi = Counter()
     for imya in vyborka:
         itogi["vsego"] += 1
-        otvet = await service.kartochka_elementa(imya)
+        otvet = await service.element_card(imya)
         vid = (otvet or {}).get("kind")
         if vid == "ambiguous":
             itogi["soobshchil"] += 1
@@ -413,7 +413,7 @@ async def main():
             print(f"  сообщил о выборе    : {protsent(odnozn['soobshchil'], odnozn['vsego'])}  ({odnozn['soobshchil']}/{odnozn['vsego']})")
             print(f"  выбрал молча        : {protsent(odnozn['molcha_vybral'], odnozn['vsego'])}  ({odnozn['molcha_vybral']}/{odnozn['vsego']})")
         except AttributeError:
-            print("\n== F. Однозначность == (kartochka_elementa ещё не реализована)")
+            print("\n== F. Однозначность == (element_card ещё не реализована)")
 
         if promahi:
             print("\n== Примеры промахов набора A ==")

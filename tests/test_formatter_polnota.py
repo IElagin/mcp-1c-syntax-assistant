@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.api.mcp_tools import MEMBERS_LIMIT_MAX
 from src.core.elasticsearch import es_client
 from src.handlers.element_card import spisok_chlenov
-from src.handlers.mcp_formatter import obrezat_do_frazy
+from src.handlers.mcp_formatter import truncate_at_sentence
 from src.search.search_service import SearchService
 
 KLYUCH_POLNYY = (
@@ -104,7 +104,7 @@ def sostav(vid, metody=(), svoystva=(), sobytiya=(), vsego=None):
 
 @pytest.mark.unit
 def test_korotkoe_opisanie_ne_trogaem():
-    assert obrezat_do_frazy("Добавляет строку.", 200) == "Добавляет строку."
+    assert truncate_at_sentence("Добавляет строку.", 200) == "Добавляет строку."
 
 
 @pytest.mark.unit
@@ -114,7 +114,7 @@ def test_obrez_ne_rvet_frazu_poseredine():
     Именно это защищает от инверсии смысла: лучше показать меньше фраз,
     чем половину фразы.
     """
-    rezultat = obrezat_do_frazy(KLYUCH_POLNYY, 60)
+    rezultat = truncate_at_sentence(KLYUCH_POLNYY, 60)
 
     assert "могут" not in rezultat or "последовательно" in rezultat, (
         f"Фраза оборвана посередине: {rezultat!r}"
@@ -125,14 +125,14 @@ def test_obrez_ne_rvet_frazu_poseredine():
 @pytest.mark.unit
 def test_obrez_pometchaetsya():
     """Укороченный текст помечен, чтобы не выглядел полным."""
-    rezultat = obrezat_do_frazy(KLYUCH_POLNYY, 60)
+    rezultat = truncate_at_sentence(KLYUCH_POLNYY, 60)
     assert rezultat.endswith("…"), rezultat
 
 
 @pytest.mark.unit
 def test_klyuch_reglamentnogo_zadaniya_vlezaet_polnostyu():
     """Тот самый случай из отчёта: 135 знаков влезают в бюджет превью."""
-    assert obrezat_do_frazy(KLYUCH_POLNYY, 200) == KLYUCH_POLNYY
+    assert truncate_at_sentence(KLYUCH_POLNYY, 200) == KLYUCH_POLNYY
 
 
 @pytest.mark.unit

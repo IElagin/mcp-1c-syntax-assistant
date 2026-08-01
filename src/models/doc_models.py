@@ -176,7 +176,7 @@ class Documentation(BaseModel):
         else:
             self.call_primary = ""
 
-        # Обычно syntax_all уже выставлен парсером (_izvlech_varianty), но
+        # Обычно syntax_all уже выставлен парсером (_extract_variants), но
         # пересчитываем и здесь: build_call_strings вызывается и на документах,
         # собранных напрямую (тесты, фикстуры) — без парсера поле осталось
         # бы пустым по умолчанию.

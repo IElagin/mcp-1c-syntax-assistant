@@ -10,7 +10,7 @@
 from typing import Any, Dict, List, Optional
 
 from src.api.mcp_tools import SEARCH_LIMIT_MAX
-from src.handlers.mcp_formatter import obrezat_do_frazy
+from src.handlers.mcp_formatter import truncate_at_sentence
 
 NET_V_SPRAVKE = "в справке не указано"
 
@@ -35,80 +35,80 @@ def _zagolovok(doc: Dict[str, Any]) -> str:
     vladelets = doc.get("object_ru") or doc.get("object") or ""
 
     if vid in ("функция", "процедура", "событие") and doc.get("type", "").startswith("global"):
-        chast = f"{vid} глобального контекста"
+        part = f"{vid} глобального контекста"
     elif vid == "объект":
-        chast = "объект"
+        part = "объект"
     elif vid:
-        chast = f"{vid} объекта {vladelets}" if vladelets else vid
+        part = f"{vid} объекта {vladelets}" if vladelets else vid
     else:
-        chast = ""
+        part = ""
 
-    return f"{put} — {chast}" if chast else put
+    return f"{put} — {part}" if part else put
 
 
 def _parametr(p: Dict[str, Any]) -> List[str]:
     """Две строки: сигнатура параметра и его описание."""
-    tip = p.get("type") or NET_V_SPRAVKE
+    param_type = p.get("type") or NET_V_SPRAVKE
     obyazatelnost = p.get("required")
     if obyazatelnost is True:
-        priznak = "обязательный"
+        flag = "обязательный"
     elif obyazatelnost is False:
-        priznak = "необязательный"
+        flag = "необязательный"
     else:
-        priznak = "обязательность в справке не указана"
+        flag = "обязательность в справке не указана"
 
-    stroki = [f"    {p.get('name', '')} — {tip}, {priznak}"]
+    lines = [f"    {p.get('name', '')} — {param_type}, {flag}"]
     if p.get("description"):
-        stroki.append(f"      {p['description']}")
-    return stroki
+        lines.append(f"      {p['description']}")
+    return lines
 
 
 def _variant(v: Dict[str, Any], s_imenem: bool) -> List[str]:
-    stroki = []
+    lines = []
     if s_imenem and v.get("variant"):
-        stroki.append(f"Вариант «{v['variant']}»")
-        otstup = "  "
+        lines.append(f"Вариант «{v['variant']}»")
+        indent = "  "
     else:
-        otstup = ""
+        indent = ""
 
-    stroki.append(f"{otstup}Вызов: {v.get('call') or v.get('syntax') or NET_V_SPRAVKE}")
+    lines.append(f"{indent}Вызов: {v.get('call') or v.get('syntax') or NET_V_SPRAVKE}")
 
     parametry = v.get("parameters") or []
     if parametry:
-        stroki.append(f"{otstup}Параметры:")
+        lines.append(f"{indent}Параметры:")
         for p in parametry:
-            stroki.extend(f"{otstup}{s}" for s in _parametr(p))
+            lines.extend(f"{indent}{s}" for s in _parametr(p))
     else:
-        stroki.append(f"{otstup}Параметры: нет")
+        lines.append(f"{indent}Параметры: нет")
 
-    return stroki
+    return lines
 
 
 def _vozvrat(doc: Dict[str, Any]) -> List[str]:
     """Что вернёт вызов. Для процедуры — прямо сказать, что ничего."""
-    varianty = doc.get("variants") or []
-    tipy = [v.get("return_type") for v in varianty if v.get("return_type")]
+    variant_list = doc.get("variants") or []
+    tipy = [v.get("return_type") for v in variant_list if v.get("return_type")]
 
     if not tipy:
         if doc.get("element_kind") == "процедура":
             return ["Возвращает: нет (процедура)"]
         return [f"Возвращает: {NET_V_SPRAVKE}"]
 
-    stroki = [f"Возвращает: {tipy[0]}"]
-    poyasnenie = next(
-        (v.get("return_description") for v in varianty if v.get("return_description")),
+    lines = [f"Возвращает: {tipy[0]}"]
+    note = next(
+        (v.get("return_description") for v in variant_list if v.get("return_description")),
         "",
     )
-    if poyasnenie:
-        stroki.append(f"  {poyasnenie}")
-    return stroki
+    if note:
+        lines.append(f"  {note}")
+    return lines
 
 
 def _dostupnost(doc: Dict[str, Any]) -> str:
-    spisok = doc.get("availability") or []
-    if not spisok:
+    items = doc.get("availability") or []
+    if not items:
         return "Доступность: в справке не указана"
-    return "Доступность: " + ", ".join(spisok)
+    return "Доступность: " + ", ".join(items)
 
 
 def _primery(doc: Dict[str, Any]) -> List[str]:
@@ -116,57 +116,57 @@ def _primery(doc: Dict[str, Any]) -> List[str]:
     if not primery:
         return ["Примеров в справке нет."]
 
-    stroki = ["Пример:"]
+    lines = ["Пример:"]
     for kod in primery:
-        stroki.extend(f"  {stroka}" for stroka in kod.split("\n"))
-    return stroki
+        lines.extend(f"  {line}" for line in kod.split("\n"))
+    return lines
 
 
-def kartochka(doc: Dict[str, Any]) -> str:
+def render_element_card(doc: Dict[str, Any]) -> str:
     """Полная карточка элемента."""
     if (doc.get("element_kind") or "") == "объект":
         # Полная карточка объекта требует данных, которых в его документе нет:
         # числа членов и строк вызова конструкторов. Их собирает обработчик
-        # отдельными запросами и зовёт kartochka_obekta напрямую — сюда
+        # отдельными запросами и зовёт render_object_card напрямую — сюда
         # попадает только вызов в обход обработчика, и он честно говорит, что
         # конструкторы не проверялись, вместо «в справке не указано».
-        return kartochka_obekta(doc, {})
+        return render_object_card(doc, {})
 
-    stroki = [_zagolovok(doc), ""]
+    lines = [_zagolovok(doc), ""]
 
     if (doc.get("element_kind") or "") == "свойство":
-        stroki.append(f"{_yarlyk_vyzova(doc)}: {doc.get('call_primary') or NET_V_SPRAVKE}")
-        stroki.append(f"Тип значения: {doc.get('value_type') or NET_V_SPRAVKE}")
-        stroki.append(f"Доступ: {doc.get('usage') or NET_V_SPRAVKE}")
+        lines.append(f"{_yarlyk_vyzova(doc)}: {doc.get('call_primary') or NET_V_SPRAVKE}")
+        lines.append(f"Тип значения: {doc.get('value_type') or NET_V_SPRAVKE}")
+        lines.append(f"Доступ: {doc.get('usage') or NET_V_SPRAVKE}")
     else:
-        varianty = doc.get("variants") or []
-        if len(varianty) > 1:
-            stroki.append(f"Вариантов вызова: {len(varianty)}")
-            stroki.append("")
-        for v in varianty:
-            stroki.extend(_variant(v, s_imenem=len(varianty) > 1))
-            stroki.append("")
-        if not varianty:
-            stroki.append(f"Вызов: {doc.get('call_primary') or NET_V_SPRAVKE}")
+        variant_list = doc.get("variants") or []
+        if len(variant_list) > 1:
+            lines.append(f"Вариантов вызова: {len(variant_list)}")
+            lines.append("")
+        for v in variant_list:
+            lines.extend(_variant(v, s_imenem=len(variant_list) > 1))
+            lines.append("")
+        if not variant_list:
+            lines.append(f"Вызов: {doc.get('call_primary') or NET_V_SPRAVKE}")
             # Параметры — поле из списка «всегда печатаются»: пустые variants
             # не повод его пропускать, иначе молчание неотличимо от «данных нет».
-            stroki.append("Параметры: нет")
-        stroki.extend(_vozvrat(doc))
+            lines.append("Параметры: нет")
+        lines.extend(_vozvrat(doc))
 
-    stroki.append(_dostupnost(doc))
+    lines.append(_dostupnost(doc))
     if doc.get("version_from"):
-        stroki.append(f"Доступно с: {doc['version_from']}")
+        lines.append(f"Доступно с: {doc['version_from']}")
 
-    stroki.append("")
-    stroki.append(f"Описание: {doc.get('description') or 'в справке отсутствует'}")
+    lines.append("")
+    lines.append(f"Описание: {doc.get('description') or 'в справке отсутствует'}")
     if doc.get("note"):
-        stroki.append(f"Примечание: {doc['note']}")
-    stroki.extend(_primery(doc))
+        lines.append(f"Примечание: {doc['note']}")
+    lines.extend(_primery(doc))
 
-    return "\n".join(stroki)
+    return "\n".join(lines)
 
 
-def kartochka_obekta(
+def render_object_card(
     doc: Dict[str, Any],
     kolichestva: Dict[str, int],
     konstruktory: Optional[List[str]] = None,
@@ -195,25 +195,25 @@ def kartochka_obekta(
     значение, иначе карточка через строку противоречит сама себе — печатает
     «свойств: 0» по одному ключу и перечень по другому.
     """
-    imya = doc.get("full_path") or doc.get("name_ru") or ""
-    klyuch = klyuch or imya
-    stroki = [f"{imya} — объект", ""]
+    name = doc.get("full_path") or doc.get("name_ru") or ""
+    klyuch = klyuch or name
+    lines = [f"{name} — объект", ""]
 
     yarlyk = _yarlyk_vyzova(doc)
     if konstruktory:
-        stroki.append(f"{yarlyk}:")
-        stroki.extend(f"  {k}" for k in konstruktory)
+        lines.append(f"{yarlyk}:")
+        lines.extend(f"  {k}" for k in konstruktory)
     elif konstruktory is not None:
-        stroki.append(f"{yarlyk}: {NET_V_SPRAVKE}")
+        lines.append(f"{yarlyk}: {NET_V_SPRAVKE}")
     else:
-        stroki.append(f"{yarlyk}: не проверялись")
+        lines.append(f"{yarlyk}: не проверялись")
 
-    stroki.append(_dostupnost(doc))
+    lines.append(_dostupnost(doc))
     if doc.get("version_from"):
-        stroki.append(f"Доступно с: {doc['version_from']}")
+        lines.append(f"Доступно с: {doc['version_from']}")
 
-    stroki.append("")
-    stroki.append(f"Описание: {doc.get('description') or 'в справке отсутствует'}")
+    lines.append("")
+    lines.append(f"Описание: {doc.get('description') or 'в справке отсутствует'}")
 
     if kolichestva:
         po_vidam = (
@@ -221,11 +221,11 @@ def kartochka_obekta(
             ("свойств", kolichestva.get("properties", 0)),
             ("событий", kolichestva.get("events", 0)),
         )
-        chasti = ", ".join(f"{nazvanie}: {chislo}" for nazvanie, chislo in po_vidam)
-        stroki.append(f"Состав — {chasti}.")
+        parts = ", ".join(f"{nazvanie}: {chislo}" for nazvanie, chislo in po_vidam)
+        lines.append(f"Состав — {parts}.")
 
         if sum(chislo for _, chislo in po_vidam):
-            stroki.append(f'Перечень: list_1c_object_members(object="{klyuch}")')
+            lines.append(f'Перечень: list_1c_object_members(object="{klyuch}")')
         else:
             # Совет печатается ровно тогда, когда под тем же ключом есть что
             # перечислять. У 100 страниц справки (параметры формы вроде
@@ -235,12 +235,12 @@ def kartochka_obekta(
             # «объект в справке не найден». Подставить вместо него родителя
             # нельзя: его методы и свойства принадлежат не этой странице, и
             # выдать их за её состав значило бы заменить тупик на неправду.
-            stroki.append(
+            lines.append(
                 f"Перечень: запрашивать нечего — под именем «{klyuch}» в справке "
                 "нет ни одного метода, свойства или события."
             )
 
-    return "\n".join(stroki)
+    return "\n".join(lines)
 
 
 def stroka_spiska(doc: Dict[str, Any]) -> str:
@@ -249,21 +249,21 @@ def stroka_spiska(doc: Dict[str, Any]) -> str:
     vid = doc.get("element_kind") or ""
     vyzov = doc.get("call_primary") or ""
 
-    chasti = [put]
+    parts = [put]
     if vid:
-        chasti.append(f"— {vid}")
+        parts.append(f"— {vid}")
     if vyzov and vyzov != put:
-        chasti.append(f"— {vyzov}")
+        parts.append(f"— {vyzov}")
 
-    varianty = doc.get("variants") or []
-    if len(varianty) > 1:
-        chasti.append(f"(вариантов вызова: {len(varianty)})")
+    variant_list = doc.get("variants") or []
+    if len(variant_list) > 1:
+        parts.append(f"(вариантов вызова: {len(variant_list)})")
 
     opisanie = doc.get("description") or ""
     if opisanie:
-        chasti.append(f"— {obrezat_do_frazy(opisanie, PREDEL_OPISANIYA_V_SPISKE)}")
+        parts.append(f"— {truncate_at_sentence(opisanie, PREDEL_OPISANIYA_V_SPISKE)}")
 
-    return " ".join(chasti)
+    return " ".join(parts)
 
 
 def sovet_ob_ostatke(
@@ -278,18 +278,18 @@ def sovet_ob_ostatke(
     вызов его выбирает. shablon_vyzova содержит {limit}: подставляется
     достижимое число, а не желаемое.
     """
-    predel = min(vsego, predel_instrumenta)
-    vyzov = shablon_vyzova.format(limit=predel)
-    if predel < vsego:
+    limit = min(vsego, predel_instrumenta)
+    vyzov = shablon_vyzova.format(limit=limit)
+    if limit < vsego:
         return (
             f"Показано {pokazano} из {vsego}. За один вызов можно получить "
-            f"не более {predel}: {vyzov}."
+            f"не более {limit}: {vyzov}."
         )
     return f"Показано {pokazano} из {vsego}. Полный список: {vyzov}."
 
 
 def spisok_kandidatov(
-    imya: str,
+    name: str,
     kandidaty: List[Dict[str, Any]],
     vsego: int,
     poryadok_polnyy: bool = True,
@@ -302,30 +302,30 @@ def spisok_kandidatov(
     произвольно, и сортировалось по алфавиту — для «Количество» первым шёл
     АгрегатыРегистраНакопления, а ТаблицаЗначений не показывался вовсе.
     """
-    stroki = [
-        f"Имя «{imya}» найдено у {vsego} элементов — "
+    lines = [
+        f"Имя «{name}» найдено у {vsego} элементов — "
         f"карточка не может быть выбрана однозначно.",
-        f'Уточните объект: get_1c_element(name="{imya}", object="<объект>")',
+        f'Уточните объект: get_1c_element(name="{name}", object="<объект>")',
         "",
         "Кандидаты (сначала типы языка, внутри — объекты с бо́льшим числом "
         "элементов в справке):",
     ]
-    stroki.extend(f"  {stroka_spiska(k)}" for k in kandidaty)
+    lines.extend(f"  {stroka_spiska(k)}" for k in kandidaty)
     if not poryadok_polnyy:
-        stroki.append(
+        lines.append(
             "  (порядок построен не по всем совпадениям — их слишком много "
             "для одного запроса)"
         )
-    stroki.append("")
+    lines.append("")
 
     # find_1c_help не примет limit больше SEARCH_LIMIT_MAX — совет с
     # limit=vsego при омонимах вроде «Количество» (275 совпадений) сам
     # упирался бы в validation error схемы, которую эта же задача вводит.
-    stroki.append(sovet_ob_ostatke(
+    lines.append(sovet_ob_ostatke(
         len(kandidaty), vsego, SEARCH_LIMIT_MAX,
-        f'find_1c_help(query="{imya}", limit={{limit}})',
+        f'find_1c_help(query="{name}", limit={{limit}})',
     ))
-    return "\n".join(stroki)
+    return "\n".join(lines)
 
 
 def spisok_chlenov(
@@ -349,23 +349,23 @@ def spisok_chlenov(
     yarlyk_metodov = "Конструкторы" if vid == "constructors" else "Методы"
     pokazano = len(metody) + len(svoystva) + len(sobytiya)
 
-    stroki = [f"Состав объекта {obekt}.", ""]
-    for zagolovok, elementy in (
+    lines = [f"Состав объекта {obekt}.", ""]
+    for heading, elementy in (
         (yarlyk_metodov, metody), ("Свойства", svoystva), ("События", sobytiya)
     ):
         if not elementy:
             continue
-        stroki.append(f"{zagolovok} ({len(elementy)}):")
-        stroki.extend(f"  {stroka_spiska(d)}" for d in elementy)
-        stroki.append("")
+        lines.append(f"{heading} ({len(elementy)}):")
+        lines.extend(f"  {stroka_spiska(d)}" for d in elementy)
+        lines.append("")
 
     # Молчаливая неполнота — худшее, что может отдать справочный инструмент:
     # агент примет урезанный список за исчерпывающий и решит, что метода нет.
     if vsego and vsego > pokazano:
-        stroki.append(sovet_ob_ostatke(
+        lines.append(sovet_ob_ostatke(
             pokazano, vsego, predel_instrumenta,
             f'list_1c_object_members(object="{obekt}", members="{vid}", '
             f'limit={{limit}})',
         ))
-    stroki.append(f'Полная карточка: get_1c_element(name=…, object="{obekt}")')
-    return "\n".join(stroki)
+    lines.append(f'Полная карточка: get_1c_element(name=…, object="{obekt}")')
+    return "\n".join(lines)

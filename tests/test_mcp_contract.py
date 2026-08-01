@@ -139,7 +139,7 @@ def test_lishnii_argument_ne_proglatyvaetsya_molcha(model_cls, kwargs):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_error_kind_stanovitsya_oshibkoi_a_ne_tihim_otvetom(monkeypatch):
-    """kartochka_elementa помечает сбой ES kind="error" — обработчик обязан
+    """element_card помечает сбой ES kind="error" — обработчик обязан
     вернуть isError, а не "элемент не найден".
 
     Ручной прогон Task 13 проверил только пять честных исходов и живые вызовы
@@ -150,10 +150,10 @@ async def test_error_kind_stanovitsya_oshibkoi_a_ne_tihim_otvetom(monkeypatch):
     from src.models.mcp_models import Get1CElementRequest
     from src.search.search_service import SearchService
 
-    async def fake_kartochka_elementa(self, name, object_name=None, variant=None):
+    async def fake_element_card(self, name, object_name=None, variant=None):
         return {"kind": "error", "name": name, "error": "Elasticsearch недоступен"}
 
-    monkeypatch.setattr(SearchService, "kartochka_elementa", fake_kartochka_elementa)
+    monkeypatch.setattr(SearchService, "element_card", fake_element_card)
 
     result = await handle_get_1c_element(Get1CElementRequest(name="Х"), es_client=None)
 
@@ -377,12 +377,12 @@ async def test_sovet_kartochki_obekta_vypolnim():
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        kartochka = await client.post("/mcp", json={
+        card = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 50, "method": "tools/call",
             "params": {"name": "get_1c_element",
                        "arguments": {"name": "ТаблицаЗначений"}},
         })
-        text = kartochka.json()["result"]["content"][0]["text"]
+        text = card.json()["result"]["content"][0]["text"]
 
         assert "Новый ТаблицаЗначений" in text, text
         assert 'list_1c_object_members(object="ТаблицаЗначений")' in text, text

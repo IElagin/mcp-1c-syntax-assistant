@@ -4,7 +4,7 @@ from src.api.mcp_tools import KIND_TO_TYPE, SEARCH_LIMIT_MAX, MEMBERS_LIMIT_MAX
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.handlers.element_card import (
-    kartochka, kartochka_obekta, sovet_ob_ostatke, spisok_chlenov,
+    render_element_card, render_object_card, sovet_ob_ostatke, spisok_chlenov,
     spisok_kandidatov, stroka_spiska,
 )
 from src.handlers.mcp_formatter import mcp_formatter
@@ -42,49 +42,49 @@ async def _pochemu_pusto(
     идентификатор из кода не совпадает с именем объекта справки. get_1c_element
     этот случай уже различал, а поиск с тем же аргументом object — нет.
     """
-    stroki = [f"По запросу «{request.query}» ничего не найдено."]
+    lines = [f"По запросу «{request.query}» ничего не найдено."]
 
     if request.object:
-        # Исключение из obekt_sushchestvuet и pohozhie_obekty намеренно не
+        # Исключение из obekt_sushchestvuet и similar_objects намеренно не
         # глушится: сбой Elasticsearch долетит до внешнего except обработчика и
         # станет ошибкой, а не тихим «объекта нет».
         if await service.obekt_sushchestvuet(request.object):
-            stroki.append(
+            lines.append(
                 f"Объект «{request.object}» в справке есть, но подходящих "
                 "элементов у него не нашлось. Весь его состав: "
                 f'list_1c_object_members(object="{request.object}").'
             )
         else:
-            pohozhie = ", ".join(await service.pohozhie_obekty(request.object)) \
+            pohozhie = ", ".join(await service.similar_objects(request.object)) \
                 or "подходящих не найдено"
-            stroki.append(
+            lines.append(
                 f"Объект «{request.object}» в справке не найден — выдачу обнулил "
                 f"фильтр по нему, а не отсутствие элемента. "
                 f"Похожие объекты: {pohozhie}."
             )
-            stroki.append(
+            lines.append(
                 "Имя объекта в справке может отличаться от идентификатора в коде: "
                 "например, менеджер фоновых заданий зовётся МенеджерФоновыхЗаданий."
             )
 
     if request.kind.value != "any":
-        stroki.append(
+        lines.append(
             f'Поиск был ограничен видом kind="{request.kind.value}" — '
             'повторите с kind="any", чтобы искать по всем видам элементов.'
         )
 
     if not request.object and request.kind.value == "any":
-        stroki.append(
+        lines.append(
             "Ни фильтра по объекту, ни фильтра по виду не было — совпадений нет "
             "во всей справке. Что можно сделать: проверить имя по-русски и "
             "по-английски; поискать по словам из описания; если известен "
             "объект — посмотреть его состав через list_1c_object_members."
         )
 
-    return "\n".join(stroki)
+    return "\n".join(lines)
 
 
-async def sobrat_kartochku_obekta(service: SearchService, doc: dict) -> str:
+async def build_object_card(service: SearchService, doc: dict) -> str:
     """Карточка объекта: счётчики, конструкторы и совет — по одному ключу.
 
     Ключ, по которому в индексе лежат члены объекта, — его канонический путь: у
@@ -100,7 +100,7 @@ async def sobrat_kartochku_obekta(service: SearchService, doc: dict) -> str:
     klyuch = doc.get("full_path") or doc.get("object") or ""
     kolichestva = await service.kolichestvo_chlenov(klyuch)
     konstruktory = await service.stroki_konstruktorov(klyuch)
-    return kartochka_obekta(doc, kolichestva, konstruktory, klyuch)
+    return render_object_card(doc, kolichestva, konstruktory, klyuch)
 
 
 async def handle_find_1c_help(
@@ -125,7 +125,7 @@ async def handle_find_1c_help(
             return _tekst(await _pochemu_pusto(service, request))
 
         vsego = rezultat.get("total", len(nayden))
-        stroki = [f"Найдено {vsego} элементов по запросу «{request.query}»."]
+        lines = [f"Найдено {vsego} элементов по запросу «{request.query}»."]
         if vsego > len(nayden):
             # Повтор с бо́льшим limit возвращает те же первые элементы: смещения
             # у инструмента нет. Формулировка — та же, что в карточке омонимов.
@@ -134,15 +134,15 @@ async def handle_find_1c_help(
                 vyzov += f', object="{request.object}"'
             if request.kind.value != "any":
                 vyzov += f', kind="{request.kind.value}"'
-            stroki.append(sovet_ob_ostatke(
+            lines.append(sovet_ob_ostatke(
                 len(nayden), vsego, SEARCH_LIMIT_MAX, vyzov + ", limit={limit})",
             ))
-        stroki.append("")
-        stroki.extend(stroka_spiska(d) for d in nayden)
-        stroki.append("")
-        stroki.append("Полная карточка: get_1c_element(name=…, object=…)")
+        lines.append("")
+        lines.extend(stroka_spiska(d) for d in nayden)
+        lines.append("")
+        lines.append("Полная карточка: get_1c_element(name=…, object=…)")
 
-        return _tekst("\n".join(stroki))
+        return _tekst("\n".join(lines))
     except Exception as e:
         logger.error(f"find_1c_help: {e}")
         return mcp_formatter.create_error_response("Внутренняя ошибка поиска", str(e))
@@ -155,7 +155,7 @@ async def handle_get_1c_element(
     logger.info(f"get_1c_element: {request.name!r} object={request.object!r}")
     try:
         service = SearchService(es_client)
-        otvet = await service.kartochka_elementa(
+        otvet = await service.element_card(
             request.name, request.object, request.variant
         )
         vid = otvet.get("kind")
@@ -163,8 +163,8 @@ async def handle_get_1c_element(
         if vid == "card":
             doc = otvet["document"]
             if (doc.get("element_kind") or "") == "объект":
-                return _tekst(await sobrat_kartochku_obekta(service, doc))
-            return _tekst(kartochka(doc))
+                return _tekst(await build_object_card(service, doc))
+            return _tekst(render_element_card(doc))
 
         if vid == "ambiguous":
             return _tekst(spisok_kandidatov(
@@ -190,15 +190,15 @@ async def handle_get_1c_element(
 
         if vid == "not_found":
             pohozhie = otvet.get("similar") or []
-            stroki = [f"Элемент с точным именем «{request.name}» в справке не найден."]
+            lines = [f"Элемент с точным именем «{request.name}» в справке не найден."]
             if pohozhie:
-                stroki.append("Похожие по имени:")
-                stroki.extend(f"  {stroka_spiska(d)}" for d in pohozhie)
+                lines.append("Похожие по имени:")
+                lines.extend(f"  {stroka_spiska(d)}" for d in pohozhie)
             else:
-                stroki.append("Похожих по имени тоже нет — проверьте написание.")
-            return _tekst("\n".join(stroki))
+                lines.append("Похожих по имени тоже нет — проверьте написание.")
+            return _tekst("\n".join(lines))
 
-        # vid == "error": kartochka_elementa так помечает сбой Elasticsearch,
+        # vid == "error": element_card так помечает сбой Elasticsearch,
         # чтобы обрыв связи не выглядел как честное "не найдено".
         return mcp_formatter.create_error_response(
             "Ошибка получения карточки", otvet.get("error", "")
@@ -243,11 +243,11 @@ async def handle_list_1c_object_members(
                     'Попробуйте members="all", чтобы увидеть весь состав.'
                 )
 
-            # pohozhie_obekty вызывается здесь напрямую, вне try/except
-            # kartochka_elementa, поэтому сбой Elasticsearch внутри неё долетит
+            # similar_objects вызывается здесь напрямую, вне try/except
+            # element_card, поэтому сбой Elasticsearch внутри неё долетит
             # сюда как исключение — ловим его отдельно веткой ниже, а не
             # подменяем пустым списком: пустой список означал бы "похожих нет".
-            pohozhie = ", ".join(await service.pohozhie_obekty(request.object)) \
+            pohozhie = ", ".join(await service.similar_objects(request.object)) \
                 or "подходящих не найдено"
             return _tekst(
                 f"Объект «{request.object}» в справке не найден. "

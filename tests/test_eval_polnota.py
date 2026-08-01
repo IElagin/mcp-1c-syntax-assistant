@@ -213,7 +213,7 @@ class _PodstavnoyServis:
     def __init__(self, otvety):
         self._otvety = otvety
 
-    async def kartochka_elementa(self, imya):
+    async def element_card(self, imya):
         return self._otvety[imya]
 
 

@@ -41,7 +41,7 @@ VIDY_CHLENOV_OBEKTA = [
 ]
 
 
-def _nastoyashchiy_tip(imya_obekta) -> bool:
+def _is_real_type(imya_obekta) -> bool:
     """Похоже ли имя объекта на тип языка, а не на заголовок раздела справки.
 
     В справке под object лежат и типы («ТаблицаЗначений»), и разделы вида
@@ -89,7 +89,7 @@ class SearchService:
             # объект из запроса «Объект.Метод» не опознан. Он возвращал элементы
             # чужих объектов, не сообщая об этом, — агент принимал их за
             # запрошенные. Теперь пустая выдача остаётся пустой, а объяснение
-            # даёт kartochka_elementa через kind="object_not_found".
+            # даёт element_card через kind="object_not_found".
 
             if not response:
                 return {
@@ -342,7 +342,7 @@ class SearchService:
                 "error": str(e)
             }
 
-    async def kartochka_elementa(
+    async def element_card(
         self,
         name: str,
         object_name: Optional[str] = None,
@@ -363,7 +363,7 @@ class SearchService:
                     return {
                         "kind": "object_not_found",
                         "object": object_name,
-                        "similar": await self.pohozhie_obekty(object_name),
+                        "similar": await self.similar_objects(object_name),
                     }
 
             filtry = [{
@@ -390,7 +390,7 @@ class SearchService:
                 return {
                     "kind": "not_found",
                     "name": name,
-                    "similar": await self._pohozhie_elementy(name),
+                    "similar": await self._similar_members(name),
                 }
 
             dokumenty = [h["_source"] for h in hits]
@@ -449,7 +449,7 @@ class SearchService:
             [d.get("object") for d in dokumenty]
         )
         dokumenty.sort(key=lambda d: (
-            not _nastoyashchiy_tip(d.get("object")),
+            not _is_real_type(d.get("object")),
             -chleny.get(d.get("object") or "", 0),
             d.get("object") or "",
         ))
@@ -479,7 +479,7 @@ class SearchService:
     async def obekt_sushchestvuet(self, object_name: str) -> bool:
         """Есть ли в справке объект с таким именем.
 
-        Публичный метод: его зовёт и kartochka_elementa, и обработчик поиска —
+        Публичный метод: его зовёт и element_card, и обработчик поиска —
         пустая выдача find_1c_help при заданном object обязана отличать «нет
         такого элемента» от «нет такого объекта».
 
@@ -496,7 +496,7 @@ class SearchService:
         vsego = vsego.get("value", 0) if isinstance(vsego, dict) else (vsego or 0)
         return vsego > 0
 
-    async def pohozhie_obekty(self, object_name: str, limit: int = 5) -> List[str]:
+    async def similar_objects(self, object_name: str, limit: int = 5) -> List[str]:
         """Объекты с близким именем — вместо молчаливой подмены запроса.
 
         Искать нужно среди имён объектов, а не имён элементов: name_ru у
@@ -507,12 +507,12 @@ class SearchService:
         (type="object", 2506 штук) хранят имя объекта прямо в name_ru — их и
         матчим.
 
-        Публичный метод: его вызывает и kartochka_elementa, и напрямую
+        Публичный метод: его вызывает и element_card, и напрямую
         обработчик состава объекта (Task 13). Исключение ES здесь не
         перехватывается: пустой список — это ответ "похожих объектов нет",
         и подмена им сбоя связи сделала бы сбой неотличимым от честного
         отсутствия данных — ровно тот дефект, ради которого написана вся
-        задача. Пусть исключение поднимется к вызывающему: kartochka_elementa
+        задача. Пусть исключение поднимется к вызывающему: element_card
         превратит его в kind="error", а обработчик Task 13, вызывающий этот
         метод напрямую, получит то же исключение и не примет обрыв связи за
         "похожих нет, проверь написание".
@@ -537,12 +537,12 @@ class SearchService:
                 break
         return vidennye
 
-    async def _pohozhie_elementy(self, name: str, limit: int = 5) -> List[Dict[str, Any]]:
+    async def _similar_members(self, name: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Элементы с близким именем для ответа «точного совпадения нет».
 
-        Вызывается только из kartochka_elementa, внутри её try/except.
+        Вызывается только из element_card, внутри её try/except.
         Исключение здесь не перехватывается по той же причине, что и в
-        pohozhie_obekty: пустой список — это утверждение "похожих элементов
+        similar_objects: пустой список — это утверждение "похожих элементов
         нет", и подменять им сбой связи значит выдавать ложь за факт. Пусть
         поднимется наверх и станет честным kind="error".
         """

@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.elasticsearch import es_client
-from src.handlers.mcp_handlers import sobrat_kartochku_obekta
+from src.handlers.mcp_handlers import build_object_card
 from src.search.search_service import SearchService
 
 
@@ -25,7 +25,7 @@ from src.search.search_service import SearchService
 async def test_omonim_ne_vybiraetsya_molcha():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).kartochka_elementa("Количество")
+        otvet = await SearchService(es_client).element_card("Количество")
 
         assert otvet["kind"] == "ambiguous", otvet.get("kind")
         assert otvet["total"] > 100
@@ -40,7 +40,7 @@ async def test_omonim_ne_vybiraetsya_molcha():
 async def test_utochnennyy_obekt_daet_kartochku():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).kartochka_elementa(
+        otvet = await SearchService(es_client).element_card(
             "НайтиСтроки", "ТаблицаЗначений"
         )
 
@@ -62,7 +62,7 @@ async def test_nesushchestvuyushchiy_obekt_ne_podmenyaetsya_molcha():
     """
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).kartochka_elementa(
+        otvet = await SearchService(es_client).element_card(
             "Выполнить", "ФоновыеЗадания"
         )
 
@@ -79,7 +79,7 @@ async def test_kandidaty_nachinayutsya_s_nastoyashchih_tipov():
     """Настоящие типы важнее заголовков разделов справки вида «ОбъектМетаданных: Х»."""
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).kartochka_elementa("Количество")
+        otvet = await SearchService(es_client).element_card("Количество")
 
         pervyy = otvet["candidates"][0]["object"] or ""
         assert " " not in pervyy and ":" not in pervyy, pervyy
@@ -101,7 +101,7 @@ async def test_poryadok_kandidatov_stroitsya_po_vsem_sovpadeniyam():
     """
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).kartochka_elementa("Количество")
+        otvet = await SearchService(es_client).element_card("Количество")
 
         assert otvet["poryadok_polnyy"] is True, (
             "275 совпадений обязаны упорядочиваться целиком, а не окном"
@@ -147,7 +147,7 @@ async def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
         service = SearchService(es_client)
-        otvet = await service.kartochka_elementa("ТаблицаЗначений")
+        otvet = await service.element_card("ТаблицаЗначений")
 
         assert otvet["kind"] == "card", otvet.get("kind")
         put = otvet["document"]["full_path"]
@@ -178,13 +178,13 @@ async def test_sovet_kartochki_obekta_s_perekrytiem_ispolnim():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
         service = SearchService(es_client)
-        otvet = await service.kartochka_elementa(
+        otvet = await service.element_card(
             "<Имя внешнего источника>.<Имя куба>",
             "ВнешнийИсточникДанныхКубЗапись.<Имя внешнего источника>",
         )
         assert otvet["kind"] == "card", otvet.get("kind")
 
-        tekst = await sobrat_kartochku_obekta(service, otvet["document"])
+        tekst = await build_object_card(service, otvet["document"])
 
         sovet = re.search(r'list_1c_object_members\(object="(.+?)"\)', tekst)
         assert sovet, tekst
@@ -203,7 +203,7 @@ async def test_neizvestnoe_imya_daet_not_found_a_ne_pustuyu_kartochku():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
         imya = "ЗаведомоНесуществующееИмяЭлементаXYZ123Qwerty"
-        otvet = await SearchService(es_client).kartochka_elementa(imya)
+        otvet = await SearchService(es_client).element_card(imya)
 
         assert otvet["kind"] == "not_found"
         assert otvet["name"] == imya
@@ -226,13 +226,13 @@ async def test_neizvestnyy_variant_nazyvaet_sushchestvuyushchie_a_ne_vybiraet_mo
     try:
         service = SearchService(es_client)
 
-        ne_naiden = await service.kartochka_elementa(
+        ne_naiden = await service.element_card(
             "Выгрузить", "ДанныеФормыКоллекция", variant="НесуществующийВариант"
         )
         assert ne_naiden["kind"] == "variant_not_found"
         assert ne_naiden["variants"] == ["Выгрузить колонки", "Выгрузить по отбору"]
 
-        naiden = await service.kartochka_elementa(
+        naiden = await service.element_card(
             "Выгрузить", "ДанныеФормыКоллекция", variant="Выгрузить колонки"
         )
         assert naiden["kind"] == "card"
@@ -258,8 +258,8 @@ async def test_pohozhie_obekty_ishchet_sredi_imen_obektov_a_ne_elementov():
     try:
         service = SearchService(es_client)
 
-        assert await service.pohozhie_obekty("ТаблицыЗначений") == ["ТаблицаЗначений"]
-        assert await service.pohozhie_obekty("МенеджерФоновыхЗадания") == [
+        assert await service.similar_objects("ТаблицыЗначений") == ["ТаблицаЗначений"]
+        assert await service.similar_objects("МенеджерФоновыхЗадания") == [
             "МенеджерФоновыхЗаданий"
         ]
     finally:
