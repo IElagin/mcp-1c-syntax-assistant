@@ -28,21 +28,21 @@ def nodes_until_boundary(start, boundary_classes) -> list:
     приходилось добавлять в каждую копию отдельно — в двух она так и не
     появилась. Поэтому обход живёт здесь один.
     """
-    uzly = []
+    nodes = []
     elem = getattr(start, "next_sibling", None)
     while elem is not None:
         if getattr(elem, 'name', None) == 'hr':
             break
-        klassy = elem.get('class') or [] if hasattr(elem, 'get') else []
-        if any(klass in klassy for klass in boundary_classes):
+        css_classes = elem.get('class') or [] if hasattr(elem, 'get') else []
+        if any(css_class in css_classes for css_class in boundary_classes):
             break
-        uzly.append(elem)
+        nodes.append(elem)
         elem = elem.next_sibling
-    return uzly
+    return nodes
 
 
 # Вид элемента по-русски: агент читает карточку, а не enum индекса.
-VID_ELEMENTA = {
+ELEMENT_KIND_BY_TYPE = {
     DocumentType.GLOBAL_FUNCTION: "функция",
     DocumentType.GLOBAL_PROCEDURE: "процедура",
     DocumentType.GLOBAL_EVENT: "событие",
@@ -97,8 +97,8 @@ class HTMLParser:
             if doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
                 doc.object = self._extract_object_name_from_title(soup)
 
-            doc.element_kind = VID_ELEMENTA.get(doc.type, "")
-            doc.object_ru = self._izvlech_russkoe_imya_obekta(soup) or doc.object
+            doc.element_kind = ELEMENT_KIND_BY_TYPE.get(doc.type, "")
+            doc.object_ru = self._extract_russian_object_name(soup) or doc.object
             self._extract_element_sections(soup, doc)
 
             if doc.type == DocumentType.OBJECT_PROPERTY:
@@ -407,11 +407,11 @@ class HTMLParser:
         странице с вариантами заголовки «Синтаксис:» текстуально одинаковы, и
         поиск подстроки возвращал бы для каждого позицию первого.
         """
-        glavy = []
+        chapters = []
         for header in soup.find_all('p', class_='V8SH_chapter'):
             parts = [str(u) for u in nodes_until_boundary(header, ('V8SH_chapter',))]
-            glavy.append((header.get_text(strip=True), "".join(parts)))
-        return glavy
+            chapters.append((header.get_text(strip=True), "".join(parts)))
+        return chapters
 
     def _extract_element_sections(self, soup: BeautifulSoup, doc: Documentation):
         """Разделы, относящиеся к элементу целиком, а не к варианту вызова."""
@@ -466,7 +466,7 @@ class HTMLParser:
                 doc.value_type, doc.description = split_type_and_note(html)
             break
 
-    def _izvlech_russkoe_imya_obekta(self, soup: BeautifulSoup) -> Optional[str]:
+    def _extract_russian_object_name(self, soup: BeautifulSoup) -> Optional[str]:
         """«ТаблицаЗначений (ValueTable)» → «ТаблицаЗначений»."""
         title = soup.find('p', class_='V8SH_title')
         if not title:
@@ -484,7 +484,7 @@ class HTMLParser:
     # но искать его надо от пары <...>, что стоит прямо перед концом строки
     # (или перед флагом) — то есть от последней настоящей пары скобок, а не от
     # первой встречной: иначе на этом же случае теряется флаг обязательности.
-    _ZAGOLOVOK_PARAMETRA = re.compile(
+    _PARAMETER_HEADING_RE = re.compile(
         r'<\s*(?P<name>[^<>]*)\s*>\s*(?:\((?P<flag>обязательный|необязательный)\))?\s*\Z'
     )
 
@@ -494,7 +494,7 @@ class HTMLParser:
         BeautifulSoup уже превратил &lt; в <, поэтому имя ищется в угловых
         скобках. Обязательность None — справка о ней молчит.
         """
-        match = self._ZAGOLOVOK_PARAMETRA.search(text.replace('\xa0', ' '))
+        match = self._PARAMETER_HEADING_RE.search(text.replace('\xa0', ' '))
         if not match:
             return "", None
 
@@ -506,26 +506,26 @@ class HTMLParser:
             return name, False
         return name, None
 
-    def _razobrat_parametry(self, html: str):
+    def _parse_parameters(self, html: str):
         """Параметры одной главы «Параметры:»."""
         from bs4 import BeautifulSoup as BS
 
         sup = BS(html or "", 'html.parser')
-        parametry = []
+        params = []
         for rubric in sup.find_all('div', class_='V8SH_rubric'):
-            name, obyazatelnyy = self._parse_parameter_header(
+            name, is_required = self._parse_parameter_header(
                 rubric.get_text(' ', strip=True)
             )
             if not name:
                 continue
 
             parts = [str(u) for u in nodes_until_boundary(rubric, ('V8SH_rubric',))]
-            param_type, opisanie = split_type_and_note("".join(parts))
-            parametry.append(
-                Parameter(name=name, type=param_type, description=opisanie,
-                          required=obyazatelnyy)
+            param_type, description = split_type_and_note("".join(parts))
+            params.append(
+                Parameter(name=name, type=param_type, description=description,
+                          required=is_required)
             )
-        return parametry
+        return params
 
     def _extract_variants(self, soup: BeautifulSoup, doc: Documentation):
         """Собирает варианты вызова.
@@ -535,28 +535,28 @@ class HTMLParser:
         относится к элементу целиком.
         """
         parsed_variants = []
-        tekushchiy = None
+        current = None
 
-        def vzyat_tekushchiy():
-            nonlocal tekushchiy
-            if tekushchiy is None:
-                tekushchiy = SyntaxVariant()
-                parsed_variants.append(tekushchiy)
-            return tekushchiy
+        def take_current():
+            nonlocal current
+            if current is None:
+                current = SyntaxVariant()
+                parsed_variants.append(current)
+            return current
 
         for heading, html in self._chapters(soup):
             lowered = heading.lower().rstrip(':').strip()
 
             if lowered.startswith('вариант синтаксиса'):
                 variant_name = heading.split(':', 1)[1].strip() if ':' in heading else ""
-                tekushchiy = SyntaxVariant(variant=variant_name)
-                parsed_variants.append(tekushchiy)
+                current = SyntaxVariant(variant=variant_name)
+                parsed_variants.append(current)
             elif lowered == 'синтаксис':
-                vzyat_tekushchiy().syntax = normalize_whitespace(text_from_html(html))
+                take_current().syntax = normalize_whitespace(text_from_html(html))
             elif lowered.startswith('параметр'):
-                vzyat_tekushchiy().parameters = self._razobrat_parametry(html)
+                take_current().parameters = self._parse_parameters(html)
             elif lowered.startswith('возвращаемое значение'):
-                variant = vzyat_tekushchiy()
+                variant = take_current()
                 variant.return_type, variant.return_description = \
                     split_type_and_note(html)
 

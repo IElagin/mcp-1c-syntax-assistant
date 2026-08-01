@@ -4,8 +4,8 @@ from src.api.mcp_tools import KIND_TO_TYPE, SEARCH_LIMIT_MAX, MEMBERS_LIMIT_MAX
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.handlers.element_card import (
-    render_element_card, render_object_card, sovet_ob_ostatke, spisok_chlenov,
-    spisok_kandidatov, stroka_spiska,
+    render_element_card, render_object_card, hint_about_remainder, member_list,
+    candidate_list, list_line,
 )
 from src.handlers.mcp_formatter import mcp_formatter
 from src.models.mcp_models import (
@@ -26,11 +26,11 @@ MEMBER_KIND_RU = {
 }
 
 
-def _tekst(text: str) -> MCPResponse:
+def _text_response(text: str) -> MCPResponse:
     return mcp_formatter.create_success_response([{"type": "text", "text": text}])
 
 
-async def _pochemu_pusto(
+async def _why_empty(
     service: SearchService, request: Find1CHelpRequest
 ) -> str:
     """Почему выдача пуста: нет элемента, нет объекта или его убрал фильтр.
@@ -55,12 +55,12 @@ async def _pochemu_pusto(
                 f'list_1c_object_members(object="{request.object}").'
             )
         else:
-            pohozhie = ", ".join(await service.similar_objects(request.object)) \
+            similar = ", ".join(await service.similar_objects(request.object)) \
                 or "подходящих не найдено"
             lines.append(
                 f"Объект «{request.object}» в справке не найден — выдачу обнулил "
                 f"фильтр по нему, а не отсутствие элемента. "
-                f"Похожие объекты: {pohozhie}."
+                f"Похожие объекты: {similar}."
             )
             lines.append(
                 "Имя объекта в справке может отличаться от идентификатора в коде: "
@@ -97,10 +97,10 @@ async def build_object_card(service: SearchService, doc: dict) -> str:
     два независимых вычисления одного и того же расходились молча, и ответ
     печатал состав по одному ключу, а перечень предлагал по другому.
     """
-    klyuch = doc.get("full_path") or doc.get("object") or ""
-    kolichestva = await service.member_count(klyuch)
-    konstruktory = await service.constructor_lines(klyuch)
-    return render_object_card(doc, kolichestva, konstruktory, klyuch)
+    key = doc.get("full_path") or doc.get("object") or ""
+    counts = await service.member_count(key)
+    constructors = await service.constructor_lines(key)
+    return render_object_card(doc, counts, constructors, key)
 
 
 async def handle_find_1c_help(
@@ -110,39 +110,39 @@ async def handle_find_1c_help(
     logger.info(f"find_1c_help: {request.query!r} kind={request.kind.value}")
     try:
         service = SearchService(es_client)
-        rezultat = await service.find_help_filtered(
+        result = await service.find_help_filtered(
             request.query,
             KIND_TO_TYPE[request.kind.value],
             request.object,
             request.limit,
         )
 
-        if rezultat.get("error"):
-            return mcp_formatter.create_error_response("Ошибка поиска", rezultat["error"])
+        if result.get("error"):
+            return mcp_formatter.create_error_response("Ошибка поиска", result["error"])
 
-        nayden = rezultat.get("results", [])
-        if not nayden:
-            return _tekst(await _pochemu_pusto(service, request))
+        found = result.get("results", [])
+        if not found:
+            return _text_response(await _why_empty(service, request))
 
-        vsego = rezultat.get("total", len(nayden))
-        lines = [f"Найдено {vsego} элементов по запросу «{request.query}»."]
-        if vsego > len(nayden):
+        total = result.get("total", len(found))
+        lines = [f"Найдено {total} элементов по запросу «{request.query}»."]
+        if total > len(found):
             # Повтор с бо́льшим limit возвращает те же первые элементы: смещения
             # у инструмента нет. Формулировка — та же, что в карточке омонимов.
-            vyzov = f'find_1c_help(query="{request.query}"'
+            call = f'find_1c_help(query="{request.query}"'
             if request.object:
-                vyzov += f', object="{request.object}"'
+                call += f', object="{request.object}"'
             if request.kind.value != "any":
-                vyzov += f', kind="{request.kind.value}"'
-            lines.append(sovet_ob_ostatke(
-                len(nayden), vsego, SEARCH_LIMIT_MAX, vyzov + ", limit={limit})",
+                call += f', kind="{request.kind.value}"'
+            lines.append(hint_about_remainder(
+                len(found), total, SEARCH_LIMIT_MAX, call + ", limit={limit})",
             ))
         lines.append("")
-        lines.extend(stroka_spiska(d) for d in nayden)
+        lines.extend(list_line(d) for d in found)
         lines.append("")
         lines.append("Полная карточка: get_1c_element(name=…, object=…)")
 
-        return _tekst("\n".join(lines))
+        return _text_response("\n".join(lines))
     except Exception as e:
         logger.error(f"find_1c_help: {e}")
         return mcp_formatter.create_error_response("Внутренняя ошибка поиска", str(e))
@@ -155,53 +155,53 @@ async def handle_get_1c_element(
     logger.info(f"get_1c_element: {request.name!r} object={request.object!r}")
     try:
         service = SearchService(es_client)
-        otvet = await service.element_card(
+        response = await service.element_card(
             request.name, request.object, request.variant
         )
-        vid = otvet.get("kind")
+        kind = response.get("kind")
 
-        if vid == "card":
-            doc = otvet["document"]
+        if kind == "card":
+            doc = response["document"]
             if (doc.get("element_kind") or "") == "объект":
-                return _tekst(await build_object_card(service, doc))
-            return _tekst(render_element_card(doc))
+                return _text_response(await build_object_card(service, doc))
+            return _text_response(render_element_card(doc))
 
-        if vid == "ambiguous":
-            return _tekst(spisok_kandidatov(
-                otvet["name"], otvet["candidates"], otvet["total"],
-                otvet.get("poryadok_polnyy", True),
+        if kind == "ambiguous":
+            return _text_response(candidate_list(
+                response["name"], response["candidates"], response["total"],
+                response.get("full_order", True),
             ))
 
-        if vid == "object_not_found":
-            pohozhie = ", ".join(otvet["similar"]) or "подходящих не найдено"
-            return _tekst(
-                f"Объект «{otvet['object']}» в справке не найден, поэтому элемент "
-                f"«{request.name}» у него искать негде. Похожие объекты: {pohozhie}.\n"
+        if kind == "object_not_found":
+            similar = ", ".join(response["similar"]) or "подходящих не найдено"
+            return _text_response(
+                f"Объект «{response['object']}» в справке не найден, поэтому элемент "
+                f"«{request.name}» у него искать негде. Похожие объекты: {similar}.\n"
                 "Имя объекта в справке может отличаться от идентификатора в коде: "
                 "например, менеджер фоновых заданий зовётся МенеджерФоновыхЗаданий."
             )
 
-        if vid == "variant_not_found":
-            imena = ", ".join(f"«{i}»" for i in otvet["variants"] if i)
-            return _tekst(
+        if kind == "variant_not_found":
+            names = ", ".join(f"«{i}»" for i in response["variants"] if i)
+            return _text_response(
                 f"Варианта «{request.variant}» у элемента «{request.name}» нет. "
-                f"Доступные варианты: {imena or 'вариант единственный и без имени'}."
+                f"Доступные варианты: {names or 'вариант единственный и без имени'}."
             )
 
-        if vid == "not_found":
-            pohozhie = otvet.get("similar") or []
+        if kind == "not_found":
+            similar = response.get("similar") or []
             lines = [f"Элемент с точным именем «{request.name}» в справке не найден."]
-            if pohozhie:
+            if similar:
                 lines.append("Похожие по имени:")
-                lines.extend(f"  {stroka_spiska(d)}" for d in pohozhie)
+                lines.extend(f"  {list_line(d)}" for d in similar)
             else:
                 lines.append("Похожих по имени тоже нет — проверьте написание.")
-            return _tekst("\n".join(lines))
+            return _text_response("\n".join(lines))
 
-        # vid == "error": element_card так помечает сбой Elasticsearch,
+        # kind == "error": element_card так помечает сбой Elasticsearch,
         # чтобы обрыв связи не выглядел как честное "не найдено".
         return mcp_formatter.create_error_response(
-            "Ошибка получения карточки", otvet.get("error", "")
+            "Ошибка получения карточки", response.get("error", "")
         )
     except Exception as e:
         logger.error(f"get_1c_element: {e}")
@@ -215,14 +215,14 @@ async def handle_list_1c_object_members(
     logger.info(f"list_1c_object_members: {request.object!r} members={request.members.value}")
     try:
         service = SearchService(es_client)
-        rezultat = await service.get_object_members_list(
+        result = await service.get_object_members_list(
             request.object, request.members.value, request.limit
         )
 
-        if rezultat.get("error"):
-            return mcp_formatter.create_error_response("Ошибка", rezultat["error"])
+        if result.get("error"):
+            return mcp_formatter.create_error_response("Ошибка", result["error"])
 
-        if not rezultat.get("total"):
+        if not result.get("total"):
             # total=0 неоднозначно само по себе: объекта может не быть вовсе,
             # а может — он есть, просто нет элементов запрошенного вида
             # (например, "события" у ТаблицаЗначений — событий у неё нет, а
@@ -230,16 +230,16 @@ async def handle_list_1c_object_members(
             # случай от другого запросом object_exists — раньше оба случая
             # звучали как "объект не найден", и агент слышал это про объект,
             # который тут же значился в списке "похожих" на самого себя.
-            if rezultat.get("object_exists"):
-                vid = request.members.value
-                if vid == "all":
-                    return _tekst(
+            if result.get("object_exists"):
+                kind = request.members.value
+                if kind == "all":
+                    return _text_response(
                         f"Объект «{request.object}» в справке есть, но ни методов, "
                         "ни свойств, ни событий, ни конструкторов у него не найдено."
                     )
-                return _tekst(
+                return _text_response(
                     f"Объект «{request.object}» в справке есть, но "
-                    f"{MEMBER_KIND_RU[vid]} у него нет. "
+                    f"{MEMBER_KIND_RU[kind]} у него нет. "
                     'Попробуйте members="all", чтобы увидеть весь состав.'
                 )
 
@@ -247,20 +247,20 @@ async def handle_list_1c_object_members(
             # element_card, поэтому сбой Elasticsearch внутри неё долетит
             # сюда как исключение — ловим его отдельно веткой ниже, а не
             # подменяем пустым списком: пустой список означал бы "похожих нет".
-            pohozhie = ", ".join(await service.similar_objects(request.object)) \
+            similar = ", ".join(await service.similar_objects(request.object)) \
                 or "подходящих не найдено"
-            return _tekst(
+            return _text_response(
                 f"Объект «{request.object}» в справке не найден. "
-                f"Похожие объекты: {pohozhie}."
+                f"Похожие объекты: {similar}."
             )
 
-        return _tekst(spisok_chlenov(
+        return _text_response(member_list(
             request.object,
             request.members.value,
-            rezultat["methods"],
-            rezultat["properties"],
-            rezultat["events"],
-            rezultat["total"],
+            result["methods"],
+            result["properties"],
+            result["events"],
+            result["total"],
             MEMBERS_LIMIT_MAX,
         ))
     except Exception as e:

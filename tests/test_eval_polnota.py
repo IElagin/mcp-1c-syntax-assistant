@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from eval_search import neunikalnye_imena, zamer_odnoznachnosti, zamer_polnoty
+from eval_search import ambiguous_names, measure_completeness, measure_disambiguation
 
 
 @pytest.mark.unit
@@ -26,10 +26,10 @@ def test_protivorechie_obyazatelnosti_lovitsya():
         ]},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["param_protivorechie"] == 1
-    assert itogi["param_vsego"] == 2
+    assert totals["param_contradiction"] == 1
+    assert totals["param_total"] == 2
 
 
 @pytest.mark.unit
@@ -51,10 +51,10 @@ def test_metka_vnutri_opisaniya_ne_protivorechie():
         ]},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["param_protivorechie"] == 0
-    assert itogi["param_dubl_v_opisanii"] == 0
+    assert totals["param_contradiction"] == 0
+    assert totals["param_duplicated_in_description"] == 0
 
 
 @pytest.mark.unit
@@ -68,10 +68,10 @@ def test_tip_vozvrata_abzats_otlichaetsya_ot_tipa():
         ]},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["vozvrat_tip"] == 1
-    assert itogi["vozvrat_abzats"] == 1
+    assert totals["return_as_type"] == 1
+    assert totals["return_as_paragraph"] == 1
 
 
 @pytest.mark.unit
@@ -88,10 +88,10 @@ def test_perechislenie_tipov_cherez_zapyatuyu_eto_tip():
         ]},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["vozvrat_tip"] == 1
-    assert itogi["vozvrat_abzats"] == 0
+    assert totals["return_as_type"] == 1
+    assert totals["return_as_paragraph"] == 0
 
 
 @pytest.mark.unit
@@ -103,10 +103,10 @@ def test_dlinnoe_odnoslovnoe_imya_tipa_ne_rezhetsya_dlinoy():
         ]},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["vozvrat_tip"] == 1
-    assert itogi["vozvrat_abzats"] == 0
+    assert totals["return_as_type"] == 1
+    assert totals["return_as_paragraph"] == 0
 
 
 @pytest.mark.unit
@@ -119,10 +119,10 @@ def test_fraza_s_mnogoslovnymi_elementami_ne_tip():
         ]},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["vozvrat_tip"] == 0
-    assert itogi["vozvrat_abzats"] == 1
+    assert totals["return_as_type"] == 0
+    assert totals["return_as_paragraph"] == 1
 
 
 @pytest.mark.unit
@@ -134,15 +134,15 @@ def test_s_dostupnostyu_pustoy_spisok_ne_schitaetsya():
         {"type": "object_function"},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["s_dostupnostyu"] == 1
-    assert itogi["vsego"] == 3
+    assert totals["with_availability"] == 1
+    assert totals["total"] == 3
 
 
 @pytest.mark.unit
 def test_svoystv_s_tipom_i_dostupom_schitayutsya_tolko_u_svoystv():
-    """svoystv (и производные от него) считает только object_property.
+    """properties (и производные от него) считает только object_property.
 
     Функция или процедура с непустыми value_type/usage не должна попасть
     в счётчики свойств — этих полей у неё в модели просто нет.
@@ -153,11 +153,11 @@ def test_svoystv_s_tipom_i_dostupom_schitayutsya_tolko_u_svoystv():
         {"type": "object_function", "value_type": "Строка", "usage": "Чтение"},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["svoystv"] == 2
-    assert itogi["svoystv_s_tipom"] == 1
-    assert itogi["svoystv_s_dostupom"] == 1
+    assert totals["properties"] == 2
+    assert totals["properties_with_type"] == 1
+    assert totals["properties_with_usage"] == 1
 
 
 @pytest.mark.unit
@@ -170,9 +170,9 @@ def test_mnogo_variantov_schitaet_tolko_bolshe_odnogo():
         {"type": "object_function", "variants": [{"return_type": "Число"}]},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["mnogo_variantov"] == 1
+    assert totals["many_variants"] == 1
 
 
 @pytest.mark.unit
@@ -186,10 +186,10 @@ def test_param_bez_obyazatelnosti_tolko_dlya_none():
         ]},
     ]
 
-    itogi = zamer_polnoty(docs)
+    totals = measure_completeness(docs)
 
-    assert itogi["param_bez_obyazatelnosti"] == 1
-    assert itogi["param_vsego"] == 3
+    assert totals["param_without_required"] == 1
+    assert totals["param_total"] == 3
 
 
 @pytest.mark.unit
@@ -201,10 +201,10 @@ def test_neunikalnye_imena_nahodyatsya():
         {"name_ru": "НайтиСтроки", "object": "ТаблицаЗначений"},
     ]
 
-    omonimy = neunikalnye_imena(docs)
+    homonyms = ambiguous_names(docs)
 
-    assert omonimy["Количество"] == 2
-    assert "НайтиСтроки" not in omonimy
+    assert homonyms["Количество"] == 2
+    assert "НайтиСтроки" not in homonyms
 
 
 class _PodstavnoyServis:
@@ -220,7 +220,7 @@ class _PodstavnoyServis:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_zamer_odnoznachnosti_schitaet_po_kind():
-    """soobshchil/molcha_vybral считаются по полю kind, а не по факту вызова."""
+    """reported/chose_silently считаются по полю kind, а не по факту вызова."""
     docs = [
         {"name_ru": "Количество", "object": "Массив"},
         {"name_ru": "Количество", "object": "Структура"},
@@ -232,8 +232,8 @@ async def test_zamer_odnoznachnosti_schitaet_po_kind():
         "Найти": {"kind": "card"},
     })
 
-    itogi = await zamer_odnoznachnosti(service, docs, razmer=2)
+    totals = await measure_disambiguation(service, docs, size=2)
 
-    assert itogi["vsego"] == 2
-    assert itogi["soobshchil"] == 1
-    assert itogi["molcha_vybral"] == 1
+    assert totals["total"] == 2
+    assert totals["reported"] == 1
+    assert totals["chose_silently"] == 1

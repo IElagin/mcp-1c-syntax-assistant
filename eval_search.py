@@ -35,7 +35,7 @@ COMMON_1C_CALLS = [
 ]
 
 
-def razobrat_imya(name):
+def split_name(name):
     """Возвращает (русское, английское) из 'Добавить (Add)'."""
     m = NAME_RU_EN_RE.match(name or "")
     if m:
@@ -43,9 +43,9 @@ def razobrat_imya(name):
     return (name or "").strip(), None
 
 
-async def vzyat_etalon(razmer=150, seed=20260728):
+async def take_reference(size=150, seed=20260728):
     """Случайная выборка документов объектов — эталон для замера."""
-    otvet = await es_client.search({
+    response = await es_client.search({
         "size": 4000,
         "query": {"bool": {"filter": [
             {"terms": {"type": ["object_function", "object_procedure",
@@ -53,71 +53,72 @@ async def vzyat_etalon(razmer=150, seed=20260728):
         ]}},
         "_source": ["name", "object", "type", "full_path"],
     })
-    hits = (otvet or {}).get("hits", {}).get("hits", [])
+    hits = (response or {}).get("hits", {}).get("hits", [])
     docs = []
     for h in hits:
         s = h["_source"]
-        ru, en = razobrat_imya(s.get("name"))
-        if s.get("object") and ru:
-            docs.append({"ru": ru, "en": en, "object": s["object"]})
+        ru_name, en_name = split_name(s.get("name"))
+        if s.get("object") and ru_name:
+            docs.append({"ru_name": ru_name, "en_name": en_name,
+                         "object": s["object"]})
     random.Random(seed).shuffle(docs)
-    return docs[:razmer]
+    return docs[:size]
 
 
-def rang_popadaniya(rezultaty, ru, obj):
+def hit_rank(results, ru_name, obj):
     """Позиция нужного документа (1-based) или None."""
-    for i, r in enumerate(rezultaty, 1):
-        r_ru, _ = razobrat_imya(r.get("name"))
-        if r_ru == ru and r.get("object") == obj:
+    for i, r in enumerate(results, 1):
+        r_ru_name, _ = split_name(r.get("name"))
+        if r_ru_name == ru_name and r.get("object") == obj:
             return i
     return None
 
 
-async def zamer_po_etalonu(service, etalon, limit=10):
+async def measure_against_reference(service, reference, limit=10):
     """Ищем по имени и смотрим, на каком месте правильный документ."""
-    itogi = Counter()
-    promahi = []
+    totals = Counter()
+    misses = []
 
-    for d in etalon:
+    for d in reference:
         # Запрос ровно так, как его задаёт разработчик: голое имя метода
-        res = await service.find_help_by_query(d["ru"], limit=limit)
-        rezultaty = res.get("results", []) if not res.get("error") else []
+        res = await service.find_help_by_query(d["ru_name"], limit=limit)
+        results = res.get("results", []) if not res.get("error") else []
 
-        rang = rang_popadaniya(rezultaty, d["ru"], d["object"])
-        if rang == 1:
-            itogi["rank1"] += 1
-        if rang and rang <= 5:
-            itogi["rank5"] += 1
-        if rang:
-            itogi["rank10"] += 1
+        rank = hit_rank(results, d["ru_name"], d["object"])
+        if rank == 1:
+            totals["rank1"] += 1
+        if rank and rank <= 5:
+            totals["rank5"] += 1
+        if rank:
+            totals["rank10"] += 1
         else:
-            itogi["promah"] += 1
-            if not rezultaty:
-                itogi["pusto"] += 1
-            promahi.append(d)
-        itogi["vsego"] += 1
+            totals["miss"] += 1
+            if not results:
+                totals["empty"] += 1
+            misses.append(d)
+        totals["total"] += 1
 
-    return itogi, promahi
+    return totals, misses
 
 
-async def zamer_angliyskih(service, etalon, limit=10):
+async def measure_english_names(service, reference, limit=10):
     """Поиск по английскому имени — ValueIsFilled вместо ЗначениеЗаполнено."""
-    itogi = Counter()
-    for d in etalon:
-        if not d["en"]:
+    totals = Counter()
+    for d in reference:
+        if not d["en_name"]:
             continue
-        res = await service.find_help_by_query(d["en"], limit=limit)
-        rezultaty = res.get("results", []) if not res.get("error") else []
-        rang = rang_popadaniya(rezultaty, d["ru"], d["object"])
-        itogi["vsego"] += 1
-        if rang and rang <= 5:
-            itogi["rank5"] += 1
-        if not rezultaty:
-            itogi["pusto"] += 1
-    return itogi
+        res = await service.find_help_by_query(d["en_name"], limit=limit)
+        results = res.get("results", []) if not res.get("error") else []
+        rank = hit_rank(results, d["ru_name"], d["object"])
+        totals["total"] += 1
+        if rank and rank <= 5:
+            totals["rank5"] += 1
+        if not results:
+            totals["empty"] += 1
+    return totals
 
 
-def realnyy_tip(obj):
+def is_real_type(obj):
     """Похоже ли имя объекта на тип встроенного языка, а не на раздел справки.
 
     В справке под object лежат и настоящие типы (ТаблицаЗначений), и заголовки
@@ -128,31 +129,33 @@ def realnyy_tip(obj):
     return obj and " " not in obj and ":" not in obj
 
 
-async def zamer_tochechnoy_zapisi(service, etalon, limit=10):
+async def measure_dotted_notation(service, reference, limit=10):
     """Запрос вида 'ТаблицаЗначений.Добавить' — как пишут в коде.
 
     Считаем отдельно по настоящим типам: только их и пишут в коде точкой.
     """
-    itogi = Counter()
-    for d in etalon:
-        res = await service.find_help_by_query(f"{d['object']}.{d['ru']}", limit=limit)
-        rezultaty = res.get("results", []) if not res.get("error") else []
-        rang = rang_popadaniya(rezultaty, d["ru"], d["object"])
-        nastoyashchiy = realnyy_tip(d["object"])
+    totals = Counter()
+    for d in reference:
+        res = await service.find_help_by_query(
+            f"{d['object']}.{d['ru_name']}", limit=limit
+        )
+        results = res.get("results", []) if not res.get("error") else []
+        rank = hit_rank(results, d["ru_name"], d["object"])
+        is_real = is_real_type(d["object"])
 
-        itogi["vsego"] += 1
-        if nastoyashchiy:
-            itogi["vsego_realnyh"] += 1
-        if rang and rang <= 5:
-            itogi["rank5"] += 1
-            if nastoyashchiy:
-                itogi["rank5_realnyh"] += 1
-        if not rezultaty:
-            itogi["pusto"] += 1
-    return itogi
+        totals["total"] += 1
+        if is_real:
+            totals["total_real"] += 1
+        if rank and rank <= 5:
+            totals["rank5"] += 1
+            if is_real:
+                totals["rank5_real"] += 1
+        if not results:
+            totals["empty"] += 1
+    return totals
 
 
-async def zamer_tochnogo_imeni(service, etalon, limit=10):
+async def measure_exact_name(service, reference, limit=10):
     """Побеждает ли точное совпадение имени частичное.
 
     Метрика A измеряет попадание конкретной пары объект+имя и потому упирается
@@ -160,59 +163,59 @@ async def zamer_tochnogo_imeni(service, etalon, limit=10):
     ЭлементыZipФайла.Количество бессмысленно. Здесь вопрос иной и проверяемый:
     стоит ли на первом месте элемент ровно с запрошенным именем, чей угодно.
     """
-    itogi = Counter()
-    for d in etalon:
-        res = await service.find_help_by_query(d["ru"], limit=limit)
-        rezultaty = res.get("results", []) if not res.get("error") else []
-        itogi["vsego"] += 1
-        if not rezultaty:
+    totals = Counter()
+    for d in reference:
+        res = await service.find_help_by_query(d["ru_name"], limit=limit)
+        results = res.get("results", []) if not res.get("error") else []
+        totals["total"] += 1
+        if not results:
             continue
-        if razobrat_imya(rezultaty[0].get("name"))[0] == d["ru"]:
-            itogi["tochnoe_pervym"] += 1
-        if any(razobrat_imya(r.get("name"))[0] == d["ru"] for r in rezultaty[:5]):
-            itogi["tochnoe_v5"] += 1
-    return itogi
+        if split_name(results[0].get("name"))[0] == d["ru_name"]:
+            totals["exact_first"] += 1
+        if any(split_name(r.get("name"))[0] == d["ru_name"] for r in results[:5]):
+            totals["exact_in5"] += 1
+    return totals
 
 
-async def zamer_chastotnyh(service, limit=10):
+async def measure_common_calls(service, limit=10):
     """Частотные вызовы из реальной конфигурации 1С — хоть что-то находится?"""
-    itogi = Counter()
-    pustye = []
-    for imya in COMMON_1C_CALLS:
-        res = await service.find_help_by_query(imya, limit=limit)
-        rezultaty = res.get("results", []) if not res.get("error") else []
-        itogi["vsego"] += 1
-        if rezultaty:
-            itogi["nashlos"] += 1
+    totals = Counter()
+    empty_queries = []
+    for name in COMMON_1C_CALLS:
+        res = await service.find_help_by_query(name, limit=limit)
+        results = res.get("results", []) if not res.get("error") else []
+        totals["total"] += 1
+        if results:
+            totals["found"] += 1
             # точное совпадение имени в первой пятёрке
-            if any(razobrat_imya(r.get("name"))[0] == imya for r in rezultaty[:5]):
-                itogi["tochnoe_v5"] += 1
+            if any(split_name(r.get("name"))[0] == name for r in results[:5]):
+                totals["exact_in5"] += 1
         else:
-            pustye.append(imya)
-    return itogi, pustye
+            empty_queries.append(name)
+    return totals, empty_queries
 
 
-async def vzyat_vse_dokumenty(polya):
+async def take_all_documents(fields):
     """Выгружает весь индекс постранично через search_after."""
-    docs, posle = [], None
+    docs, after = [], None
     while True:
-        zapros = {
+        query = {
             "size": 1000,
             "query": {"match_all": {}},
-            "_source": polya,
+            "_source": fields,
             "sort": [{"id": "asc"}],
         }
-        if posle:
-            zapros["search_after"] = posle
-        otvet = await es_client.search(zapros)
-        hits = (otvet or {}).get("hits", {}).get("hits", [])
+        if after:
+            query["search_after"] = after
+        response = await es_client.search(query)
+        hits = (response or {}).get("hits", {}).get("hits", [])
         if not hits:
             return docs
         docs.extend(h["_source"] for h in hits)
-        posle = hits[-1]["sort"]
+        after = hits[-1]["sort"]
 
 
-def _pohozhe_na_tip(znachenie):
+def _looks_like_type(value):
     """Тип — перечисление типов через запятую, не абзац пояснения.
 
     Длину не мерим: настоящие имена типов 1С сами по себе бывают длиннее
@@ -224,26 +227,26 @@ def _pohozhe_na_tip(znachenie):
     'ТабличныйДокумент'), а во фразе вроде 'другой объект, который может быть
     макетом' у элементов внутри пробелы.
     """
-    tekst = (znachenie or "").strip()
-    if not tekst:
+    text = (value or "").strip()
+    if not text:
         return False
-    elementy = [e.strip() for e in tekst.rstrip(".").split(",")]
-    return all(e and " " not in e for e in elementy)
+    elements = [e.strip() for e in text.rstrip(".").split(",")]
+    return all(e and " " not in e for e in elements)
 
 
-def _varianty(doc):
+def _variant_list(doc):
     """Варианты вызова; у старой модели их нет, тогда — пустой список."""
     return doc.get("variants") or []
 
 
-def _parametry(doc):
+def _params(doc):
     """Параметры из вариантов, а у старой модели — с верхнего уровня."""
-    iz_variantov = [p for v in _varianty(doc) for p in (v.get("parameters") or [])]
-    return iz_variantov or (doc.get("parameters") or [])
+    from_variants = [p for v in _variant_list(doc) for p in (v.get("parameters") or [])]
+    return from_variants or (doc.get("parameters") or [])
 
 
-def _uchest_vozvrat(itogi, return_type):
-    """Классифицирует один непустой return_type и прибавляет в itogi.
+def _count_return_value(totals, return_type):
+    """Классифицирует один непустой return_type и прибавляет в totals.
 
     Общая точка для обеих моделей (тип внутри варианта и тип на верхнем
     уровне старой модели), чтобы правило классификации не разъезжалось
@@ -251,99 +254,99 @@ def _uchest_vozvrat(itogi, return_type):
     """
     if not return_type:
         return
-    if _pohozhe_na_tip(return_type):
-        itogi["vozvrat_tip"] += 1
+    if _looks_like_type(return_type):
+        totals["return_as_type"] += 1
     else:
-        itogi["vozvrat_abzats"] += 1
+        totals["return_as_paragraph"] += 1
 
 
-def zamer_polnoty(docs):
+def measure_completeness(docs):
     """Считает, чего в карточке не хватает и что в ней искажено."""
-    itogi = Counter()
+    totals = Counter()
     for d in docs:
-        tip = d.get("type") or ""
-        itogi["vsego"] += 1
+        type_name = d.get("type") or ""
+        totals["total"] += 1
 
         if d.get("availability"):
-            itogi["s_dostupnostyu"] += 1
+            totals["with_availability"] += 1
 
-        if tip == "object_property":
-            itogi["svoystv"] += 1
+        if type_name == "object_property":
+            totals["properties"] += 1
             if d.get("value_type"):
-                itogi["svoystv_s_tipom"] += 1
+                totals["properties_with_type"] += 1
             if d.get("usage"):
-                itogi["svoystv_s_dostupom"] += 1
+                totals["properties_with_usage"] += 1
 
-        for p in _parametry(d):
-            itogi["param_vsego"] += 1
-            opisanie = (p.get("description") or "").lstrip()
+        for p in _params(d):
+            totals["param_total"] += 1
+            description = (p.get("description") or "").lstrip()
             # Метка обязательности относится к самому параметру, только если
             # стоит префиксом его описания. Та же метка встречается и внутри
             # описания — 1С так помечает обязательность вложенных ключей
             # структуры-аргумента ('...ВыборГруппИЭлементов (необязательный) -
             # тип...'), и это не характеризует параметр, к которому она
             # приклеена вхождением где угодно.
-            neobyazatelnyy_prefiks = opisanie.startswith("(необязательный)")
-            obyazatelnyy_prefiks = opisanie.startswith("(обязательный)")
-            if p.get("required") is True and neobyazatelnyy_prefiks:
-                itogi["param_protivorechie"] += 1
+            optional_prefix = description.startswith("(необязательный)")
+            required_prefix = description.startswith("(обязательный)")
+            if p.get("required") is True and optional_prefix:
+                totals["param_contradiction"] += 1
             if not p.get("type"):
-                itogi["param_bez_tipa"] += 1
-            if obyazatelnyy_prefiks or neobyazatelnyy_prefiks:
-                itogi["param_dubl_v_opisanii"] += 1
+                totals["param_without_type"] += 1
+            if required_prefix or optional_prefix:
+                totals["param_duplicated_in_description"] += 1
             # Отдельно от противоречия: после чистки описаний противоречие
             # исчезнет само, а вот известна ли обязательность — вопрос
             # положительный, и его надо мерить прямо.
             if p.get("required") is None:
-                itogi["param_bez_obyazatelnosti"] += 1
+                totals["param_without_required"] += 1
 
-        for v in _varianty(d):
-            _uchest_vozvrat(itogi, v.get("return_type"))
+        for v in _variant_list(d):
+            _count_return_value(totals, v.get("return_type"))
 
         # Старая модель: тип возврата лежал на верхнем уровне
-        if not _varianty(d):
-            _uchest_vozvrat(itogi, d.get("return_type"))
+        if not _variant_list(d):
+            _count_return_value(totals, d.get("return_type"))
 
-        if len(_varianty(d)) > 1:
-            itogi["mnogo_variantov"] += 1
+        if len(_variant_list(d)) > 1:
+            totals["many_variants"] += 1
 
-    return itogi
+    return totals
 
 
-def neunikalnye_imena(docs):
+def ambiguous_names(docs):
     """Имена, встречающиеся больше одного раза, и сколько раз."""
-    schetchik = Counter(d.get("name_ru") for d in docs if d.get("name_ru"))
-    return {imya: n for imya, n in schetchik.items() if n > 1}
+    counter = Counter(d.get("name_ru") for d in docs if d.get("name_ru"))
+    return {name: n for name, n in counter.items() if n > 1}
 
 
-async def zamer_odnoznachnosti(service, docs, razmer=40, seed=20260730):
+async def measure_disambiguation(service, docs, size=40, seed=20260730):
     """Сообщает ли сервер о неоднозначности вместо молчаливого выбора.
 
     Берём имена-омонимы и просим карточку без указания объекта. Правильный
     ответ — не карточка, а перечень кандидатов: выбрать за агента один из
     275 одноимённых элементов сервер не вправе.
     """
-    omonimy = sorted(neunikalnye_imena(docs).items(), key=lambda p: -p[1])
-    vyborka = [imya for imya, _ in omonimy[:200]]
-    random.Random(seed).shuffle(vyborka)
-    vyborka = vyborka[:razmer]
+    homonyms = sorted(ambiguous_names(docs).items(), key=lambda p: -p[1])
+    sample = [name for name, _ in homonyms[:200]]
+    random.Random(seed).shuffle(sample)
+    sample = sample[:size]
 
-    itogi = Counter()
-    for imya in vyborka:
-        itogi["vsego"] += 1
-        otvet = await service.element_card(imya)
-        vid = (otvet or {}).get("kind")
-        if vid == "ambiguous":
-            itogi["soobshchil"] += 1
-        elif vid == "card":
-            itogi["molcha_vybral"] += 1
+    totals = Counter()
+    for name in sample:
+        totals["total"] += 1
+        response = await service.element_card(name)
+        kind = (response or {}).get("kind")
+        if kind == "ambiguous":
+            totals["reported"] += 1
+        elif kind == "card":
+            totals["chose_silently"] += 1
         else:
-            itogi["ne_nashel"] += 1
-    return itogi
+            totals["not_found"] += 1
+    return totals
 
 
-def protsent(chast, vsego):
-    return f"{100.0 * chast / vsego:5.1f}%" if vsego else "    н/д"
+def percent(part, total):
+    return f"{100.0 * part / total:5.1f}%" if total else "    н/д"
 
 
 async def main():
@@ -352,73 +355,73 @@ async def main():
         return 1
     try:
         service = SearchService(es_client)
-        etalon = await vzyat_etalon()
-        print(f"Эталон: {len(etalon)} элементов объектов из индекса\n")
+        reference = await take_reference()
+        print(f"Эталон: {len(reference)} элементов объектов из индекса\n")
 
-        itogi, promahi = await zamer_po_etalonu(service, etalon)
-        v = itogi["vsego"]
+        totals, misses = await measure_against_reference(service, reference)
+        v = totals["total"]
         print("== A. Поиск по русскому имени (голое имя метода) ==")
-        print(f"  найден на 1-м месте : {protsent(itogi['rank1'], v)}  ({itogi['rank1']}/{v})")
-        print(f"  найден в топ-5      : {protsent(itogi['rank5'], v)}  ({itogi['rank5']}/{v})")
-        print(f"  найден в топ-10     : {protsent(itogi['rank10'], v)}  ({itogi['rank10']}/{v})")
-        print(f"  НЕ найден вовсе     : {protsent(itogi['promah'], v)}  ({itogi['promah']}/{v})")
-        print(f"  из них пустой ответ : {itogi['pusto']}")
+        print(f"  найден на 1-м месте : {percent(totals['rank1'], v)}  ({totals['rank1']}/{v})")
+        print(f"  найден в топ-5      : {percent(totals['rank5'], v)}  ({totals['rank5']}/{v})")
+        print(f"  найден в топ-10     : {percent(totals['rank10'], v)}  ({totals['rank10']}/{v})")
+        print(f"  НЕ найден вовсе     : {percent(totals['miss'], v)}  ({totals['miss']}/{v})")
+        print(f"  из них пустой ответ : {totals['empty']}")
 
-        ang = await zamer_angliyskih(service, etalon)
+        english = await measure_english_names(service, reference)
         print("\n== B. Поиск по английскому имени ==")
-        print(f"  найден в топ-5      : {protsent(ang['rank5'], ang['vsego'])}  ({ang['rank5']}/{ang['vsego']})")
-        print(f"  пустой ответ        : {protsent(ang['pusto'], ang['vsego'])}  ({ang['pusto']}/{ang['vsego']})")
+        print(f"  найден в топ-5      : {percent(english['rank5'], english['total'])}  ({english['rank5']}/{english['total']})")
+        print(f"  пустой ответ        : {percent(english['empty'], english['total'])}  ({english['empty']}/{english['total']})")
 
-        tochnoe = await zamer_tochnogo_imeni(service, etalon)
+        exact = await measure_exact_name(service, reference)
         print("\n== A2. Точное имя побеждает частичное (без учёта объекта) ==")
-        print(f"  точное имя первым   : {protsent(tochnoe['tochnoe_pervym'], tochnoe['vsego'])}  ({tochnoe['tochnoe_pervym']}/{tochnoe['vsego']})")
-        print(f"  точное имя в топ-5  : {protsent(tochnoe['tochnoe_v5'], tochnoe['vsego'])}  ({tochnoe['tochnoe_v5']}/{tochnoe['vsego']})")
+        print(f"  точное имя первым   : {percent(exact['exact_first'], exact['total'])}  ({exact['exact_first']}/{exact['total']})")
+        print(f"  точное имя в топ-5  : {percent(exact['exact_in5'], exact['total'])}  ({exact['exact_in5']}/{exact['total']})")
 
-        tochka = await zamer_tochechnoy_zapisi(service, etalon)
+        dotted = await measure_dotted_notation(service, reference)
         print("\n== C. Точечная запись 'Объект.Метод' ==")
-        print(f"  найден в топ-5      : {protsent(tochka['rank5'], tochka['vsego'])}  ({tochka['rank5']}/{tochka['vsego']})")
-        print(f"  пустой ответ        : {protsent(tochka['pusto'], tochka['vsego'])}  ({tochka['pusto']}/{tochka['vsego']})")
+        print(f"  найден в топ-5      : {percent(dotted['rank5'], dotted['total'])}  ({dotted['rank5']}/{dotted['total']})")
+        print(f"  пустой ответ        : {percent(dotted['empty'], dotted['total'])}  ({dotted['empty']}/{dotted['total']})")
         print(f"  только по настоящим типам (как пишут в коде):")
-        print(f"    найден в топ-5    : {protsent(tochka['rank5_realnyh'], tochka['vsego_realnyh'])}  ({tochka['rank5_realnyh']}/{tochka['vsego_realnyh']})")
+        print(f"    найден в топ-5    : {percent(dotted['rank5_real'], dotted['total_real'])}  ({dotted['rank5_real']}/{dotted['total_real']})")
 
-        chastotnye, pustye = await zamer_chastotnyh(service)
+        common_calls, empty_queries = await measure_common_calls(service)
         print("\n== D. Частотные вызовы из реальной конфигурации 1С ==")
-        print(f"  хоть что-то нашлось : {protsent(chastotnye['nashlos'], chastotnye['vsego'])}  ({chastotnye['nashlos']}/{chastotnye['vsego']})")
-        print(f"  точное имя в топ-5  : {protsent(chastotnye['tochnoe_v5'], chastotnye['vsego'])}  ({chastotnye['tochnoe_v5']}/{chastotnye['vsego']})")
-        if pustye:
-            print(f"  пусто по запросам   : {', '.join(pustye)}")
+        print(f"  хоть что-то нашлось : {percent(common_calls['found'], common_calls['total'])}  ({common_calls['found']}/{common_calls['total']})")
+        print(f"  точное имя в топ-5  : {percent(common_calls['exact_in5'], common_calls['total'])}  ({common_calls['exact_in5']}/{common_calls['total']})")
+        if empty_queries:
+            print(f"  пусто по запросам   : {', '.join(empty_queries)}")
 
-        vse = await vzyat_vse_dokumenty([
+        all_docs = await take_all_documents([
             "type", "object", "name_ru", "parameters", "variants", "return_type",
             "availability", "usage", "value_type", "examples",
         ])
-        polnota = zamer_polnoty(vse)
-        v = polnota["vsego"]
+        completeness = measure_completeness(all_docs)
+        v = completeness["total"]
         print("\n== E. Полнота карточки ==")
-        print(f"  с доступностью      : {protsent(polnota['s_dostupnostyu'], v)}  ({polnota['s_dostupnostyu']}/{v})")
-        print(f"  свойств с типом     : {protsent(polnota['svoystv_s_tipom'], polnota['svoystv'])}  ({polnota['svoystv_s_tipom']}/{polnota['svoystv']})")
-        print(f"  свойств с доступом  : {protsent(polnota['svoystv_s_dostupom'], polnota['svoystv'])}  ({polnota['svoystv_s_dostupom']}/{polnota['svoystv']})")
-        print(f"  параметров всего    : {polnota['param_vsego']}")
-        print(f"    противоречий      : {polnota['param_protivorechie']}")
-        print(f"    без типа          : {polnota['param_bez_tipa']}")
-        print(f"    дубль в описании  : {polnota['param_dubl_v_opisanii']}")
-        print(f"    обязательность неизвестна: {polnota['param_bez_obyazatelnosti']}")
-        print(f"  возврат: тип        : {polnota['vozvrat_tip']}")
-        print(f"  возврат: абзац      : {polnota['vozvrat_abzats']}")
-        print(f"  элементов с >1 вариантом вызова: {polnota['mnogo_variantov']}")
+        print(f"  с доступностью      : {percent(completeness['with_availability'], v)}  ({completeness['with_availability']}/{v})")
+        print(f"  свойств с типом     : {percent(completeness['properties_with_type'], completeness['properties'])}  ({completeness['properties_with_type']}/{completeness['properties']})")
+        print(f"  свойств с доступом  : {percent(completeness['properties_with_usage'], completeness['properties'])}  ({completeness['properties_with_usage']}/{completeness['properties']})")
+        print(f"  параметров всего    : {completeness['param_total']}")
+        print(f"    противоречий      : {completeness['param_contradiction']}")
+        print(f"    без типа          : {completeness['param_without_type']}")
+        print(f"    дубль в описании  : {completeness['param_duplicated_in_description']}")
+        print(f"    обязательность неизвестна: {completeness['param_without_required']}")
+        print(f"  возврат: тип        : {completeness['return_as_type']}")
+        print(f"  возврат: абзац      : {completeness['return_as_paragraph']}")
+        print(f"  элементов с >1 вариантом вызова: {completeness['many_variants']}")
 
         try:
-            odnozn = await zamer_odnoznachnosti(service, vse)
+            disambig = await measure_disambiguation(service, all_docs)
             print("\n== F. Однозначность ==")
-            print(f"  сообщил о выборе    : {protsent(odnozn['soobshchil'], odnozn['vsego'])}  ({odnozn['soobshchil']}/{odnozn['vsego']})")
-            print(f"  выбрал молча        : {protsent(odnozn['molcha_vybral'], odnozn['vsego'])}  ({odnozn['molcha_vybral']}/{odnozn['vsego']})")
+            print(f"  сообщил о выборе    : {percent(disambig['reported'], disambig['total'])}  ({disambig['reported']}/{disambig['total']})")
+            print(f"  выбрал молча        : {percent(disambig['chose_silently'], disambig['total'])}  ({disambig['chose_silently']}/{disambig['total']})")
         except AttributeError:
             print("\n== F. Однозначность == (element_card ещё не реализована)")
 
-        if promahi:
+        if misses:
             print("\n== Примеры промахов набора A ==")
-            for d in promahi[:12]:
-                print(f"  {d['object']}.{d['ru']}")
+            for d in misses[:12]:
+                print(f"  {d['object']}.{d['ru_name']}")
         return 0
     finally:
         await es_client.disconnect()

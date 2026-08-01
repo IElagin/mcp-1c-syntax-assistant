@@ -18,7 +18,7 @@ CANDIDATES_IN_RESPONSE = 5
 # Сколько совпадений упорядочивать при омонимии. Самое многозначное имя
 # справки — «Количество», 275 документов, поэтому 500 покрывает индекс целиком:
 # порядок строится по всем совпадениям, а не по произвольному окну. Если
-# однажды имя перевалит за потолок, ответ об этом скажет (poryadok_polnyy).
+# однажды имя перевалит за потолок, ответ об этом скажет (full_order).
 CANDIDATES_CAP = 500
 
 # Поля, которых хватает строке списка. Карточке нужен документ целиком, а
@@ -402,7 +402,7 @@ class SearchService:
                     "name": name,
                     "candidates": candidates[:CANDIDATES_IN_RESPONSE],
                     "total": total,
-                    "poryadok_polnyy": total <= CANDIDATES_CAP,
+                    "full_order": total <= CANDIDATES_CAP,
                 }
 
             doc = documents[0]
@@ -471,9 +471,9 @@ class SearchService:
                 {"terms": {"type": OBJECT_MEMBER_KINDS}},
             ]}},
             "size": 0,
-            "aggs": {"po_obektu": {"terms": {"field": "object", "size": len(names)}}},
+            "aggs": {"by_object": {"terms": {"field": "object", "size": len(names)}}},
         })
-        buckets = (response or {}).get("aggregations", {}).get("po_obektu", {}).get("buckets", [])
+        buckets = (response or {}).get("aggregations", {}).get("by_object", {}).get("buckets", [])
         return {b["key"]: b["doc_count"] for b in buckets}
 
     async def object_exists(self, object_name: str) -> bool:

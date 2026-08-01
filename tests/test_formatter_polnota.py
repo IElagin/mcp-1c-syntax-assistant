@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.api.mcp_tools import MEMBERS_LIMIT_MAX
 from src.core.elasticsearch import es_client
-from src.handlers.element_card import spisok_chlenov
+from src.handlers.element_card import member_list
 from src.handlers.mcp_formatter import truncate_at_sentence
 from src.search.search_service import SearchService
 
@@ -96,9 +96,9 @@ def sostav(vid, metody=(), svoystva=(), sobytiya=(), vsego=None):
     elementy = list(metody), list(svoystva), list(sobytiya)
     if vsego is None:
         vsego = sum(len(s) for s in elementy)
-    return spisok_chlenov(
-        "ТаблицаЗначений", vid, *elementy, vsego=vsego,
-        predel_instrumenta=MEMBERS_LIMIT_MAX,
+    return member_list(
+        "ТаблицаЗначений", vid, *elementy, total=vsego,
+        tool_limit=MEMBERS_LIMIT_MAX,
     )
 
 
@@ -350,7 +350,7 @@ async def test_metody_za_dvadtsatym_vidny():
         service = SearchService(es_client)
         rezultat = await service.get_object_members_list("ТабличныйДокумент", "methods", limit=100)
 
-        text = spisok_chlenov(
+        text = member_list(
             "ТабличныйДокумент", "methods",
             rezultat["methods"], rezultat["properties"], rezultat["events"],
             rezultat["total"], MEMBERS_LIMIT_MAX,

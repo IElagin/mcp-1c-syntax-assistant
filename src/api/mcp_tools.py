@@ -14,9 +14,9 @@ SEARCH_LIMIT_DEFAULT = 10
 MEMBERS_LIMIT_DEFAULT = 100
 
 # Потолок limit для find_1c_help. Вынесен в константу, чтобы совет "вызовите
-# ещё раз с limit=N" (в mcp_handlers и в spisok_kandidatov) физически не мог
+# ещё раз с limit=N" (в mcp_handlers и в candidate_list) физически не мог
 # предложить число больше того, что схема готова принять: раньше карточка
-# советовала limit=vsego без оглядки на потолок, и для омонимов вроде
+# советовала limit=total без оглядки на потолок, и для омонимов вроде
 # «Количество» (275 совпадений) совет упирался в validation error схемы же.
 SEARCH_LIMIT_MAX = 200
 

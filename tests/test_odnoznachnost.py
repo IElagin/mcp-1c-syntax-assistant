@@ -103,7 +103,7 @@ async def test_poryadok_kandidatov_stroitsya_po_vsem_sovpadeniyam():
     try:
         otvet = await SearchService(es_client).element_card("Количество")
 
-        assert otvet["poryadok_polnyy"] is True, (
+        assert otvet["full_order"] is True, (
             "275 совпадений обязаны упорядочиваться целиком, а не окном"
         )
         obekty = [k.get("object") for k in otvet["candidates"]]

@@ -13,11 +13,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.handlers.element_card import (
-    NET_V_SPRAVKE,
+    NOT_IN_HELP,
     render_element_card,
     render_object_card,
-    spisok_kandidatov,
-    stroka_spiska,
+    candidate_list,
+    list_line,
 )
 
 # Реальный документ индекса: сам объект ТаблицаЗначений. variants у документов
@@ -107,7 +107,7 @@ KOLONKI = {
 
 # Реальный документ индекса (help1c_docs): Массив.По количеству элементов.
 # Единственный вариант вызова, но с непустым именем варианта — проверяет, что
-# карточка конструктора не путается с обобщённой веткой elif vid в _zagolovok.
+# карточка конструктора не путается с обобщённой веткой elif kind в _heading.
 MASSIV_PO_KOLICHESTVU_ELEMENTOV = {
     "name": "По количеству элементов",
     "name_ru": "По количеству элементов",
@@ -138,7 +138,7 @@ MASSIV_PO_KOLICHESTVU_ELEMENTOV = {
 # Реальный документ индекса: глобальное событие ПередНачаломРаботыСистемы
 # (type=global_event). Это единственный случай, где element_kind="событие"
 # реально ведёт себя иначе, чем "функция"/"процедура" — только у типа,
-# начинающегося с "global", _zagolovok добавляет «глобального контекста».
+# начинающегося с "global", _heading добавляет «глобального контекста».
 # Параметр несёт required=None — так размечено в самой справке.
 PERED_NACHALOM_RABOTY_SISTEMY = {
     "name": "ПередНачаломРаботыСистемы (BeforeStart)",
@@ -241,7 +241,7 @@ def test_kartochka_globalnogo_sobytiya_nazyvaet_kontekst():
 
     Единственное место, где element_kind="событие" отличается от
     "функция"/"процедура" в выводе — формулировка «глобального контекста»
-    в _zagolovok, включаемая только когда type начинается с "global". Если
+    в _heading, включаемая только когда type начинается с "global". Если
     убрать "событие" из кортежа ("функция", "процедура", "событие"), заголовок
     станет «событие объекта Глобальный контекст» вместо «событие глобального
     контекста» — эта строгая проверка формулировки поймает такую регрессию.
@@ -294,7 +294,7 @@ def test_neizvestnaya_obyazatelnost_ne_vydaetsya_za_obyazatelnost():
 
 @pytest.mark.unit
 def test_stroka_spiska_odna_stroka_i_neset_vyzov():
-    stroka = stroka_spiska(NAYTI_STROKI)
+    stroka = list_line(NAYTI_STROKI)
 
     assert "\n" not in stroka
     assert "ТаблицаЗначений.НайтиСтроки" in stroka
@@ -302,13 +302,13 @@ def test_stroka_spiska_odna_stroka_i_neset_vyzov():
 
 @pytest.mark.unit
 def test_stroka_spiska_soobshchaet_o_variantah():
-    stroka = stroka_spiska(UDALIT_DVA_VARIANTA)
+    stroka = list_line(UDALIT_DVA_VARIANTA)
     assert "вариантов вызова: 2" in stroka
 
 
 @pytest.mark.unit
 def test_spisok_kandidatov_nazyvaet_chislo_i_sposob_utochnit():
-    text = spisok_kandidatov("Количество", [NAYTI_STROKI, KOLONKI], vsego=275)
+    text = candidate_list("Количество", [NAYTI_STROKI, KOLONKI], total=275)
 
     assert "275" in text
     assert "get_1c_element" in text
@@ -324,7 +324,7 @@ def test_zagolovok_kandidatov_ne_obeshchaet_veroyatnosti():
     «Наиболее вероятные» были заявкой без покрытия: окно набиралось
     фильтрующим запросом с равными оценками, а сортировка шла по алфавиту.
     """
-    text = spisok_kandidatov("Количество", [NAYTI_STROKI, KOLONKI], vsego=275)
+    text = candidate_list("Количество", [NAYTI_STROKI, KOLONKI], total=275)
 
     assert "Наиболее вероятные" not in text
     assert "числом элементов в справке" in text
@@ -333,8 +333,8 @@ def test_zagolovok_kandidatov_ne_obeshchaet_veroyatnosti():
 @pytest.mark.unit
 def test_kandidaty_govoryat_kogda_poryadok_ne_po_vsem_sovpadeniyam():
     """Если упорядочены не все совпадения — об этом сказано, а не умолчано."""
-    text = spisok_kandidatov(
-        "Количество", [NAYTI_STROKI], vsego=900, poryadok_polnyy=False
+    text = candidate_list(
+        "Количество", [NAYTI_STROKI], total=900, full_order=False
     )
 
     assert "не по всем совпадениям" in text
@@ -365,7 +365,7 @@ def test_kartochka_obekta_nazyvaet_konstruktory():
 
     assert "Конструкторы:" in text
     assert "Новый ТаблицаЗначений" in text
-    assert NET_V_SPRAVKE not in text.split("Описание:")[0]
+    assert NOT_IN_HELP not in text.split("Описание:")[0]
 
 
 @pytest.mark.unit
@@ -378,7 +378,7 @@ def test_kartochka_obekta_bez_konstruktorov_govorit_eto_tolko_posle_proverki():
     proveryali = render_object_card(OBEKT_TABLITSA_ZNACHENIY, {}, [])
     ne_proveryali = render_object_card(OBEKT_TABLITSA_ZNACHENIY, {})
 
-    assert f"Конструкторы: {NET_V_SPRAVKE}" in proveryali
+    assert f"Конструкторы: {NOT_IN_HELP}" in proveryali
     assert "Конструкторы: не проверялись" in ne_proveryali
 
 
