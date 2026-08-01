@@ -24,14 +24,14 @@ def split_name_ru_en(name: Optional[str]) -> Tuple[str, Optional[str]]:
     документы самих объектов ("ТаблицаЗначений") и разделы вида
     "ОбъектМетаданных: Измерение".
     """
-    imya = (name or "").strip()
-    if not imya:
+    stripped = (name or "").strip()
+    if not stripped:
         return "", None
 
-    sovpadenie = _NAME_RU_EN_RE.match(imya)
-    if sovpadenie:
-        return sovpadenie.group("ru").strip(), sovpadenie.group("en").strip()
-    return imya, None
+    match = _NAME_RU_EN_RE.match(stripped)
+    if match:
+        return match.group("ru").strip(), match.group("en").strip()
+    return stripped, None
 
 
 class ElasticsearchIndexer:

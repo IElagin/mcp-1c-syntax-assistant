@@ -94,10 +94,10 @@ class Documentation(BaseModel):
 
     def name_ru(self) -> str:
         """Русская часть имени: из «Добавить (Add)» — «Добавить»."""
-        imya = (self.name or "").strip()
-        if imya.endswith(')') and ' (' in imya:
-            return imya.rsplit(' (', 1)[0].strip()
-        return imya
+        name = (self.name or "").strip()
+        if name.endswith(')') and ' (' in name:
+            return name.rsplit(' (', 1)[0].strip()
+        return name
 
     # ClassVar — иначе pydantic 2 примет присвоение без аннотации типа за
     # попытку объявить поле модели и упадёт с PydanticUserError.
@@ -107,7 +107,7 @@ class Documentation(BaseModel):
         DocumentType.GLOBAL_EVENT,
     )
 
-    def _put_obekta(self, imya: str) -> str:
+    def _object_path(self, name: str) -> str:
         """Канонический путь документа объекта (спека §4.1).
 
         У 2 286 из 2 506 объектов поле object равно имени страницы, и общая
@@ -131,14 +131,14 @@ class Documentation(BaseModel):
         начало «ТаблицаЗначений», а это разные имена.
         """
         if not self.object:
-            return imya
+            return name
 
-        segmenty = self.object.split(".")
-        for i in range(len(segmenty)):
-            hvost = ".".join(segmenty[i:])
-            if imya == hvost or imya.startswith(hvost + "."):
-                return ".".join(segmenty[:i] + [imya])
-        return f"{self.object}.{imya}"
+        segments = self.object.split(".")
+        for i in range(len(segments)):
+            tail = ".".join(segments[i:])
+            if name == tail or name.startswith(tail + "."):
+                return ".".join(segments[:i] + [name])
+        return f"{self.object}.{name}"
 
     def build_call_strings(self):
         """Заполняет строки вызова и канонический путь.
@@ -147,20 +147,20 @@ class Documentation(BaseModel):
         (ValueIsFilled)» — агент мог принять это за код вызова. Канонический
         путь не содержит ни английского имени, ни технического Global context.
         """
-        imya = self.name_ru()
+        name = self.name_ru()
 
         if self.type in self.GLOBAL_TYPES:
-            self.full_path = imya
+            self.full_path = name
         elif self.type == DocumentType.OBJECT:
-            self.full_path = self._put_obekta(imya)
+            self.full_path = self._object_path(name)
         elif self.object:
-            self.full_path = f"{self.object}.{imya}"
+            self.full_path = f"{self.object}.{name}"
         else:
-            self.full_path = imya
+            self.full_path = name
 
         for variant in self.variants:
             if self.type == DocumentType.OBJECT_CONSTRUCTOR:
-                variant.call = variant.syntax or f"Новый {self.object or imya}"
+                variant.call = variant.syntax or f"Новый {self.object or name}"
             elif self.type in self.GLOBAL_TYPES:
                 variant.call = variant.syntax
             elif self.object and variant.syntax:

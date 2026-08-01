@@ -1,11 +1,11 @@
-"""Регрессионные тесты фильтра по объекту в find_help_by_query_s_filtrom.
+"""Регрессионные тесты фильтра по объекту в find_help_filtered.
 
 Дефект: фильтр по object_name складывался с фильтрами по типу элемента в один
 bool.should, то есть через ИЛИ. Любой объектный метод удовлетворял условию по
 типу, и ограничение по объекту не сужало выборку — параметр молча не работал.
 Инструмент search_by_context, который проверял этот файл, упразднён (Task 13):
 его роль перешла к find_1c_help вместе с методом сервиса
-find_help_by_query_s_filtrom.
+find_help_filtered.
 """
 
 import sys
@@ -32,8 +32,8 @@ async def test_filtr_po_obektu_suzhaet_vyborku():
     try:
         service = SearchService(es_client)
 
-        bez_filtra = await service.find_help_by_query_s_filtrom("Количество", [], None, 20)
-        s_filtrom = await service.find_help_by_query_s_filtrom(
+        bez_filtra = await service.find_help_filtered("Количество", [], None, 20)
+        s_filtrom = await service.find_help_filtered(
             "Количество", ["object_function"], "ТаблицаЗначений", 20
         )
 

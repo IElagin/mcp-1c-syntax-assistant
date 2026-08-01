@@ -23,17 +23,17 @@ logger = get_logger(__name__)
 
 # Перечень имён берётся из enum, а не переписывается рядом: разойдясь, копия
 # советовала бы агенту имя, которого маршрутизатор не знает.
-IMENA_INSTRUMENTOV = tuple(t.value for t in MCPToolType)
+TOOL_NAMES = tuple(t.value for t in MCPToolType)
 
 
-def oshibka_vyzova(request_id, soobshchenie: str) -> JSONResponse:
+def call_error(request_id, message: str) -> JSONResponse:
     """JSON-RPC -32602: виноват вызов, а не сервер."""
     return JSONResponse(
         status_code=400,
         content={
             "jsonrpc": "2.0",
             "id": request_id,
-            "error": {"code": -32602, "message": soobshchenie},
+            "error": {"code": -32602, "message": message},
         },
     )
 
@@ -125,7 +125,7 @@ async def mcp_jsonrpc_endpoint(
         # Обрабатываем tools/call запрос
         elif method == "tools/call":
             if not isinstance(params, dict):
-                return oshibka_vyzova(request_id, "params must be an object")
+                return call_error(request_id, "params must be an object")
 
             tool_name = params.get("name")
             arguments = params.get("arguments", {})
@@ -137,15 +137,15 @@ async def mcp_jsonrpc_endpoint(
             # читает «internal error» как «сервер сломался» и бросает попытки,
             # хотя чинилось это им самим — заменой имени. По MCP неизвестный
             # инструмент и негодные аргументы — протокольная ошибка -32602.
-            if tool_name not in IMENA_INSTRUMENTOV:
-                return oshibka_vyzova(
+            if tool_name not in TOOL_NAMES:
+                return call_error(
                     request_id,
                     f"Unknown tool: {tool_name}. "
-                    f"Available tools: {', '.join(IMENA_INSTRUMENTOV)}",
+                    f"Available tools: {', '.join(TOOL_NAMES)}",
                 )
 
             if not isinstance(arguments, dict):
-                return oshibka_vyzova(
+                return call_error(
                     request_id,
                     f"arguments must be an object for tool {tool_name}",
                 )
@@ -155,19 +155,19 @@ async def mcp_jsonrpc_endpoint(
 
             # Вызываем наш существующий обработчик
             result = await mcp_endpoint_handler(mcp_request, es_client)
-            oshibka = getattr(result, "error", None)
+            error = getattr(result, "error", None)
 
             # Раньше здесь всегда стояло isError: false, а content при ошибке
             # был пуст — агент получал «успешный пустой ответ» и не понимал,
             # что случилось.
-            soderzhimoe = result.content if not oshibka else [
-                {"type": "text", "text": oshibka}
+            content = result.content if not error else [
+                {"type": "text", "text": error}
             ]
 
             return JSONResponse(content={
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "result": {"content": soderzhimoe, "isError": bool(oshibka)},
+                "result": {"content": content, "isError": bool(error)},
             })
 
         else:

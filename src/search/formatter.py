@@ -16,16 +16,16 @@ class SearchFormatter:
         self, ranked_results: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Документы с метаинформацией о ранжировании."""
-        rezultaty = []
+        results = []
         for result in ranked_results:
             doc = dict(result["document"])
             doc["_score"] = round(result["score"], 3)
-            doc["_relevance"] = self._uroven_relevantnosti(result["score"])
-            rezultaty.append(doc)
-        return rezultaty
+            doc["_relevance"] = self._relevance_level(result["score"])
+            results.append(doc)
+        return results
 
     @staticmethod
-    def _uroven_relevantnosti(score: float) -> str:
+    def _relevance_level(score: float) -> str:
         """Словесная оценка релевантности."""
         if score >= 10.0:
             return "very_high"

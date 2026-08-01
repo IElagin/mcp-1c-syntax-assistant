@@ -130,7 +130,7 @@ class SearchRanker:
         """Фактор полноты информации."""
         completeness_score = 1.0
 
-        varianty = doc.get("variants") or []
+        variant_list = doc.get("variants") or []
 
         # Бонус за наличие синтаксиса. syntax_ru/syntax_en ушли вместе со
         # старой моделью — call_primary (готовая строка вызова) и syntax_all
@@ -140,13 +140,13 @@ class SearchRanker:
 
         # Бонус за наличие параметров. Параметры лежат внутри вариантов
         # вызова (Task 7), а не плоским списком в документе.
-        parametry = [p for v in varianty for p in (v.get("parameters") or [])]
-        if parametry:
+        params = [p for v in variant_list for p in (v.get("parameters") or [])]
+        if params:
             completeness_score += 0.2
             # Дополнительный бонус за описания параметров
-            s_opisaniem = sum(1 for p in parametry if p.get("description"))
-            if s_opisaniem:
-                completeness_score += 0.1 * (s_opisaniem / len(parametry))
+            with_description = sum(1 for p in params if p.get("description"))
+            if with_description:
+                completeness_score += 0.1 * (with_description / len(params))
 
         # Бонус за примеры
         if doc.get("examples"):
@@ -154,24 +154,24 @@ class SearchRanker:
 
         # Бонус за тип возвращаемого значения: у методов он лежит в варианте
         # вызова (return_type), у свойств — в value_type документа.
-        if any(v.get("return_type") for v in varianty) or doc.get("value_type"):
+        if any(v.get("return_type") for v in variant_list) or doc.get("value_type"):
             completeness_score += 0.1
 
         return completeness_score
 
     def _syntax_match_factor(self, doc: Dict[str, Any], query: str) -> float:
         """Фактор соответствия по синтаксису."""
-        sintaksis = (doc.get("syntax_all") or "").lower()
+        syntax = (doc.get("syntax_all") or "").lower()
         query_lower = query.lower()
 
         # Проверяем вхождение запроса в синтаксис
-        if query_lower in sintaksis:
+        if query_lower in syntax:
             return 1.4
 
         # Проверяем частичное совпадение
         query_parts = query_lower.split()
         if len(query_parts) > 1:
-            matches = sum(1 for part in query_parts if part in sintaksis)
+            matches = sum(1 for part in query_parts if part in syntax)
             if matches:
                 return 1.0 + (matches / len(query_parts)) * 0.3
 

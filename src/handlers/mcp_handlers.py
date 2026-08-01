@@ -45,10 +45,10 @@ async def _pochemu_pusto(
     lines = [f"По запросу «{request.query}» ничего не найдено."]
 
     if request.object:
-        # Исключение из obekt_sushchestvuet и similar_objects намеренно не
+        # Исключение из object_exists и similar_objects намеренно не
         # глушится: сбой Elasticsearch долетит до внешнего except обработчика и
         # станет ошибкой, а не тихим «объекта нет».
-        if await service.obekt_sushchestvuet(request.object):
+        if await service.object_exists(request.object):
             lines.append(
                 f"Объект «{request.object}» в справке есть, но подходящих "
                 "элементов у него не нашлось. Весь его состав: "
@@ -98,8 +98,8 @@ async def build_object_card(service: SearchService, doc: dict) -> str:
     печатал состав по одному ключу, а перечень предлагал по другому.
     """
     klyuch = doc.get("full_path") or doc.get("object") or ""
-    kolichestva = await service.kolichestvo_chlenov(klyuch)
-    konstruktory = await service.stroki_konstruktorov(klyuch)
+    kolichestva = await service.member_count(klyuch)
+    konstruktory = await service.constructor_lines(klyuch)
     return render_object_card(doc, kolichestva, konstruktory, klyuch)
 
 
@@ -110,7 +110,7 @@ async def handle_find_1c_help(
     logger.info(f"find_1c_help: {request.query!r} kind={request.kind.value}")
     try:
         service = SearchService(es_client)
-        rezultat = await service.find_help_by_query_s_filtrom(
+        rezultat = await service.find_help_filtered(
             request.query,
             KIND_TO_TYPE[request.kind.value],
             request.object,

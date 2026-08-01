@@ -28,9 +28,9 @@ class QueryBuilder:
             search_type = self._detect_search_type(query)
         
         if search_type == "qualified":
-            razobrano = self.razobrat_kvalifitsirovannoe_imya(query)
-            if razobrano:
-                return self.build_qualified_query(*razobrano, limit=limit)
+            parsed = self.parse_qualified_name(query)
+            if parsed:
+                return self.build_qualified_query(*parsed, limit=limit)
             return self._build_exact_search(query, limit)
         elif search_type == "exact":
             return self._build_exact_search(query, limit)
@@ -79,21 +79,21 @@ class QueryBuilder:
         }
     
     @staticmethod
-    def razobrat_kvalifitsirovannoe_imya(query: str):
+    def parse_qualified_name(query: str):
         """Разбирает 'ТаблицаЗначений.Добавить' на объект и элемент.
 
         Возвращает (объект, элемент) либо None, если запрос не похож на
         обращение к элементу объекта.
         """
-        tekst = (query or "").strip()
-        if tekst.count(".") != 1 or " " in tekst:
+        text = (query or "").strip()
+        if text.count(".") != 1 or " " in text:
             return None
 
-        obekt, _, element = tekst.partition(".")
-        obekt, element = obekt.strip(), element.strip()
-        if not obekt or not element:
+        obj, _, element = text.partition(".")
+        obj, element = obj.strip(), element.strip()
+        if not obj or not element:
             return None
-        return obekt, element
+        return obj, element
 
     def build_qualified_query(
         self,
@@ -130,7 +130,7 @@ class QueryBuilder:
     def _detect_search_type(self, query: str) -> str:
         """Автоматически определяет тип поиска по запросу."""
         # Обращение к элементу объекта: 'ТаблицаЗначений.Добавить'
-        if self.razobrat_kvalifitsirovannoe_imya(query):
+        if self.parse_qualified_name(query):
             return "qualified"
 
         # Точный поиск - если запрос короткий и не содержит пробелов

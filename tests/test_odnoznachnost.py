@@ -127,10 +127,10 @@ async def test_konstruktory_berutsya_iz_otdelnyh_dokumentov():
     try:
         service = SearchService(es_client)
 
-        assert await service.stroki_konstruktorov("ТаблицаЗначений") == [
+        assert await service.constructor_lines("ТаблицаЗначений") == [
             "Новый ТаблицаЗначений"
         ]
-        assert await service.stroki_konstruktorov("ТаблицаЗначенийБезКонструкторов") == []
+        assert await service.constructor_lines("ТаблицаЗначенийБезКонструкторов") == []
     finally:
         await es_client.disconnect()
 
