@@ -21,8 +21,10 @@ from src.search.search_service import SearchService
 # name в индексе хранится как "Добавить (Add)" — русское и английское имя слитно
 IMYA_RU_EN = re.compile(r"^(.+?)\s+\(([A-Za-z][A-Za-z0-9.]*)\)$")
 
-# Реальная частотность вызовов из рабочей конфигурации (rg по *.bsl)
-CHASTOTNYE_VYZOVY = [
+# Частотные вызовы из реальной конфигурации 1С: список собран поиском по *.bsl
+# рабочей базы и отсортирован по убыванию числа вхождений. Замер на нём ближе к
+# практике, чем равномерная выборка по индексу.
+COMMON_1C_CALLS = [
     "Добавить", "Вставить", "УстановитьПараметр", "Выполнить", "Количество",
     "Выбрать", "Следующий", "Записать", "Найти", "Свойство", "Выгрузить",
     "Получить", "НайтиПоКоду", "Очистить", "Сообщить", "ПолучитьОбъект",
@@ -173,10 +175,10 @@ async def zamer_tochnogo_imeni(service, etalon, limit=10):
 
 
 async def zamer_chastotnyh(service, limit=10):
-    """Частотные вызовы из реального кода рабочей конфигурации — хоть что-то находится?"""
+    """Частотные вызовы из реальной конфигурации 1С — хоть что-то находится?"""
     itogi = Counter()
     pustye = []
-    for imya in CHASTOTNYE_VYZOVY:
+    for imya in COMMON_1C_CALLS:
         res = await service.find_help_by_query(imya, limit=limit)
         rezultaty = res.get("results", []) if not res.get("error") else []
         itogi["vsego"] += 1
@@ -380,7 +382,7 @@ async def main():
         print(f"    найден в топ-5    : {protsent(tochka['rank5_realnyh'], tochka['vsego_realnyh'])}  ({tochka['rank5_realnyh']}/{tochka['vsego_realnyh']})")
 
         chastotnye, pustye = await zamer_chastotnyh(service)
-        print("\n== D. Частотные вызовы из кода рабочей конфигурации ==")
+        print("\n== D. Частотные вызовы из реальной конфигурации 1С ==")
         print(f"  хоть что-то нашлось : {protsent(chastotnye['nashlos'], chastotnye['vsego'])}  ({chastotnye['nashlos']}/{chastotnye['vsego']})")
         print(f"  точное имя в топ-5  : {protsent(chastotnye['tochnoe_v5'], chastotnye['vsego'])}  ({chastotnye['tochnoe_v5']}/{chastotnye['vsego']})")
         if pustye:
