@@ -170,7 +170,7 @@ def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
 
     doc = Documentation(id="", type=DocumentType.OBJECT, name="ТаблицаЗначений",
                         object="ТаблицаЗначений")
-    doc.sobrat_vyzovy()
+    doc.build_call_strings()
 
     assert doc.full_path == "ТаблицаЗначений"
 
@@ -189,6 +189,6 @@ def test_kanonicheskiy_put_obekta_s_shablonnym_imenem_sohranyaet_tip():
     doc = Documentation(id="", type=DocumentType.OBJECT,
                         name="<Имя плана видов расчета>",
                         object="БазовыеВидыРасчета")
-    doc.sobrat_vyzovy()
+    doc.build_call_strings()
 
     assert doc.full_path == "БазовыеВидыРасчета.<Имя плана видов расчета>"

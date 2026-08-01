@@ -206,7 +206,7 @@ def test_dokument_indeksa_neset_dostupnost_i_varianty():
             return_description="Массив строк.",
         )],
     )
-    doc.sobrat_vyzovy()
+    doc.build_call_strings()
 
     es_doc = ElasticsearchIndexer(None)._prepare_document(doc)
 
@@ -234,7 +234,7 @@ def test_svoystvo_neset_tip_i_dostup():
         value_type="КоллекцияКолонокТаблицыЗначений", usage="только чтение",
         description="Содержит коллекцию колонок.",
     )
-    doc.sobrat_vyzovy()
+    doc.build_call_strings()
 
     es_doc = ElasticsearchIndexer(None)._prepare_document(doc)
 

@@ -83,7 +83,7 @@ class HTMLParser:
             
             # Создаем базовый объект документации
             doc = Documentation(
-                id="",  # Будет заполнен в sobrat_vyzovy
+                id="",  # Будет заполнен в build_call_strings
                 type=doc_type,
                 name=item_name,
                 object=object_name,
@@ -117,7 +117,7 @@ class HTMLParser:
             self._extract_version(soup, doc)
             
             # Автоматически заполняем служебные поля
-            doc.sobrat_vyzovy()
+            doc.build_call_strings()
             
             logger.debug(f"Обработан HTML файл: {file_path} -> {doc.name}")
             return doc
@@ -570,7 +570,7 @@ class HTMLParser:
                 varianty.append(SyntaxVariant())
             for v in varianty:
                 if not v.variant:
-                    v.variant = doc.imya_ru()
+                    v.variant = doc.name_ru()
 
         doc.variants = varianty
         doc.syntax_all = " | ".join(v.syntax for v in varianty if v.syntax)

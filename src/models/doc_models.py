@@ -92,7 +92,7 @@ class Documentation(BaseModel):
     properties: List[ObjectProperty] = []
     events: List[ObjectEvent] = []
 
-    def imya_ru(self) -> str:
+    def name_ru(self) -> str:
         """Русская часть имени: из «Добавить (Add)» — «Добавить»."""
         imya = (self.name or "").strip()
         if imya.endswith(')') and ' (' in imya:
@@ -101,7 +101,7 @@ class Documentation(BaseModel):
 
     # ClassVar — иначе pydantic 2 примет присвоение без аннотации типа за
     # попытку объявить поле модели и упадёт с PydanticUserError.
-    GLOBALNYE: ClassVar[Tuple[DocumentType, ...]] = (
+    GLOBAL_TYPES: ClassVar[Tuple[DocumentType, ...]] = (
         DocumentType.GLOBAL_FUNCTION,
         DocumentType.GLOBAL_PROCEDURE,
         DocumentType.GLOBAL_EVENT,
@@ -140,16 +140,16 @@ class Documentation(BaseModel):
                 return ".".join(segmenty[:i] + [imya])
         return f"{self.object}.{imya}"
 
-    def sobrat_vyzovy(self):
+    def build_call_strings(self):
         """Заполняет строки вызова и канонический путь.
 
         Раньше full_path собирался как «Global context.ЗначениеЗаполнено
         (ValueIsFilled)» — агент мог принять это за код вызова. Канонический
         путь не содержит ни английского имени, ни технического Global context.
         """
-        imya = self.imya_ru()
+        imya = self.name_ru()
 
-        if self.type in self.GLOBALNYE:
+        if self.type in self.GLOBAL_TYPES:
             self.full_path = imya
         elif self.type == DocumentType.OBJECT:
             self.full_path = self._put_obekta(imya)
@@ -161,7 +161,7 @@ class Documentation(BaseModel):
         for variant in self.variants:
             if self.type == DocumentType.OBJECT_CONSTRUCTOR:
                 variant.call = variant.syntax or f"Новый {self.object or imya}"
-            elif self.type in self.GLOBALNYE:
+            elif self.type in self.GLOBAL_TYPES:
                 variant.call = variant.syntax
             elif self.object and variant.syntax:
                 variant.call = f"{self.object}.{variant.syntax}"
@@ -177,7 +177,7 @@ class Documentation(BaseModel):
             self.call_primary = ""
 
         # Обычно syntax_all уже выставлен парсером (_izvlech_varianty), но
-        # пересчитываем и здесь: sobrat_vyzovy вызывается и на документах,
+        # пересчитываем и здесь: build_call_strings вызывается и на документах,
         # собранных напрямую (тесты, фикстуры) — без парсера поле осталось
         # бы пустым по умолчанию.
         self.syntax_all = " | ".join(v.syntax for v in self.variants if v.syntax)

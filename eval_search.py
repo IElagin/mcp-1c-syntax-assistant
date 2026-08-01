@@ -19,7 +19,7 @@ from src.core.elasticsearch import es_client
 from src.search.search_service import SearchService
 
 # name в индексе хранится как "Добавить (Add)" — русское и английское имя слитно
-IMYA_RU_EN = re.compile(r"^(.+?)\s+\(([A-Za-z][A-Za-z0-9.]*)\)$")
+NAME_RU_EN_RE = re.compile(r"^(.+?)\s+\(([A-Za-z][A-Za-z0-9.]*)\)$")
 
 # Частотные вызовы из реальной конфигурации 1С: список собран поиском по *.bsl
 # рабочей базы и отсортирован по убыванию числа вхождений. Замер на нём ближе к
@@ -37,7 +37,7 @@ COMMON_1C_CALLS = [
 
 def razobrat_imya(name):
     """Возвращает (русское, английское) из 'Добавить (Add)'."""
-    m = IMYA_RU_EN.match(name or "")
+    m = NAME_RU_EN_RE.match(name or "")
     if m:
         return m.group(1).strip(), m.group(2).strip()
     return (name or "").strip(), None

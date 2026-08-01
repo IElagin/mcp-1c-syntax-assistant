@@ -385,7 +385,7 @@ def test_kartochka_obekta_bez_konstruktorov_govorit_eto_tolko_posle_proverki():
 def _dokument_obekta(name: str, object_name: str) -> dict:
     """Документ объекта в том виде, в каком он ложится в индекс.
 
-    Путь собирает боевой код — Documentation.sobrat_vyzovy() и
+    Путь собирает боевой код — Documentation.build_call_strings() и
     _prepare_document индексатора. Фикстура с проставленным вручную full_path
     проверяла бы собственное эхо: регрессия в сборке пути прошла бы мимо теста,
     ради которого он написан.
@@ -395,7 +395,7 @@ def _dokument_obekta(name: str, object_name: str) -> dict:
 
     doc = Documentation(id="", type=DocumentType.OBJECT, name=name,
                         object=object_name, element_kind="объект")
-    doc.sobrat_vyzovy()
+    doc.build_call_strings()
     return ElasticsearchIndexer(None)._prepare_document(doc)
 
 

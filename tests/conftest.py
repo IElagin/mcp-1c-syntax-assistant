@@ -171,10 +171,10 @@ def mock_parsed_hbk():
         )
     ]
 
-    # full_path, call_primary, variants[].call и id собирает sobrat_vyzovy() —
+    # full_path, call_primary, variants[].call и id собирает build_call_strings() —
     # фикстура не должна дублировать эту логику вручную.
     for d in docs:
-        d.sobrat_vyzovy()
+        d.build_call_strings()
 
     # Создаём информацию о файле
     file_info = HBKFile(

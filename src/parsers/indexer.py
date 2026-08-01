@@ -14,10 +14,10 @@ logger = get_logger(__name__)
 
 # Справка хранит имя элемента слитно: "Добавить (Add)", "ЗначениеЗаполнено (ValueIsFilled)".
 # Английская часть — латиница, возможна точка (например "ОбработкаЗаполнения (FillProcessing)").
-_IMYA_RU_EN = re.compile(r"^(?P<ru>.+?)\s+\((?P<en>[A-Za-z][A-Za-z0-9._]*)\)$")
+_NAME_RU_EN_RE = re.compile(r"^(?P<ru>.+?)\s+\((?P<en>[A-Za-z][A-Za-z0-9._]*)\)$")
 
 
-def razlozhit_imya(name: Optional[str]) -> Tuple[str, Optional[str]]:
+def split_name_ru_en(name: Optional[str]) -> Tuple[str, Optional[str]]:
     """Раскладывает "Добавить (Add)" на русскую и английскую части.
 
     Имя без английской части возвращается как есть — так устроены, например,
@@ -28,7 +28,7 @@ def razlozhit_imya(name: Optional[str]) -> Tuple[str, Optional[str]]:
     if not imya:
         return "", None
 
-    sovpadenie = _IMYA_RU_EN.match(imya)
+    sovpadenie = _NAME_RU_EN_RE.match(imya)
     if sovpadenie:
         return sovpadenie.group("ru").strip(), sovpadenie.group("en").strip()
     return imya, None
@@ -135,15 +135,15 @@ class ElasticsearchIndexer:
     
     def _prepare_document(self, doc: Documentation) -> Dict[str, Any]:
         """Подготавливает документ для индексации в Elasticsearch."""
-        imya_ru, imya_en = razlozhit_imya(doc.name)
+        name_ru, name_en = split_name_ru_en(doc.name)
 
         return {
             "id": doc.id,
             "type": doc.type.value,
             "element_kind": doc.element_kind,
             "name": doc.name,
-            "name_ru": imya_ru,
-            "name_en": imya_en or "",
+            "name_ru": name_ru,
+            "name_en": name_en or "",
             "object": doc.object,
             "object_ru": doc.object_ru,
             "full_path": doc.full_path,
