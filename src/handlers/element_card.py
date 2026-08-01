@@ -9,7 +9,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from src.api.mcp_tools import LIMIT_POISKA_MAX
+from src.api.mcp_tools import SEARCH_LIMIT_MAX
 from src.handlers.mcp_formatter import obrezat_do_frazy
 
 NET_V_SPRAVKE = "в справке не указано"
@@ -318,11 +318,11 @@ def spisok_kandidatov(
         )
     stroki.append("")
 
-    # find_1c_help не примет limit больше LIMIT_POISKA_MAX — совет с
+    # find_1c_help не примет limit больше SEARCH_LIMIT_MAX — совет с
     # limit=vsego при омонимах вроде «Количество» (275 совпадений) сам
     # упирался бы в validation error схемы, которую эта же задача вводит.
     stroki.append(sovet_ob_ostatke(
-        len(kandidaty), vsego, LIMIT_POISKA_MAX,
+        len(kandidaty), vsego, SEARCH_LIMIT_MAX,
         f'find_1c_help(query="{imya}", limit={{limit}})',
     ))
     return "\n".join(stroki)

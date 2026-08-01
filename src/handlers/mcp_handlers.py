@@ -1,6 +1,6 @@
 """Обработчики MCP запросов."""
 
-from src.api.mcp_tools import KIND_V_TYPE, LIMIT_POISKA_MAX, LIMIT_SOSTAVA_MAX
+from src.api.mcp_tools import KIND_TO_TYPE, SEARCH_LIMIT_MAX, MEMBERS_LIMIT_MAX
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.handlers.element_card import (
@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 # Название вида элементов на русском для сообщения "у объекта нет элементов
 # этого вида". "all" сюда не входит — для него сообщение формулируется иначе:
 # просить попробовать members="all", когда уже запрошено all, бессмысленно.
-RU_VID_SOSTAVA = {
+MEMBER_KIND_RU = {
     "methods": "методов",
     "properties": "свойств",
     "events": "событий",
@@ -112,7 +112,7 @@ async def handle_find_1c_help(
         service = SearchService(es_client)
         rezultat = await service.find_help_by_query_s_filtrom(
             request.query,
-            KIND_V_TYPE[request.kind.value],
+            KIND_TO_TYPE[request.kind.value],
             request.object,
             request.limit,
         )
@@ -135,7 +135,7 @@ async def handle_find_1c_help(
             if request.kind.value != "any":
                 vyzov += f', kind="{request.kind.value}"'
             stroki.append(sovet_ob_ostatke(
-                len(nayden), vsego, LIMIT_POISKA_MAX, vyzov + ", limit={limit})",
+                len(nayden), vsego, SEARCH_LIMIT_MAX, vyzov + ", limit={limit})",
             ))
         stroki.append("")
         stroki.extend(stroka_spiska(d) for d in nayden)
@@ -239,7 +239,7 @@ async def handle_list_1c_object_members(
                     )
                 return _tekst(
                     f"Объект «{request.object}» в справке есть, но "
-                    f"{RU_VID_SOSTAVA[vid]} у него нет. "
+                    f"{MEMBER_KIND_RU[vid]} у него нет. "
                     'Попробуйте members="all", чтобы увидеть весь состав.'
                 )
 
@@ -261,7 +261,7 @@ async def handle_list_1c_object_members(
             rezultat["properties"],
             rezultat["events"],
             rezultat["total"],
-            LIMIT_SOSTAVA_MAX,
+            MEMBERS_LIMIT_MAX,
         ))
     except Exception as e:
         logger.error(f"list_1c_object_members: {e}")

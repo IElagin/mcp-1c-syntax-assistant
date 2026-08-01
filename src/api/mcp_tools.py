@@ -10,19 +10,19 @@
 границами и значением по умолчанию в той модели выразить нельзя.
 """
 
-LIMIT_POISKA = 10
-LIMIT_SOSTAVA = 100
+SEARCH_LIMIT_DEFAULT = 10
+MEMBERS_LIMIT_DEFAULT = 100
 
 # Потолок limit для find_1c_help. Вынесен в константу, чтобы совет "вызовите
 # ещё раз с limit=N" (в mcp_handlers и в spisok_kandidatov) физически не мог
 # предложить число больше того, что схема готова принять: раньше карточка
 # советовала limit=vsego без оглядки на потолок, и для омонимов вроде
 # «Количество» (275 совпадений) совет упирался в validation error схемы же.
-LIMIT_POISKA_MAX = 200
+SEARCH_LIMIT_MAX = 200
 
 # Тот же потолок для состава объекта: совет «повторите с limit=N» обязан
 # укладываться в схему list_1c_object_members.
-LIMIT_SOSTAVA_MAX = 1000
+MEMBERS_LIMIT_MAX = 1000
 
 TOOLS = [
     {
@@ -58,9 +58,9 @@ TOOLS = [
                 },
                 "limit": {
                     "type": "integer",
-                    "default": LIMIT_POISKA,
+                    "default": SEARCH_LIMIT_DEFAULT,
                     "minimum": 1,
-                    "maximum": LIMIT_POISKA_MAX,
+                    "maximum": SEARCH_LIMIT_MAX,
                     "description": "Сколько кандидатов вернуть",
                 },
             },
@@ -126,9 +126,9 @@ TOOLS = [
                 },
                 "limit": {
                     "type": "integer",
-                    "default": LIMIT_SOSTAVA,
+                    "default": MEMBERS_LIMIT_DEFAULT,
                     "minimum": 1,
-                    "maximum": LIMIT_SOSTAVA_MAX,
+                    "maximum": MEMBERS_LIMIT_MAX,
                     "description": "Сколько элементов вернуть",
                 },
             },
@@ -140,7 +140,7 @@ TOOLS = [
 
 # Отображение kind в поле type индекса. Глобальные события попадают только
 # под global: в коде их пишут не как методы объекта.
-KIND_V_TYPE = {
+KIND_TO_TYPE = {
     "any": [],
     "global": ["global_function", "global_procedure", "global_event"],
     "method": ["object_function", "object_procedure"],

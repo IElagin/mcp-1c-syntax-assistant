@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
-from src.api.mcp_tools import LIMIT_POISKA_MAX
+from src.api.mcp_tools import SEARCH_LIMIT_MAX
 
 
 class MCPToolType(str, Enum):
@@ -51,10 +51,10 @@ class Find1CHelpRequest(BaseModel):
     query: str = Field(..., description="Поисковый запрос")
     kind: SearchKind = Field(SearchKind.ANY, description="Чем ограничить поиск")
     object: Optional[str] = Field(None, description="Искать только у этого объекта")
-    # le=LIMIT_POISKA_MAX, а не число: тот же потолок используют клемпы советов
+    # le=SEARCH_LIMIT_MAX, а не число: тот же потолок используют клемпы советов
     # в mcp_handlers и element_card — рассинхронизация двух хардкодов 200 была
     # ровно Important 2 предыдущего фикс-раунда.
-    limit: int = Field(10, ge=1, le=LIMIT_POISKA_MAX, description="Сколько кандидатов вернуть")
+    limit: int = Field(10, ge=1, le=SEARCH_LIMIT_MAX, description="Сколько кандидатов вернуть")
 
 
 class Get1CElementRequest(BaseModel):

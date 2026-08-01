@@ -32,7 +32,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.api.mcp_tools import LIMIT_SOSTAVA_MAX
+from src.api.mcp_tools import MEMBERS_LIMIT_MAX
 from src.core.elasticsearch import es_client
 from src.handlers.element_card import spisok_chlenov
 from src.handlers.mcp_formatter import obrezat_do_frazy
@@ -98,7 +98,7 @@ def sostav(vid, metody=(), svoystva=(), sobytiya=(), vsego=None):
         vsego = sum(len(s) for s in elementy)
     return spisok_chlenov(
         "ТаблицаЗначений", vid, *elementy, vsego=vsego,
-        predel_instrumenta=LIMIT_SOSTAVA_MAX,
+        predel_instrumenta=MEMBERS_LIMIT_MAX,
     )
 
 
@@ -353,7 +353,7 @@ async def test_metody_za_dvadtsatym_vidny():
         text = spisok_chlenov(
             "ТабличныйДокумент", "methods",
             rezultat["methods"], rezultat["properties"], rezultat["events"],
-            rezultat["total"], LIMIT_SOSTAVA_MAX,
+            rezultat["total"], MEMBERS_LIMIT_MAX,
         )
 
         for imya in ("Прочитать", "Показать"):
