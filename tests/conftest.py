@@ -53,6 +53,43 @@ def es_client_without_en_index():
 
 
 @pytest.fixture
+def es_client_with_en_index():
+    """Мок клиента ES, у которого английский индекс существует и отвечает.
+
+    Раунд правок 1 (ревью задачи 10) нашёл регрессию ровно там, где
+    единственная прежде фикстура (`es_client_without_en_index`) не могла её
+    заметить: под индексом, которого «нет», find_1c_help с любым запросом
+    обрывается раньше поиска, и неважно, режет ли _language_mismatch заодно и
+    query — до реального search() дело не доходит вовсе. Здесь индекс есть,
+    и search() возвращает настоящий (пусть и один) документ, так что видно,
+    дошёл ли вызов до Elasticsearch или его подавили раньше срока.
+    """
+    from unittest.mock import AsyncMock
+
+    client = AsyncMock()
+    client.index_exists = AsyncMock(return_value=True)
+    client.search = AsyncMock(return_value={
+        "hits": {
+            "hits": [{
+                "_score": 12.5,
+                "_source": {
+                    "type": "object_function",
+                    "element_kind": "function",
+                    "name_ru": "Add",
+                    "name_en": "",
+                    "object": "FormDataCollection",
+                    "full_path": "FormDataCollection.Add",
+                    "call_primary": "FormDataCollection.Add(<Item>)",
+                    "description": "Adds an item to the collection.",
+                },
+            }],
+            "total": {"value": 1},
+        },
+    })
+    return client
+
+
+@pytest.fixture
 def mock_elasticsearch():
     """Мок для Elasticsearch клиента."""
     from unittest.mock import Mock
