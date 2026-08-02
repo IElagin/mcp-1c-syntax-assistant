@@ -216,7 +216,9 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 ### `GET /metrics`
 
 Счётчики, датчики и таймеры сервера, сводка по производительности и состояние
-ограничителя частоты.
+ограничителя частоты. Блок `performance` возвращается целиком всегда, а
+`counters`, `gauges` и `timers` в примере ниже сокращены — реальный ответ
+содержит их больше:
 
 ```json
 {
@@ -225,11 +227,13 @@ Invoke-RestMethod http://127.0.0.1:8000/health
     "gauges": {"system.cpu.usage_percent": 0.5,
                "system.memory.usage_percent": 19.7,
                "system.disk.free_gb": 931.79},
-    "timers": {"request.duration": {"count": 121, "avg": 0.0063, "max": 0.0215}}
+    "timers": {"request.duration": {"count": 121, "avg": 0.0063,
+                                    "min": 0.0005, "max": 0.0215}}
   },
   "performance": {"total_requests": 121, "successful_requests": 112,
                   "failed_requests": 9, "success_rate": 92.56,
-                  "avg_response_time": 0.0063, "current_active_requests": 0},
+                  "avg_response_time": 0.0063, "max_response_time": 0.0215,
+                  "min_response_time": 0.0005, "current_active_requests": 0},
   "rate_limiting": {"active_clients": 2, "total_requests_tracked": 122}
 }
 ```
@@ -258,7 +262,8 @@ Swagger UI, сгенерированный FastAPI. Схемы MCP-инстру�
 входе в систему.
 
 На Linux, если compose-контур должен подниматься до входа пользователя, заведите
-unit:
+unit `/etc/systemd/system/mcp-1c-syntax.service` — имя файла определяет имя
+сервиса в командах ниже:
 
 ```ini
 [Unit]
@@ -350,16 +355,16 @@ docker compose logs -f mcp-server
 ```
 
 Дополнительно сервер пишет два файла в каталог `LOGS_DIRECTORY`: `app.log`
-(уровень `DEBUG` и выше) и `errors.log` (только `ERROR` и выше).
-
-**В контейнере эти файлы не попадают в смонтированный каталог.**
-`LOGS_DIRECTORY` по умолчанию равен `data/logs`, то есть внутри контейнера это
-`/app/data/logs`, а том смонтирован в `/app/logs`. На хосте в `./data/logs`
-поэтому лежат пустые файлы, а настоящие остаются внутри контейнера:
+(уровень `DEBUG` и выше) и `errors.log` (только `ERROR` и выше). Каталог
+смонтирован из `./data/logs`, поэтому файлы доступны прямо с хоста и переживают
+пересоздание контейнера:
 
 ```bash
-docker compose exec mcp-server tail -n 50 /app/data/logs/errors.log
+tail -n 50 data/logs/errors.log
 ```
 
-Чтобы файлы оказались на хосте, задайте контейнеру `LOGS_DIRECTORY=/app/logs` в
-секции `environment` — тогда путь совпадёт с точкой монтирования.
+```powershell
+Get-Content data\logs\errors.log -Tail 50
+```
+
+Формат обоих файлов — JSON, по записи на строку.

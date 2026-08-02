@@ -79,6 +79,10 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/mcp `
  "message":"Unknown tool: nope. Available tools: find_1c_help, get_1c_element, list_1c_object_members"}}
 ```
 
+Это тело приходит с HTTP-статусом **400**, а не 200. `Invoke-RestMethod` на 400
+бросает исключение и тела не показывает — чтобы его увидеть, используйте
+`Invoke-WebRequest` с `-SkipHttpErrorCheck` (PowerShell 7) или `curl`.
+
 ## VS Code
 
 VS Code читает конфигурацию MCP из `.vscode/mcp.json` в корне рабочей области

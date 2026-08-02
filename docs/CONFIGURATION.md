@@ -46,12 +46,7 @@
 |---|---|---|---|
 | `HBK_DIRECTORY` | путь | `data/hbk` | Каталог, где сервер ищет книгу справки. В контейнере смонтирован из `./data/hbk` только на чтение. |
 | `HBK_FILENAME` | строка | `shcntx_ru.hbk` | Имя книги для индексации. В каталоге могут лежать и другие `.hbk`, поэтому выбор явный. |
-| `LOGS_DIRECTORY` | путь | `data/logs` | Каталог для `app.log` и `errors.log`. Создаётся при старте, если его нет. |
-
-Значение по умолчанию не совпадает с точкой монтирования тома: том смонтирован
-в `/app/logs`, а файлы пишутся в `/app/data/logs`. На хосте в `./data/logs`
-из-за этого лежат пустые файлы. Как это исправить и где смотреть настоящие
-логи — в [DEPLOYMENT.md](DEPLOYMENT.md#логи).
+| `LOGS_DIRECTORY` | путь | `data/logs` | Каталог для `app.log` и `errors.log`. Создаётся при старте, если его нет. В контейнере это `/app/data/logs`, туда же смонтирован `./data/logs` с хоста — см. [DEPLOYMENT.md](DEPLOYMENT.md#логи). |
 
 ### Индексация
 
@@ -59,22 +54,13 @@
 |---|---|---|---|
 | `REINDEX_ON_STARTUP` | булево | `false` | `true` — переиндексировать при каждом запуске. `false` — индексировать только если индекс пуст. |
 
-### Переменные без эффекта
+### Что переменными не управляется
 
-Эти четыре переменные есть в `.env.example`, но код их нигде не читает.
-Установка любого значения ничего не меняет:
+Ограничение частоты запросов и размер пачки при индексации заданы константами в
+`src/core/constants.py` — `REQUESTS_PER_MINUTE = 60`, `REQUESTS_PER_HOUR = 1000`
+и `BATCH_SIZE = 100`. Переменных окружения для них нет.
 
-- `MAX_CONCURRENT_REQUESTS`
-- `INDEX_BATCH_SIZE`
-- `SEARCH_MAX_RESULTS`
-- `SEARCH_TIMEOUT_SECONDS`
-
-Ограничение частоты запросов задано константами
-`REQUESTS_PER_MINUTE = 60` и `REQUESTS_PER_HOUR = 1000` в
-`src/core/constants.py`, а размер пачки при индексации — константой
-`BATCH_SIZE = 100` там же. Переменными окружения они не управляются.
-
-Переменная `ELASTICSEARCH_URL` тоже не действует: адрес всегда собирается из
+Переменная `ELASTICSEARCH_URL` не действует: адрес всегда собирается из
 `ELASTICSEARCH_HOST` и `ELASTICSEARCH_PORT`.
 
 ## Как настройки попадают в контейнер
@@ -138,7 +124,7 @@ scripts\start_server.bat --reindex
 
 ### 2. Переменная `REINDEX_ON_STARTUP`
 
-Для контейнера — в `docker-compose.dev.yml` или `docker-compose.yml`:
+Для контейнера — в `docker-compose.yml`:
 
 ```yaml
 services:
@@ -146,6 +132,21 @@ services:
     environment:
       - REINDEX_ON_STARTUP=true
 ```
+
+```powershell
+docker compose up -d
+```
+
+Базовый compose — правильное место для такой настройки: он подхватывается
+всегда. Значение из `docker-compose.dev.yml` голая команда `docker compose up
+-d` не увидит — dev-файл нужно перечислять явно:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+Автоматически подхватывался бы только `docker-compose.override.yml`, но такого
+файла в проекте нет.
 
 Для запуска на хосте — в `.env`:
 

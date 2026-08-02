@@ -29,7 +29,10 @@ services:
         condition: service_healthy
     volumes:
       - ./data/hbk:/app/data/hbk:ro
-      - ./data/logs:/app/logs
+      # Путь совпадает с LOGS_DIRECTORY по умолчанию (data/logs от рабочего
+      # каталога /app). При монтировании в /app/logs файлы оседали внутри
+      # контейнера, а на хосте оставались пустышки.
+      - ./data/logs:/app/data/logs
     environment:
       - ELASTICSEARCH_HOST=elasticsearch
       - ELASTICSEARCH_PORT=9200
