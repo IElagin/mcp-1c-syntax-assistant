@@ -52,8 +52,9 @@ class Find1CHelpRequest(BaseModel):
     kind: SearchKind = Field(SearchKind.ANY, description="Чем ограничить поиск")
     object: Optional[str] = Field(None, description="Искать только у этого объекта")
     # le=SEARCH_LIMIT_MAX, а не число: тот же потолок используют клемпы советов
-    # в mcp_handlers и element_card — рассинхронизация двух хардкодов 200 была
-    # ровно Important 2 предыдущего фикс-раунда.
+    # в mcp_handlers и element_card. Рассинхронизация трёх хардкодов 200
+    # приводила к тому, что карточка советовала вызов, отвергаемый тем же
+    # лимитом.
     limit: int = Field(10, ge=1, le=SEARCH_LIMIT_MAX, description="Сколько кандидатов вернуть")
 
 

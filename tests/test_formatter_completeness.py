@@ -132,7 +132,7 @@ def test_truncation_is_marked():
 
 @pytest.mark.unit
 def test_scheduled_job_key_fits_completely():
-    """Тот самый случай из отчёта: 135 знаков влезают в бюджет превью."""
+    """Тот самый случай: 135 знаков влезают в бюджет превью."""
     assert truncate_at_sentence(FULL_KEY_DESCRIPTION, 200) == FULL_KEY_DESCRIPTION
 
 
