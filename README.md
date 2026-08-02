@@ -79,13 +79,16 @@ background. `/health` reports its progress:
 
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
- "documents_count":23025,"indexing_status":"idle","indexing_active":false,
- "version":"2.0.0"}
+ "documents_count":23106,"indexing_status":"idle","indexing_active":false,
+ "index_en_exists":true,"documents_count_en":23104,"version":"2.0.0"}
 ```
 
 The server is ready when `indexing_active` is `false` and `documents_count`
-has stopped growing. Both containers bind to `127.0.0.1` only — see
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) before exposing anything to a network.
+has stopped growing. `index_en_exists`/`documents_count_en` track the English
+book the same way — it's optional, so both fields are `false`/`null` until the
+English book is placed alongside the Russian one and indexed. Both containers
+bind to `127.0.0.1` only — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) before
+exposing anything to a network.
 
 Next: point your editor at the server — [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md).
 

@@ -193,36 +193,53 @@ async def test_indexing_with_error(indexing_manager, mock_es_client, tmp_path):
 
 @pytest.mark.asyncio
 async def test_concurrent_indexing_blocked(indexing_manager, mock_es_client, tmp_path):
-    """Тест что невозможно запустить две индексации одновременно."""
+    """Второй запуск во время активной индексации не выполняется параллельно.
+
+    Он не отбрасывается (см. BackgroundIndexingManager.start_indexing) — он
+    встаёт в очередь и обрабатывается той же фоновой задачей следом за
+    первым. Тест обязан дождаться, пока очередь не опустеет ЦЕЛИКОМ, не
+    выходя из patch(...): иначе второй (отложенный) запуск проверки внутри
+    очереди выполнился бы уже настоящим HBKParser и настоящим 7-Zip вместо
+    мока — тест был бы зелёным, но проверял бы не то, что написано.
+    """
     # Создаём временный файл
     test_file = tmp_path / "test.hbk"
     test_file.write_text("test content")
-    
+
     with patch('src.parsers.hbk_parser.HBKParser') as mock_parser, \
          patch('src.parsers.indexer.ElasticsearchIndexer') as mock_indexer:
-        
+
         mock_parsed = MagicMock()
         mock_parsed.documentation = [MagicMock() for _ in range(10)]
         mock_parser.return_value.parse_file.return_value = mock_parsed
-        
+
         # Медленная индексация
         async def slow_reindex(parsed, progress_callback=None):
             await asyncio.sleep(1)
             return True
-        
+
         mock_indexer.return_value.reindex_all = slow_reindex
-        
+
         # Первый запуск
         await indexing_manager.start_indexing(str(test_file), mock_es_client)
         await asyncio.sleep(0.1)
-        
+
         assert indexing_manager.is_indexing()
-        
-        # Попытка второго запуска (должна быть проигнорирована)
+
+        # Второй запуск во время активной индексации — встаёт в очередь.
         await indexing_manager.start_indexing(str(test_file), mock_es_client)
-        
-        # Всё ещё должна быть только одна активная задача
+
+        # Всё ещё одна активная задача (очередь, а не вторая параллельная).
         assert indexing_manager.is_indexing()
+        assert len(indexing_manager._pending_jobs) == 1
+
+        # Дожидаемся полного опустошения очереди, пока патч ещё активен.
+        while indexing_manager.is_indexing():
+            await asyncio.sleep(0.05)
+
+        assert mock_parser.call_count == 2, (
+            "обе книги (первая и отложенная) должны были дойти до парсера"
+        )
 
 
 if __name__ == "__main__":

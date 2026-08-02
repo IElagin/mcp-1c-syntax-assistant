@@ -12,12 +12,14 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
- "documents_count":23025,"indexing_status":"idle","indexing_active":false,
- "version":"2.0.0"}
+ "documents_count":23106,"indexing_status":"idle","indexing_active":false,
+ "index_en_exists":true,"documents_count_en":23104,"version":"2.0.0"}
 ```
 
 Пока `indexing_active` равно `true`, инструменты уже отвечают, но справка ещё
-неполная.
+неполная. `index_en_exists`/`documents_count_en` — то же самое для английской
+книги; она необязательна, так что оба поля равны `false`/`null`, пока эта
+книга не положена рядом с русской и не проиндексирована.
 
 ## Проверка эндпоинта до настройки клиента
 

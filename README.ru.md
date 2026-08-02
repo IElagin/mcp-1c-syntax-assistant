@@ -78,13 +78,16 @@ Invoke-RestMethod http://localhost:8000/health
 
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
- "documents_count":23025,"indexing_status":"idle","indexing_active":false,
- "version":"2.0.0"}
+ "documents_count":23106,"indexing_status":"idle","indexing_active":false,
+ "index_en_exists":true,"documents_count_en":23104,"version":"2.0.0"}
 ```
 
 Сервер готов, когда `indexing_active` равно `false`, а `documents_count`
-перестал расти. Оба контейнера слушают только `127.0.0.1` — прежде чем
-открывать что-либо в сеть, прочитайте [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+перестал расти. `index_en_exists`/`documents_count_en` отслеживают английскую
+книгу так же — она необязательна, поэтому оба поля равны `false`/`null`, пока
+английская книга не положена рядом с русской и не проиндексирована. Оба
+контейнера слушают только `127.0.0.1` — прежде чем открывать что-либо в сеть,
+прочитайте [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Дальше — подключить редактор: [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md).
 

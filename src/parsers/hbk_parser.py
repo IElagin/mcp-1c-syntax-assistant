@@ -4,17 +4,18 @@
 import os
 import tempfile
 import re
+from collections import defaultdict
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-from src.models.doc_models import HBKFile, HBKEntry, ParsedHBK, CategoryInfo
+from src.models.doc_models import HBKFile, HBKEntry, ParsedHBK, CategoryInfo, Documentation, DocumentType
 from src.core.logging import get_logger
 from src.parsers.html_parser import HTMLParser
 from src.parsers.dialects import HelpDialect, RU_DIALECT
 from src.core.utils import (
-    safe_subprocess_run, 
-    SafeSubprocessError, 
-    create_safe_temp_dir, 
+    safe_subprocess_run,
+    SafeSubprocessError,
+    create_safe_temp_dir,
     safe_remove_dir,
     validate_file_path
 )
@@ -26,6 +27,85 @@ logger = get_logger(__name__)
 class HBKParserError(Exception):
     """Исключение для ошибок парсера HBK."""
     pass
+
+
+def _is_empty_object_stub(doc: Documentation) -> bool:
+    """Страница-раздел книги без адресуемого содержимого, а не настоящий объект.
+
+    У части каталожных «оглавлений» V8SH_pagetitle совпадает с именем
+    настоящего объекта (пример — «Запрос»: настоящий объект и рядом отдельная
+    служебная запись «в этом разделе описываются системные перечисления
+    запроса»). Такая запись не даёт парсеру разобрать ни описания (проза
+    оглавления не оформлена разделом «Описание:»), ни состава — zero content
+    надёжнее эвристики по имени файла или пути.
+    """
+    return (
+        doc.type == DocumentType.OBJECT
+        and not doc.description
+        and not doc.methods
+        and not doc.properties
+        and not doc.events
+    )
+
+
+def deduplicate_by_id(documents: List[Documentation]) -> List[Documentation]:
+    """Устраняет столкновения id — иначе один документ в Elasticsearch стирает другой.
+
+    id собирается из object+name+type (Documentation.build_call_strings), а
+    книга не гарантирует, что эта тройка уникальна: у части объектов
+    заголовок страницы совпадает с заголовком не связанного с ним раздела
+    книги, а у некоторых пар объектов и вовсе одинаковое отображаемое имя при
+    разном содержании — 1С называет их одинаково, и различить эти случаи
+    можно только по source_file, который в архиве уникален по построению.
+
+    Правило:
+    - Если среди столкнувшихся документов есть хотя бы одна пустая
+      страница-заглушка (см. _is_empty_object_stub) и хотя бы один документ с
+      реальным содержимым — заглушки выбрасываются целиком: они не несут
+      ничего, что жаль было бы потерять, а оставлять их значило бы отдавать
+      «чистый» id по недетерминированному принципу (в зависимости от порядка
+      батчей то заглушке, то настоящему объекту).
+    - Иначе (все документы группы содержательны, либо все пусты) столкновение
+      решается добавлением различителя "#2", "#3"... — группа сортируется по
+      source_file (единственное, что гарантированно уникально и не зависит
+      от порядка разбора), поэтому распределение различителей одно и то же
+      при каждой переиндексации той же книги.
+
+    Args:
+        documents: Документы одной книги за один проход разбора.
+
+    Returns:
+        Документы с уникальными id, в исходном порядке; часть пустых
+        страниц-заглушек может отсутствовать.
+    """
+    by_id: Dict[str, List[Documentation]] = defaultdict(list)
+    for doc in documents:
+        by_id[doc.id].append(doc)
+
+    dropped_object_ids = set()
+    for doc_id, group in by_id.items():
+        if len(group) == 1:
+            continue
+
+        stubs = [d for d in group if _is_empty_object_stub(d)]
+        non_stubs = [d for d in group if not _is_empty_object_stub(d)]
+        survivors = non_stubs if (stubs and non_stubs) else group
+
+        for d in stubs:
+            if d in survivors:
+                continue
+            dropped_object_ids.add(id(d))
+
+        if len(survivors) <= 1:
+            continue
+
+        # source_file уникален и не зависит от порядка разбора — сортировка
+        # по нему делает распределение "#2"/"#3" стабильным между запусками.
+        ordered = sorted(survivors, key=lambda d: d.source_file or "")
+        for n, doc in enumerate(ordered[1:], start=2):
+            doc.id = f"{doc_id}#{n}"
+
+    return [d for d in documents if id(d) not in dropped_object_ids]
 
 
 class HBKParser:
@@ -166,7 +246,17 @@ class HBKParser:
                     logger.warning(f"Файл не извлечен: {entry.path}")
         
         logger.info(f"Обработано всего: {processed_html} HTML файлов")
-        
+
+        # Устраняет столкновения id (object+name+type не всегда уникальны в
+        # книге) до того, как документы уйдут в индексатор: коллизия,
+        # обнаруженная только на стороне Elasticsearch, — это уже одна из
+        # двух страниц, молча стёршая другую.
+        before = len(result.documentation)
+        result.documentation = deduplicate_by_id(result.documentation)
+        removed = before - len(result.documentation)
+        if removed:
+            logger.info(f"Устранены столкновения id: удалено страниц-заглушек — {removed}")
+
         # Обновляем статистику
         result.stats = {
             'html_files': html_files,
