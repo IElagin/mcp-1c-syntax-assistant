@@ -35,6 +35,13 @@ class Chapter(str, Enum):
     COLLECTION_ELEMENTS = "collection_elements"
     SEE_ALSO = "see_also"
     FORM_PARAMETERS = "form_parameters"
+    # Раздел страниц-каталогов встроенных именованных наборов (StyleColors,
+    # StyleFonts, PictureLib, Chars и т.п.) — перечень значений набора, а не
+    # элементов коллекции произвольного типа. Обнаружен сверкой словаря с
+    # реальной книгой (замер по всем 23 125 парным страницам objects/ каждой
+    # книги: 623 вхождения что в русской, что в английской, без варианта
+    # написания с двоеточием ни в одной).
+    VALUES = "values"
 
 
 def _normalize(heading: str) -> str:
@@ -121,6 +128,7 @@ RU_DIALECT = HelpDialect(
         Chapter.COLLECTION_ELEMENTS: "Элементы коллекции:",
         Chapter.SEE_ALSO: "См. также:",
         Chapter.FORM_PARAMETERS: "Параметры формы:",
+        Chapter.VALUES: "Значения:",
     },
     type_label="Тип:",
     required_flag="обязательный",
@@ -129,7 +137,43 @@ RU_DIALECT = HelpDialect(
     version_changed_markers=("изменен", "описание"),
 )
 
-_DIALECTS = {RU_DIALECT.lang: RU_DIALECT}
+# Значения измерены на книгах 8.3.20.1914: 3 975 парных страниц, счётчики
+# разделов совпали в обеих книгах до единицы. «Returned value:» — именно так,
+# а не «Return value:», как подсказывает интуиция.
+EN_DIALECT = HelpDialect(
+    lang="en",
+    chapters={
+        Chapter.SYNTAX: "Syntax:",
+        Chapter.SYNTAX_VARIANT: "Syntax variant:",
+        Chapter.PARAMETERS: "Parameters:",
+        Chapter.RETURN_VALUE: "Returned value:",
+        Chapter.DESCRIPTION: "Description:",
+        Chapter.VARIANT_DESCRIPTION: "Description of method variant:",
+        Chapter.AVAILABILITY: "Availability:",
+        Chapter.NOTE: "Note:",
+        Chapter.EXAMPLE: "Example:",
+        Chapter.VERSION: "Available since:",
+        Chapter.USAGE: "Usage:",
+        Chapter.METHODS: "Methods:",
+        Chapter.PROPERTIES: "Properties:",
+        Chapter.EVENTS: "Events:",
+        Chapter.CONSTRUCTORS: "Constructors:",
+        Chapter.COLLECTION_ELEMENTS: "Collection elements:",
+        Chapter.SEE_ALSO: "See also:",
+        Chapter.FORM_PARAMETERS: "Form parameters:",
+        Chapter.VALUES: "Values:",
+    },
+    type_label="Type:",
+    required_flag="required",
+    optional_flag="optional",
+    # «since version» покрывает и «Available since version», и «It is not
+    # recommended to use since version» — ровно как русское «начиная» покрывает
+    # оба соответствующих случая.
+    version_available_markers=("since version",),
+    version_changed_markers=("changed in version",),
+)
+
+_DIALECTS = {d.lang: d for d in (RU_DIALECT, EN_DIALECT)}
 
 
 def dialect_for(lang: str) -> HelpDialect:
