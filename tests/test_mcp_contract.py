@@ -112,9 +112,6 @@ async def test_card_arrives_as_text():
     assert "Доступность:" in text
 
 
-# --- Фикс-раунд 1: три Important из ревью Task 13 ---
-
-
 @pytest.mark.unit
 @pytest.mark.parametrize("model_cls, kwargs", [
     ("Find1CHelpRequest", {"query": "х", "object_name": "Массив"}),
@@ -142,9 +139,9 @@ async def test_error_kind_becomes_an_error_not_a_quiet_answer(monkeypatch):
     """element_card помечает сбой ES kind="error" — обработчик обязан
     вернуть isError, а не "элемент не найден".
 
-    Ручной прогон Task 13 проверил только пять честных исходов и живые вызовы
-    — этот сбой без мока не воспроизвести (нужен настоящий обрыв ES), поэтому
-    здесь подменяем сервис.
+    Ручной прогон проверил только пять честных исходов и живые вызовы — этот
+    сбой без мока не воспроизвести (нужен настоящий обрыв ES), поэтому здесь
+    подменяем сервис.
     """
     from src.handlers.mcp_handlers import handle_get_1c_element
     from src.models.mcp_models import Get1CElementRequest
@@ -290,9 +287,6 @@ async def test_old_param_name_gives_error_not_silent_drop():
 
     body = response.json()
     assert body["result"]["isError"] is True, body
-
-
-# --- Фикс-раунд 2: находки итогового ревью ветки ---
 
 
 @pytest.mark.integration

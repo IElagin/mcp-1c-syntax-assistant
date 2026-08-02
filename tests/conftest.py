@@ -59,7 +59,7 @@ def mock_parsed_hbk():
     from datetime import datetime
 
     # Создаём тестовые документы. Синтаксис, параметры и тип возврата лежат
-    # внутри variants (Task 3) — у модели больше нет отдельных полей для них
+    # внутри variants — у модели больше нет отдельных полей для них
     # на самом документе. Полей name_en/object_en (Documentation), name_en
     # (Parameter), name_en/count (CategoryInfo) в моделях нет и не было —
     # раньше pydantic молча их игнорировал, фикстура не должна делать вид,

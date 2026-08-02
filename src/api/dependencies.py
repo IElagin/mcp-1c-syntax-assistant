@@ -47,8 +47,8 @@ async def get_elasticsearch_client() -> AsyncGenerator[ElasticsearchClient, None
 
 def get_es_client():
     """
-    Legacy dependency для получения глобального ES клиента.
-    TODO: Удалить после полной миграции на get_elasticsearch_client()
+    Legacy dependency для получения глобального ES клиента, в обход DI —
+    для кода, который обращается к нему напрямую.
     """
     from src.core.elasticsearch import es_client
     return es_client

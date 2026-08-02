@@ -139,7 +139,7 @@ class SearchRanker:
             completeness_score += 0.3
 
         # Бонус за наличие параметров. Параметры лежат внутри вариантов
-        # вызова (Task 7), а не плоским списком в документе.
+        # вызова, а не плоским списком в документе.
         params = [p for v in variant_list for p in (v.get("parameters") or [])]
         if params:
             completeness_score += 0.2

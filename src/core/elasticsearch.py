@@ -206,6 +206,6 @@ def create_elasticsearch_client() -> ElasticsearchClient:
     return ElasticsearchClient()
 
 
-# Глобальный экземпляр для обратной совместимости (будет удалён в следующих спринтах)
-# TODO: Удалить после миграции всех компонентов на DI
+# Глобальный экземпляр для обратной совместимости с кодом, обращающимся к
+# клиенту напрямую, в обход DI.
 es_client = ElasticsearchClient()

@@ -96,8 +96,7 @@ def test_prepare_document_for_indexing(mock_parsed_hbk):
     """Тест подготовки документа для индексации."""
     doc = mock_parsed_hbk.documentation[0]
 
-    # Параметры теперь лежат внутри варианта вызова (Task 3), а не на самом
-    # документе.
+    # Параметры лежат внутри варианта вызова, а не на самом документе.
     variant_parameters = doc.variants[0].parameters if doc.variants else []
 
     # Эмулируем подготовку для индексации

@@ -157,8 +157,8 @@ class QueryBuilder:
                         {"term": {"name_en.keyword": {"value": query, "boost": 10.0}}},
                         {"prefix": {"name_ru.keyword": {"value": query, "boost": 3.0}}},
                         {"match_phrase": {"name": {"query": query, "boost": 5.0}}},
-                        # syntax_ru/syntax_en убраны Task 7 — вся строка вызова
-                        # теперь в syntax_all (одно поле вместо пары языков).
+                        # syntax_ru/syntax_en заменены на syntax_all: одна
+                        # строка вызова вместо пары языковых полей.
                         {"match_phrase": {"syntax_all": {"query": query, "boost": 3.0}}},
                         {"match": {"description": {"query": query, "boost": 2.0}}}
                     ]
