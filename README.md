@@ -1,238 +1,173 @@
-# 1C Syntax Helper MCP Server
+# mcp-1c-syntax-assistant
 
-MCP-сервер для быстрого поиска по синтаксису 1С, предоставляющий ИИ-агентам в VS Code доступ к общей документации платформы 1С:Предприятие через централизованный сервис.
+[![tests](https://github.com/<OWNER>/mcp-1c-syntax-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/mcp-1c-syntax-assistant/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## 📚 Документация
+[Русская версия](README.ru.md)
 
-- **[📖 DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Подробная инструкция по развертыванию на Windows Server и Linux Server (ARM64)
-- **[📋 ТЕХНИЧЕСКОЕ_ЗАДАНИЕ.md](ТЕХНИЧЕСКОЕ_ЗАДАНИЕ.md)** - Техническое задание проекта
-- **[📖 SETUP_GUIDE.md](SETUP_GUIDE.md)** - Инструкция по локальной разработке
+MCP server that gives AI agents precise answers from the 1C:Enterprise syntax reference.
 
-## 🚀 Быстрый старт (локальная разработка)
+An agent asks for an element by name and gets back a fixed-shape card — call
+string, parameters with types and requiredness, return type, execution
+contexts, platform version, description, example. Missing data is stated
+outright rather than silently omitted, because a skipped field is
+indistinguishable from "no such data" and the model fills the gap by guessing.
 
-### Системные требования
-- Windows 10/11 64-bit или Linux
-- Docker Desktop
-- 4+ ГБ RAM
-- VS Code (опционально)
+Reference content is in Russian: it is parsed from the Russian 1C help book.
+See [Language support](#language-support) for what is available in English.
 
-### Развертывание для локального тестирования
+## What an answer looks like
+
+Real output of `get_1c_element(name="Добавить", object="Массив")`:
+
+```
+Массив.Добавить — процедура объекта Массив
+
+Вызов: Массив.Добавить(<Значение>)
+Параметры:
+    Значение — Произвольный, необязательный
+      Добавляемое значение. Если не указан, то будет добавлено значение типа Неопределено.
+
+Возвращает: нет (процедура)
+Доступность: тонкий клиент, веб-клиент, мобильный клиент, сервер, толстый клиент, внешнее соединение, мобильное приложение (клиент), мобильное приложение (сервер), мобильный автономный сервер
+Доступно с: 8.0
+
+Описание: Добавляет элемент в конец массива.
+Примечание: При добавлении количество элементов массива увеличивается на 1.
+Пример:
+  Массив.Добавить("Первый");
+  Массив.Добавить("Второй");
+```
+
+## Requirements
+
+- Docker and Docker Compose v2
+- 4 GB RAM free (Elasticsearch is configured for a 1 GB heap)
+- The 1C syntax reference file `shcntx_ru.hbk`
+
+> **The `.hbk` syntax reference file is not included.** It is proprietary and
+> ships with your licensed 1C:Enterprise installation — copy it from there.
+> Do not redistribute it.
+
+On Windows the file lives next to the platform binaries:
+
+```
+C:\Program Files\1cv8\<version>\bin\shcntx_ru.hbk
+```
+
+`data/` is git-ignored, so the file never enters the repository by accident.
+If you deploy the server for other people, they get the service — not the file.
+
+## Quick start
+
+Clone this repository, then, from its root:
 
 ```bash
-# 1. Клонировать проект
-git clone <repo-url> 1c-syntax-helper-mcp
-cd 1c-syntax-helper-mcp
+# 1. Copy the reference book from your 1C installation into data/hbk/
+#    Windows: C:\Program Files\1cv8\<version>\bin\shcntx_ru.hbk
+cp /path/to/shcntx_ru.hbk data/hbk/
 
-# 2. Поместить .hbk файл документации
-copy "path\to\1c_documentation.hbk" "data\hbk\1c_documentation.hbk"
-
-# 3. Запустить контейнеры
+# 2. Start Elasticsearch and the MCP server
 docker compose up -d
 
-# 4. Проверить доступность
+# 3. Watch the index fill up
 curl http://localhost:8000/health
 ```
 
-### Для развертывания на сервер
-
-📖 **Полная инструкция**: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
-
-**Краткий алгоритм:**
-
-1. **Для Windows Server (AMD64)**
-   ```powershell
-   docker build -t help1c-mcp:amd64 .
-   docker save help1c-mcp:amd64 -o help1c-mcp-amd64.tar
-   # Скопировать .tar файл на сервер и загрузить через docker load
-   ```
-
-2. **Для Linux Server (ARM64)**
-   ```powershell
-   docker buildx build --platform linux/arm64 -t help1c-mcp:arm64 -o type=docker .
-   docker save help1c-mcp:arm64 -o help1c-mcp-arm64.tar
-   # Скопировать .tar файл на сервер и загрузить через docker load
-   ```
-
-### Настройка VS Code для подключения к серверу
-
-Добавьте в настройки VS Code (`settings.json`):
+Indexing starts automatically on the first run and continues in the
+background. `/health` reports its progress:
 
 ```json
-{
-  "mcp.servers": {
-    "1c-syntax-helper": {
-      "command": "curl",
-      "args": [
-        "-X", "POST",
-        "-H", "Content-Type: application/json", 
-        "-d", "@-",
-        "http://SERVER_IP:8000/mcp"
-      ]
-    }
-  }
-}
+{"status":"healthy","elasticsearch":true,"index_exists":true,
+ "documents_count":23025,"indexing_status":"idle","indexing_active":false,
+ "version":"1.0.0"}
 ```
 
-Замените `SERVER_IP` на IP адрес вашего сервера (например, `192.168.1.100` или `localhost` для локального тестирования).
+The server is ready when `indexing_active` is `false` and `documents_count`
+has stopped growing. Both containers bind to `127.0.0.1` only — see
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) before exposing anything to a network.
 
-## 🏗️ Архитектура
+Next: point your editor at the server — [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md).
 
-```
-                    🖥️ Сервер (localhost)
-┌─────────────────────────────────────────────────────────┐
-│  ┌─────────────────┐    ┌──────────────────────────────┐ │
-│  │  Elasticsearch  │    │    FastAPI MCP Server        │ │
-│  │    (общий)      │◄───┤      (shared service)       │ │
-│  │ 1c_docs_index   │    │   - Single .hbk file        │ │
-│  └─────────────────┘    │   - No authentication       │ │
-│                         │   - Shared documentation    │ │
-│                         └──────────────┬───────────────┘ │
-└────────────────────────────────────────┼─────────────────┘
-                                         │ Port 8000
-        ┌────────────────────────────────┼────────────────┐
-        │                                │                │
-   ┌────▼────┐                     ┌────▼────┐     ┌────▼────┐
-   │VS Code  │                     │VS Code  │ ... │VS Code  │
-   │ User 1  │                     │ User 2  │     │ User 8  │
-   └─────────┘                     └─────────┘     └─────────┘
-```
+## MCP tools
 
-## 📁 Структура проекта
+| Tool | Purpose |
+|---|---|
+| `find_1c_help` | Find candidates when the exact name is unknown — one line per element, no full card. |
+| `get_1c_element` | Full card for an element whose exact name is known; a candidate list instead of a card when the name is ambiguous. |
+| `list_1c_object_members` | Methods, properties, events and constructors of one object, one line each. |
 
-```
-1c-syntax-helper-mcp/
-├── docker-compose.yml          # Оркестрация контейнеров
-├── Dockerfile                  # Образ MCP сервера (поддержка AMD64 и ARM64)
-├── requirements.txt            # Python зависимости
-├── .env.example                # Пример конфигурации
-├── src/                        # Исходный код
-│   ├── main.py                 # FastAPI приложение
-│   ├── core/                   # Ядро системы
-│   ├── parsers/                # Парсеры .hbk документации
-│   ├── search/                 # Модули поиска
-│   ├── handlers/               # Обработчики MCP
-│   ├── models/                 # Pydantic модели
-│   └── api/                    # API эндпоинты
-├── data/                       # Данные
-│   ├── hbk/                    # .hbk файл документации
-│   └── logs/                   # Логи приложения
-├── tests/                      # Тесты
-├── docs/                       # Документация
-│   ├── DEPLOYMENT_GUIDE.md     # Инструкция развертывания
-│   ├── SETUP_GUIDE.md          # Инструкция локальной разработки
-│   └── sprints/                # Отчеты о спринтах
-└── README.md                   # Этот файл
-```
+Schemas, limits and the exact behaviour on ambiguous or missing names:
+[docs/MCP_TOOLS.md](docs/MCP_TOOLS.md).
 
-## 🔧 Основные возможности
+## Language support
 
-- **Поиск глобальных функций**: `СтрДлина`, `ЧислоПрописью`
-- **Поиск методов объектов**: `ТаблицаЗначений.Добавить`
-- **Поиск свойств**: `ТаблицаЗначений.Колонки`
-- **Информация об объектах**: получение всех методов/свойств/событий
-- **Фоновая индексация**: автоматическая индексация при первом запуске
-- **Принудительная переиндексация**: через параметр `--reindex` или API
-- **Поддержка нескольких архитектур**: AMD64 (Windows/Linux) и ARM64 (Raspberry Pi, Apple Silicon)
+Element names are searchable in both languages. `НайтиСтроки` and `FindRows`
+both resolve to the same element, and so do `Добавить` and `Add` — the Russian
+reference book carries both names in every element page title
+(`<h1>НайтиСтроки (FindRows)</h1>`), and the indexer splits them into separate
+`name_ru` and `name_en` fields. Of 20 134 element pages in the current index,
+19 841 carry an English name.
 
-## 🔄 Переиндексация
+**Object names are Russian only.** The 2 506 object pages carry no English name
+in their titles, so `list_1c_object_members(object="ValueTable")` and
+`get_1c_element(name="Add", object="Array")` both fail to resolve. Use
+`ТаблицаЗначений` and `Массив`. The same applies to the 385 constructor pages.
 
-### Быстрый запуск с переиндексацией
+Descriptions, parameters, examples and availability are Russian only, because
+the Russian book contains them only in Russian.
 
-```bash
-# Windows (bat)
-start_mcp_server.bat --reindex
+Full English reference support is planned — see [Roadmap](#roadmap).
 
-# Windows (PowerShell)
-.\start_mcp_server.ps1 --reindex
+## Differences from the upstream project
 
-# Или через переменную окружения в .env
-REINDEX_ON_STARTUP=true
-```
+Based on [Antonio1C/1c-syntax-helper-mcp](https://github.com/Antonio1C/1c-syntax-helper-mcp)
+(MIT), which contributed the FastAPI service layout, `.hbk` extraction through
+7-Zip and Elasticsearch indexing. What changed:
 
-**Подробнее**: [REINDEX_GUIDE.md](REINDEX_GUIDE.md)
+- **The element card is a contract, not free text.** A fixed set of fields is
+  always printed, and absent data is labelled (`Доступность: в справке не
+  указана`, `Примеров в справке нет`) instead of being dropped.
+- **Three MCP tools instead of one**, each with an explicit JSON schema, so an
+  agent picks a tool by purpose rather than by guessing arguments.
+- **Disambiguation instead of a silent pick.** `Добавить` occurs on 197 pages;
+  the server returns an ordered candidate list and asks for the object, rather
+  than returning an arbitrary one of them as the answer.
+- **Call variants, real parameter requiredness and property value types** are
+  parsed out of the help HTML.
+- **A reproducible search-quality measurement** — `scripts/eval_search.py`
+  builds its ground truth from the index itself and reports hit rates.
 
-## 🛠️ Разработка
+Full attribution and the complete list of changes: [NOTICE](NOTICE).
 
-### Требования
+## Roadmap
 
-- Docker Engine 20.0+
-- Docker Compose 2.0+
-- Python 3.14+ (для разработки)
+- English reference support from `shcntx_root.hbk`, so that descriptions,
+  parameters and examples are available in English too — not just names.
+- Reference for the 1C language, the query language and the DCS expression
+  language (`shlang`, `shquery`, `shclang`). These books use a different page
+  format and need a separate parser.
 
-### Локальная разработка
+## License
 
-```bash
-# Создать виртуальное окружение
-python -m venv venv
-.\venv\Scripts\Activate.ps1  # Windows
-# source venv/bin/activate   # Linux/Mac
+MIT — see [LICENSE](LICENSE). Attribution of the upstream project and the list
+of changes made here: [NOTICE](NOTICE). The upstream project is
+[Antonio1C/1c-syntax-helper-mcp](https://github.com/Antonio1C/1c-syntax-helper-mcp).
 
-# Установить зависимости
-pip install -r requirements.txt
+The licence covers this source code only. It does not cover the 1C:Enterprise
+syntax reference file, which is proprietary and is not part of this repository.
 
-# Запустить в режиме разработки
-python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-```
+## Documentation
 
-### Тестирование
+All four documents are in Russian.
 
-```bash
-# Запустить тесты
-python -m pytest tests/ -v
+- [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md) — connecting VS Code, Claude Code
+  and other MCP clients.
+- [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) — tool schemas, limits, card format,
+  behaviour on ambiguous and missing names.
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — environment variables,
+  reindexing, replacing the reference file.
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Windows Server and Linux ARM64,
+  multi-architecture images, HTTP endpoints, exposing the service safely.
 
-# Проверить покрытие
-python -m pytest tests/ --cov=src --cov-report=html
-```
-
-## 🔄 Обновление документации
-
-Документация обновляется при необходимости:
-
-```bash
-# 1. Остановить сервисы
-docker-compose down
-
-# 2. Заменить .hbk файл
-copy "new_1c_documentation.hbk" "data\hbk\1c_documentation.hbk"
-
-# 3. Запустить и переиндексировать
-docker-compose up -d
-curl -X POST http://localhost:8000/index/rebuild
-```
-
-**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md#обновление-hbk-файла)
-
-## 📋 MCP Protocol
-
-Сервер реализует [Model Context Protocol 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/index) с тремя инструментами:
-
-- `find_1c_help` — поиск кандидатов, когда точное имя неизвестно
-- `get_1c_element` — полная карточка элемента: строка вызова, варианты вызова, параметры с типами и обязательностью, тип возврата, доступность по контекстам исполнения, версия, описание, примечание, пример
-- `list_1c_object_members` — состав объекта
-
-Карточка помечает отсутствующие данные прямо («Доступность: в справке не указана», «Примеров в справке нет»), а при неуникальном имени возвращает перечень кандидатов вместо произвольного выбора одного из них.
-
-## ⚡ Performance
-
-- Время отклика поиска: < 500ms
-- Поддержка 8 одновременных пользователей
-- Размер индекса: ~32MB (80% от 40MB .hbk файла)
-- Потребление памяти: ~2GB (1GB ES + 1GB MCP сервер)
-
-## 🐛 Поддержка
-
-При возникновении проблем:
-
-1. Проверить логи: `docker-compose logs mcp-server`
-2. Проверить статус Elasticsearch: `curl http://localhost:9200/_cluster/health`
-3. Проверить статус индексации: `curl http://localhost:8000/index/status`
-
-**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md#-устранение-проблем)
-
-## 📄 Лицензия
-
-MIT License
-
----
-
-**Разработано для работы с документацией 1С:Предприятие 8.3.24+**
+Contributing to the test suite: [tests/README.md](tests/README.md).

@@ -1,222 +1,90 @@
-# Тесты проекта
+# Тесты
 
-Этот каталог содержит все тесты для MCP сервера синтаксис-помощника 1С.
+176 тестов. Настройки pytest — в `pytest.ini` в корне репозитория, общие
+фикстуры и заглушки — в `conftest.py`, тестовые данные — в `fixtures/`.
 
-## Структура
+## Как запускать
 
-- `conftest.py` - конфигурация pytest, mock фикстуры
-- `pytest.ini` - настройки pytest и маркеры (в корне проекта)
-- `fixtures/` - тестовые данные и фикстуры
+Тесты рассчитаны на контур разработки: он собирает образ с dev-зависимостями и
+монтирует внутрь `src/`, `tests/`, `pytest.ini` и `scripts/`.
 
-### Unit тесты (быстрые, с mock)
-- `test_parsing_unit.py` - тесты парсера с mock данными
-- `test_indexing_unit.py` - тесты индексатора с mock
-- `test_retry_mechanisms.py` - тесты retry логики
-- `test_background_indexing.py` - тесты фоновой индексации
-- `test_reindex_config.py` - тесты конфигурации
-
-### Integration тесты (медленные, с реальными данными)
-- `test_parsing.py` - полный парсинг .hbk файла
-- `test_indexing.py` - реальная индексация в Elasticsearch
-- `test_elasticsearch_connection.py` - подключение к ES
-- `test_search.py` - поиск в реальном индексе
-
-## Запуск тестов
-
-### 🚀 Быстрые unit тесты (для разработки)
-```bash
-# Только unit тесты (< 5 сек)
-pytest -m unit
-
-# Unit тесты с подробным выводом
-pytest -m unit -v
-
-# Конкретная категория unit тестов
-pytest -m "unit and parser"
-pytest -m "unit and indexer"
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-### 🔬 Integration тесты (для предрелизной проверки)
-```bash
-# Только integration тесты (медленно!)
-pytest -m integration
+Монтирование `src/` здесь принципиально: в продуктовом образе исходники
+копируются внутрь, и без монтирования pytest молча проверял бы старую версию
+кода и показывал зелёный, которого нет.
 
-# Integration тесты конкретного модуля
-pytest -m "integration and elasticsearch"
-pytest -m "integration and search"
+Весь набор:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python -m pytest -q
 ```
 
-### 📊 Все тесты
-```bash
-# Все тесты (unit + integration)
-pytest tests/
+Срез без Elasticsearch — тот же, что гоняет CI:
 
-# Все тесты с покрытием
-pytest tests/ --cov=src
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python -m pytest -m "not elasticsearch and not slow" -q
 ```
 
-### 🎯 Запуск конкретного теста
-```bash
-# Unit тест парсера
-pytest tests/test_parsing_unit.py -v
+Один файл или один тест:
 
-# Integration тест индексации
-pytest tests/test_indexing.py -v
-
-# Конкретная тестовая функция
-pytest tests/test_parsing_unit.py::test_parsed_hbk_structure -v
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python -m pytest tests/test_element_card.py -v
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python -m pytest tests/test_element_card.py::test_procedure_states_it_returns_nothing -v
 ```
 
-### ⚡ Полезные комбинации
-```bash
-# Пропустить медленные тесты
-pytest -m "not slow"
+Покрытие:
 
-# Только тесты парсера (unit + integration)
-pytest -m parser
-
-# Только тесты без ES
-pytest -m "not elasticsearch"
-
-# Verbose вывод + остановка на первой ошибке
-pytest -v -x
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python -m pytest --cov=src --cov-report=term-missing
 ```
+
+## Маркеры
+
+| Маркер | Что помечает | Тестов |
+|---|---|---|
+| `unit` | Быстрые тесты на заглушках, без внешних зависимостей | 114 |
+| `integration` | Тесты с настоящими компонентами — Elasticsearch, файл справки | 40 |
+| `slow` | Тесты дольше десятка секунд: полный разбор или полная индексация | 2 |
+| `elasticsearch` | Требуют поднятого Elasticsearch с построенным индексом | 39 |
+| `parser` | Разбор `.hbk` и HTML справки | 36 |
+| `indexer` | Индексация в Elasticsearch | 13 |
+| `search` | Поиск и ранжирование | 7 |
+| `background` | Фоновые задачи | 0 |
+| `retry` | Механизмы повторов | 0 |
+
+`background` и `retry` объявлены в `pytest.ini`, но сейчас ни одним тестом не
+используются. Маркер новому тесту ставится обязательно: `--strict-markers`
+превращает опечатку в ошибку, а не в молчаливо пропущенный фильтр.
+
+Сумма по `unit` и `integration` меньше 176: часть тестов не помечена ни тем, ни
+другим.
+
+## Тесты, которым нужен Elasticsearch
+
+39 тестов с маркером `elasticsearch` работают против живого кластера и
+построенного индекса. Без поднятого контура они падают, а не пропускаются:
+зелёный прогон на пустом индексе был бы хуже красного.
+
+Проверить, что контур готов:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Индекс построен, когда `documents_count` больше нуля, а `indexing_active`
+равно `false`. Как построить и как переиндексировать —
+[docs/CONFIGURATION.md](../docs/CONFIGURATION.md#переиндексация).
+
+CI кластер не поднимает: держать Elasticsearch ради 40 тестов дорого, а
+оставшиеся 136 покрывают парсер, карточку и контракт инструментов.
 
 ## Соглашения
 
-1. **Именование файлов:** 
-   - Unit тесты: `test_<модуль>_unit.py`
-   - Integration тесты: `test_<модуль>.py`
-
-2. **Именование функций:** `test_<функциональность>()`
-
-3. **Маркеры:**
-   - Обязательно помечать unit тесты `@pytest.mark.unit`
-   - Обязательно помечать integration тесты `@pytest.mark.integration`
-   - Помечать медленные тесты `@pytest.mark.slow`
-   - Указывать зависимости: `@pytest.mark.elasticsearch`, etc.
-
-4. **Асинхронные тесты:** используйте `@pytest.mark.asyncio`
-
-5. **Фикстуры:** 
-   - Mock фикстуры в `conftest.py`
-   - Реальные данные через параметры или setup
-
-## Рекомендации по workflow
-
-### Во время разработки
-```bash
-# Быстрая проверка после изменений
-pytest -m unit -v
-
-# Проверка конкретного модуля
-pytest -m "unit and parser" -v
-```
-
-### Перед коммитом
-```bash
-# Все unit тесты + быстрые integration
-pytest -m "unit or (integration and not slow)" -v
-```
-
-### Перед релизом
-```bash
-# Полный набор тестов
-pytest tests/ -v
-
-# С покрытием кода
-pytest tests/ --cov=src --cov-report=html
-```
-
-### В CI/CD
-```bash
-# Unit тесты (быстро, всегда)
-pytest -m unit --tb=short
-
-# Integration тесты (на staging/pre-release)
-pytest -m integration --tb=short
-```
-
-## Категории тестов
-
-### Unit тесты
-**Маркер:** `@pytest.mark.unit`  
-**Характеристики:**
-- ⚡ Быстрые (< 5 секунд)
-- 🎯 Изолированные с mock данными
-- 🔧 Без внешних зависимостей (ES, файлы)
-- 💻 Для разработки и CI/CD
-
-**Примеры:**
-- `test_parsing_unit.py` - тесты парсера с mock данными
-- `test_indexing_unit.py` - тесты индексатора с mock
-- `test_retry_mechanisms.py` - тесты retry логики
-
-### Integration тесты  
-**Маркер:** `@pytest.mark.integration`  
-**Характеристики:**
-- 🐌 Медленные (до 20 минут)
-- 🔗 С реальными компонентами (ES, файлы)
-- 📦 Полный парсинг .hbk файлов
-- 🚀 Для предрелизной проверки
-
-**Примеры:**
-- `test_parsing.py` - полный парсинг .hbk файла
-- `test_indexing.py` - реальная индексация в ES
-- `test_search.py` - поиск в реальном индексе
-
-### Дополнительные маркеры
-
-- `@pytest.mark.slow` - очень медленные тесты (> 10 сек)
-- `@pytest.mark.elasticsearch` - требуют ES
-- `@pytest.mark.parser` - тесты парсера
-- `@pytest.mark.indexer` - тесты индексатора
-- `@pytest.mark.search` - тесты поиска
-- `@pytest.mark.background` - тесты фоновых задач
-- `@pytest.mark.retry` - тесты retry механизмов
-
-## Примеры
-
-### Unit тест с mock данными
-```python
-import pytest
-
-@pytest.mark.unit
-@pytest.mark.parser
-def test_parsing_logic(mock_parsed_hbk):
-    """Быстрый тест логики парсера."""
-    assert len(mock_parsed_hbk.documentation) > 0
-    assert mock_parsed_hbk.file_info is not None
-```
-
-### Integration тест с реальными данными
-```python
-import pytest
-
-@pytest.mark.integration
-@pytest.mark.slow
-@pytest.mark.elasticsearch
-@pytest.mark.asyncio
-async def test_full_indexing():
-    """Полная индексация с реальным .hbk файлом."""
-    parser = HBKParser()
-    parsed = parser.parse_file("data/hbk/shcntx_ru.hbk")
-    
-    indexer = ElasticsearchIndexer(es_client)
-    result = await indexer.reindex_all(parsed)
-    
-    assert result is True
-```
-
-### Асинхронный unit тест
-```python
-import pytest
-from unittest.mock import AsyncMock
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_async_operation(mock_elasticsearch_indexer):
-    """Тест асинхронной операции с mock."""
-    result = await mock_elasticsearch_indexer.reindex_all(mock_data)
-    assert result is True
-```
+- Имя файла: `test_<модуль>.py` для интеграционных, `test_<модуль>_unit.py`
+  для юнит-тестов.
+- Асинхронный тест не требует `@pytest.mark.asyncio`: в `pytest.ini` включён
+  `asyncio_mode = auto`.
+- Заглушки — фикстурами в `conftest.py`, а не заново в каждом файле.
