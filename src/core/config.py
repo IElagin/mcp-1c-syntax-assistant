@@ -1,6 +1,6 @@
 """Конфигурация приложения."""
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
@@ -30,6 +30,8 @@ class DataConfig(BaseModel):
     hbk_directory: str = "/app/data/hbk"
     logs_directory: str = "/app/logs"
     hbk_filename: str = "shcntx_ru.hbk"
+    hbk_directory_en: str = "/app/data/hbk-en"
+    hbk_filename_en: str = "shcntx_root.hbk"
 
     
 class Settings(BaseSettings):
@@ -63,6 +65,19 @@ class Settings(BaseSettings):
     # явным, иначе он зависит от порядка файлов в каталоге.
     hbk_filename: str = "shcntx_ru.hbk"
 
+    # Английская книга справки. Отдельный каталог, а не второй файл в data/hbk:
+    # выбор книги для индексации задан именем, и две книги в одном каталоге
+    # ничего не сломают, но раздельные каталоги делают состав очевидным.
+    hbk_directory_en: str = "data/hbk-en"
+    hbk_filename_en: str = "shcntx_root.hbk"
+
+    # Английский индекс. Второй индекс, а не общие документы: в английской
+    # книге нет русских имён, склеивать нечего.
+    elasticsearch_index_en: str = "help1c_docs_en"
+
+    # Язык ответа, когда инструмент вызван без lang.
+    default_help_lang: str = "ru"
+
     # Индексация
     reindex_on_startup: str = "false"
 
@@ -77,7 +92,21 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False
     )
-    
+
+    @field_validator("default_help_lang")
+    @classmethod
+    def _known_language(cls, value: str) -> str:
+        """Язык проверяется на старте, а не при первом запросе.
+
+        Сервер, поднявшийся с опечаткой в DEFAULT_HELP_LANG, отвечал бы
+        русскими карточками англоязычной команде и выглядел исправным.
+        """
+        if value not in ("ru", "en"):
+            raise ValueError(
+                f"DEFAULT_HELP_LANG={value!r}: допустимы только 'ru' и 'en'"
+            )
+        return value
+
     @property
     def elasticsearch(self) -> ElasticsearchConfig:
         """Получить конфигурацию Elasticsearch."""
@@ -109,7 +138,9 @@ class Settings(BaseSettings):
         return DataConfig(
             hbk_directory=self.hbk_directory,
             logs_directory=self.logs_directory,
-            hbk_filename=self.hbk_filename
+            hbk_filename=self.hbk_filename,
+            hbk_directory_en=self.hbk_directory_en,
+            hbk_filename_en=self.hbk_filename_en
         )
     
     @property

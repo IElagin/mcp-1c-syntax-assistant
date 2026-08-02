@@ -29,6 +29,9 @@ services:
         condition: service_healthy
     volumes:
       - ./data/hbk:/app/data/hbk:ro
+      # Английская книга необязательна: docker compose создаст пустой каталог,
+      # если его нет, и сервер поднимется без английского индекса.
+      - ./data/hbk-en:/app/data/hbk-en:ro
       # Путь совпадает с LOGS_DIRECTORY по умолчанию (data/logs от рабочего
       # каталога /app). При монтировании в /app/logs файлы оседали внутри
       # контейнера, а на хосте оставались пустышки.
