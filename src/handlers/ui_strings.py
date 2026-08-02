@@ -130,6 +130,22 @@ class UiStrings:
     # list_1c_object_members: объекта в справке нет вовсе
     object_missing: str           # «Объект «{object}» в справке не найден. Похожие объекты: {similar}.»
 
+    # find_1c_help: выдача непуста — шапка и хвост-совет успешного ответа.
+    # Оставить их русскими значило бы напечатать half-английскую карточку:
+    # список между ними уже переведён (list_line получает strings), а шапка и
+    # совет — нет.
+    found_count: str               # «Найдено {total} элементов по запросу «{query}».»
+    full_card_hint_generic: str    # «Полная карточка: get_1c_element(name=…, object=…)»
+
+    # Заголовки ошибок mcp_formatter.create_error_response. Ошибка на языке,
+    # которого агент не читает, ничем не лучше ошибки без текста: он не может
+    # решить следующий шаг.
+    search_error_title: str            # «Ошибка поиска»
+    internal_search_error_title: str   # «Внутренняя ошибка поиска»
+    card_error_title: str              # «Ошибка получения карточки»
+    generic_error_title: str           # «Ошибка»
+    members_internal_error_title: str  # «Ошибка получения состава»
+
 
 # Значения списаны дословно из src/handlers/element_card.py — вплоть до
 # кавычек-ёлочек, тире и пробелов. Существующие тесты карточки проверяют эти
@@ -248,6 +264,13 @@ RU_STRINGS = UiStrings(
         'members="all", чтобы увидеть весь состав.'
     ),
     object_missing="Объект «{object}» в справке не найден. Похожие объекты: {similar}.",
+    found_count="Найдено {total} элементов по запросу «{query}».",
+    full_card_hint_generic="Полная карточка: get_1c_element(name=…, object=…)",
+    search_error_title="Ошибка поиска",
+    internal_search_error_title="Внутренняя ошибка поиска",
+    card_error_title="Ошибка получения карточки",
+    generic_error_title="Ошибка",
+    members_internal_error_title="Ошибка получения состава",
 )
 
 # Английские формулировки отсутствия данных переведены по смыслу, а не
@@ -378,6 +401,13 @@ EN_STRINGS = UiStrings(
         'The object "{object}" was not found in the reference. Similar '
         "objects: {similar}."
     ),
+    found_count='Found {total} elements for the query "{query}".',
+    full_card_hint_generic="Full card: get_1c_element(name=…, object=…)",
+    search_error_title="Search error",
+    internal_search_error_title="Internal search error",
+    card_error_title="Error getting the card",
+    generic_error_title="Error",
+    members_internal_error_title="Error getting the member list",
 )
 
 

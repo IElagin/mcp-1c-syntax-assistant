@@ -94,14 +94,16 @@ async def handle_find_1c_help(
         )
 
         if result.get("error"):
-            return mcp_formatter.create_error_response("Ошибка поиска", result["error"])
+            return mcp_formatter.create_error_response(
+                strings.search_error_title, result["error"]
+            )
 
         found = result.get("results", [])
         if not found:
             return _text_response(await _why_empty(service, request, strings))
 
         total = result.get("total", len(found))
-        lines = [f"Найдено {total} элементов по запросу «{request.query}»."]
+        lines = [strings.found_count.format(total=total, query=request.query)]
         if total > len(found):
             # Повтор с бо́льшим limit возвращает те же первые элементы: смещения
             # у инструмента нет. Формулировка — та же, что в карточке омонимов.
@@ -116,12 +118,12 @@ async def handle_find_1c_help(
         lines.append("")
         lines.extend(list_line(d, strings) for d in found)
         lines.append("")
-        lines.append("Полная карточка: get_1c_element(name=…, object=…)")
+        lines.append(strings.full_card_hint_generic)
 
         return _text_response("\n".join(lines))
     except Exception as e:
         logger.error(f"find_1c_help: {e}")
-        return mcp_formatter.create_error_response("Внутренняя ошибка поиска", str(e))
+        return mcp_formatter.create_error_response(strings.internal_search_error_title, str(e))
 
 
 async def handle_get_1c_element(
@@ -178,11 +180,11 @@ async def handle_get_1c_element(
         # kind == "error": element_card так помечает сбой Elasticsearch,
         # чтобы обрыв связи не выглядел как честное "не найдено".
         return mcp_formatter.create_error_response(
-            "Ошибка получения карточки", response.get("error", "")
+            strings.card_error_title, response.get("error", "")
         )
     except Exception as e:
         logger.error(f"get_1c_element: {e}")
-        return mcp_formatter.create_error_response("Ошибка получения карточки", str(e))
+        return mcp_formatter.create_error_response(strings.card_error_title, str(e))
 
 
 async def handle_list_1c_object_members(
@@ -197,7 +199,7 @@ async def handle_list_1c_object_members(
         )
 
         if result.get("error"):
-            return mcp_formatter.create_error_response("Ошибка", result["error"])
+            return mcp_formatter.create_error_response(strings.generic_error_title, result["error"])
 
         if not result.get("total"):
             # total=0 неоднозначно само по себе: объекта может не быть вовсе,
@@ -239,4 +241,4 @@ async def handle_list_1c_object_members(
         ))
     except Exception as e:
         logger.error(f"list_1c_object_members: {e}")
-        return mcp_formatter.create_error_response("Ошибка получения состава", str(e))
+        return mcp_formatter.create_error_response(strings.members_internal_error_title, str(e))
