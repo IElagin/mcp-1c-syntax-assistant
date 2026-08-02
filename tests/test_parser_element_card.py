@@ -22,6 +22,12 @@ from src.parsers.html_parser import HTMLParser
 FIXTURES = Path(__file__).parent / "fixtures" / "hbk"
 
 ARCHIVE_PATHS = {
+    # Русские двойники нужны задаче 11 (её фикстуры без RU-аналога до задачи 3
+    # не существовали); тесты на них пишет она — здесь только путь в архиве.
+    "array_add.html":
+        "objects/catalog234/Array/methods/Add772.html",
+    "array_object.html":
+        "objects/catalog234/Array.html",
     "valuetable_findrows.html":
         "objects/catalog234/catalog236/ValueTable/methods/FindRows646.html",
     "valuetable_columns.html":

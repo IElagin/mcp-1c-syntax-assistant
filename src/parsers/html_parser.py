@@ -1,8 +1,9 @@
 """Парсер HTML документации 1С."""
 
+import html
 import re
 from typing import Optional
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 
 from src.models.doc_models import (
     Documentation, Parameter, SyntaxVariant, DocumentType,
@@ -40,6 +41,25 @@ def nodes_until_boundary(start, boundary_classes) -> list:
         nodes.append(elem)
         elem = elem.next_sibling
     return nodes
+
+
+def _serialize_for_reparsing(node) -> str:
+    """Строка узла, годная к повторному разбору как HTML.
+
+    Tag.__str__ сам экранирует текст своих потомков — обычный self-round-trip
+    BeautifulSoup. А NavigableString — подкласс str, и str() на ней возвращает
+    уже раскодированный текст как есть, без обратного экранирования. Плейсхолдер
+    «<Value>» (после декодирования &lt;Value&gt; при исходном разборе страницы)
+    в таком виде неотличим от настоящего тега: при повторном разборе html.parser
+    молча вырезает его как неизвестный тег, и текст пропадает. Кириллическое имя
+    («<ПараметрыОтбора>») тегом не распознаётся — в имени тега нет ASCII-букв —
+    и потому уцелевает случайно. Отсюда была разница между русской и английской
+    книгой на одном и том же месте разметки: дело в форме плейсхолдера, а не в
+    языке справки.
+    """
+    if isinstance(node, NavigableString):
+        return html.escape(str(node), quote=False)
+    return str(node)
 
 
 # Вид элемента по-русски: агент читает карточку, а не enum индекса.
@@ -422,7 +442,10 @@ class HTMLParser:
         """
         chapters = []
         for header in soup.find_all('p', class_='V8SH_chapter'):
-            parts = [str(u) for u in nodes_until_boundary(header, ('V8SH_chapter',))]
+            parts = [
+                _serialize_for_reparsing(u)
+                for u in nodes_until_boundary(header, ('V8SH_chapter',))
+            ]
             chapters.append((header.get_text(strip=True), "".join(parts)))
         return chapters
 
@@ -527,7 +550,10 @@ class HTMLParser:
             if not name:
                 continue
 
-            parts = [str(u) for u in nodes_until_boundary(rubric, ('V8SH_rubric',))]
+            parts = [
+                _serialize_for_reparsing(u)
+                for u in nodes_until_boundary(rubric, ('V8SH_rubric',))
+            ]
             param_type, description = split_type_and_note("".join(parts), self.dialect.type_label)
             params.append(
                 Parameter(name=name, type=param_type, description=description,
