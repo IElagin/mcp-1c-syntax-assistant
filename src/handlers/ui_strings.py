@@ -67,8 +67,12 @@ class UiStrings:
     # описания вариантов разные, и склейка в одно поле их бы стёрла).
     variant_description: str     # «Описание варианта: {text}»
 
-    # Карточка объекта
-    constructors_not_checked: str  # «Конструкторы: не проверялись»
+    # Карточка объекта. not_checked — фрагмент, а не готовая фраза: он всегда
+    # сочетается с меткой вызова (_call_label), как и not_in_help в соседней
+    # ветке той же функции («{label}: не проверялись» / «{label}: {not_in_help}»).
+    # Так рендер не должен помнить и заново не нарушить правило «render_object_card
+    # зовут только для объектов» — label вычисляется одинаково во всех ветках.
+    not_checked: str                # «не проверялись»
     composition: str               # «Состав — {parts}.»
     member_names_genitive: Dict[str, str]  # ключи methods / properties / events
     listing_hint: str              # «Перечень: list_1c_object_members(object="{key}")»
@@ -128,7 +132,7 @@ RU_STRINGS = UiStrings(
     variant_count="Вариантов вызова: {count}",
     variant_count_short="(вариантов вызова: {count})",
     variant_description="Описание варианта: {text}",
-    constructors_not_checked="Конструкторы: не проверялись",
+    not_checked="не проверялись",
     composition="Состав — {parts}.",
     member_names_genitive={
         "methods": "методов", "properties": "свойств", "events": "событий",
@@ -177,13 +181,17 @@ EN_STRINGS = UiStrings(
     heading_of_object="{kind} of {owner}",
     object_word="object",
     call="Call",
-    call_property="Access",
+    # Не "Access" — это слово занято полем access ниже («Access: read only»),
+    # и карточка свойства печатала бы «Access:» дважды с разным смыслом:
+    # как к свойству обратиться в коде — и можно ли в него писать. Reference
+    # называет первое, не пересекаясь со вторым.
+    call_property="Reference",
     call_object="Constructors",
     parameters="Parameters:",
     no_parameters="Parameters: none",
     required="required",
     optional="optional",
-    requiredness_unknown="requiredness not stated in the reference",
+    requiredness_unknown="requirement not stated in the reference",
     returns="Returns: {value}",
     returns_nothing="Returns: nothing (procedure)",
     availability="Availability: {items}",
@@ -201,7 +209,7 @@ EN_STRINGS = UiStrings(
     variant_count="Call variants: {count}",
     variant_count_short="(call variants: {count})",
     variant_description="Variant description: {text}",
-    constructors_not_checked="Constructors: not checked",
+    not_checked="not checked",
     composition="Members — {parts}.",
     member_names_genitive={
         "methods": "methods", "properties": "properties", "events": "events",

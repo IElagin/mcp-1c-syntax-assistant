@@ -227,7 +227,12 @@ def render_object_card(
     elif constructors is not None:
         lines.append(f"{label}: {strings.not_in_help}")
     else:
-        lines.append(strings.constructors_not_checked)
+        # label собирается тем же _call_label, что и в двух ветках выше, а не
+        # берётся готовой строкой из strings — так рендер не опирается на то,
+        # что render_object_card вызывают только для element_kind="объект":
+        # даже если бы это оказалось не так, все три ветки остались бы
+        # согласованы между собой.
+        lines.append(f"{label}: {strings.not_checked}")
 
     lines.append(_availability(doc, strings))
     if doc.get("version_from"):
