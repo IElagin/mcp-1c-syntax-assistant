@@ -199,6 +199,51 @@ def test_procedure_states_it_returns_nothing():
 
 
 @pytest.mark.unit
+def test_variant_description_is_shown_under_its_own_variant():
+    """«Описание варианта метода:» относится к варианту, а не к элементу.
+
+    Раньше это поле нигде не читалось: у ОповеститьОбИзменении (2 варианта,
+    у каждого своё описание варианта и нет общего «Описание:») карточка
+    печатала «Описание: в справке отсутствует», хотя оба текста лежали в
+    variants[].description. Слить их в одну строку Documentation.description
+    нельзя — у двух вариантов разные тексты, и склейка воспроизвела бы ту же
+    путаницу, которую задача 1 убрала при разборе.
+    """
+    doc = dict(DELETE_TWO_VARIANTS)
+    doc["variants"] = [
+        dict(doc["variants"][0], description="Первый вариант удаляет по индексу."),
+        dict(doc["variants"][1], description="Второй вариант удаляет по элементу."),
+    ]
+
+    text = render_element_card(doc)
+
+    assert "Описание варианта: Первый вариант удаляет по индексу." in text
+    assert "Описание варианта: Второй вариант удаляет по элементу." in text
+    # Оба текста видны рядом со своим вариантом, а не слиты в одну строку.
+    by_index_pos = text.index("По индексу")
+    first_desc_pos = text.index("Первый вариант удаляет по индексу.")
+    by_element_pos = text.index("По элементу")
+    assert by_index_pos < first_desc_pos < by_element_pos
+
+
+@pytest.mark.unit
+def test_single_unnamed_variant_description_has_no_extra_heading():
+    """Один безымянный вариант — без подзаголовка «Вариант …», но с описанием.
+
+    _variant уже решает этот случай для «Вызов:»/«Параметры:» через
+    with_name — «Описание варианта:» обязано вести себя так же, а не
+    печатать пустой заголовок «Вариант «»» там, где справка имени не дала.
+    """
+    doc = dict(FIND_ROWS_METHOD)
+    doc["variants"] = [dict(doc["variants"][0], description="Пояснение к единственному вызову.")]
+
+    text = render_element_card(doc)
+
+    assert "Описание варианта: Пояснение к единственному вызову." in text
+    assert "Вариант «" not in text
+
+
+@pytest.mark.unit
 def test_empty_variants_do_not_hide_params_line():
     """variants=[] — не повод молчать про параметры.
 
