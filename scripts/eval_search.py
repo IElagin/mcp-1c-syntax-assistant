@@ -6,7 +6,8 @@ SearchService, что стоит за MCP-инструментами, и счи�
 Эталон берётся из самого индекса: у документа известны object и name, значит
 известен и правильный ответ на запрос по этому имени.
 
-Запуск:  docker compose exec -T mcp-server python eval_search.py
+Запуск:
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python scripts/eval_search.py
 """
 
 import asyncio

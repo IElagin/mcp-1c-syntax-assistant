@@ -63,13 +63,9 @@ class Settings(BaseSettings):
     # явным, иначе он зависит от порядка файлов в каталоге.
     hbk_filename: str = "shcntx_ru.hbk"
 
-    # Производительность
-    max_concurrent_requests: str = "8"
-    index_batch_size: str = "100"
+    # Индексация
     reindex_on_startup: str = "false"
-    search_max_results: str = "50"
-    search_timeout_seconds: str = "30"
-    
+
     # Режим разработки
     debug: bool = False
     
