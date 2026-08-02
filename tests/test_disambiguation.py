@@ -264,3 +264,43 @@ async def test_similar_objects_searches_object_names_not_element_names():
         ]
     finally:
         await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_object_filter_accepts_english_name():
+    """object= принимает английское имя объекта — задача 11 заполнила object_en.
+
+    До правки фильтр по объекту смотрел только в object (техническое русское
+    имя), и list_1c_object_members(object="ValueTable") отвечал «объект не
+    найден», хотя английское имя уже лежало в индексе у 22 821 документа.
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+
+        assert await service.object_exists("ValueTable")
+        counts = await service.member_count("ValueTable")
+        assert counts["methods"] > 0
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
+async def test_dotted_english_path_is_found():
+    """'ValueTable.Add' находит элемент через ту же точечную запись, что и по-русски.
+
+    find_1c_help("ValueTable.Add") строит запрос через build_qualified_query,
+    чей filter по object тоже смотрел только в русское техническое имя.
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+        result = await service.find_help_filtered("ValueTable.Add", [], None, 10)
+
+        assert result["results"]
+    finally:
+        await es_client.disconnect()

@@ -106,11 +106,23 @@ class QueryBuilder:
         Принадлежность объекту — жёсткий filter, иначе в выдачу попадают
         одноимённые методы чужих объектов ('Добавить' есть у десятков).
         Имя элемента ищется от точного совпадения к префиксу.
+
+        object_name может быть и русским техническим именем ('ТаблицаЗначений'),
+        и английским ('ValueTable', задача 11) — filter принимает оба через
+        bool.should, иначе find_1c_help("ValueTable.Add") находил бы 0 документов:
+        object в индексе хранит только русское имя, а разработчик, скорее всего,
+        подставит в точечную запись то имя типа, что видит в коде BSL.
         """
         return {
             "query": {
                 "bool": {
-                    "filter": [{"term": {"object": object_name}}],
+                    "filter": [{"bool": {
+                        "should": [
+                            {"term": {"object": object_name}},
+                            {"term": {"object_en": object_name}},
+                        ],
+                        "minimum_should_match": 1,
+                    }}],
                     "should": [
                         {"term": {"name_ru.keyword": {"value": member_name, "boost": 10.0}}},
                         {"term": {"name_en.keyword": {"value": member_name, "boost": 9.0}}},

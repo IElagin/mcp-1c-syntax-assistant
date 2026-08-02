@@ -41,6 +41,27 @@ OBJECT_MEMBER_KINDS = [
 ]
 
 
+def _object_filter(object_name: str) -> Dict[str, Any]:
+    """Term-фильтр по объекту, принимающий и русское, и английское имя.
+
+    object хранит техническое (русское) имя объекта, object_en — английское
+    (задача 11, заполнено у 22 821 документа из 23 125). Пользователь может
+    знать любое из двух: код 1С пишут по-русски, а типы платформы часто узнают
+    по английскому имени (ValueTable). bool.should с minimum_should_match=1 —
+    это "или", а не совпадение обоих сразу; когда у объекта нет английского
+    имени, второе условие просто никогда не совпадает и на результат не влияет.
+    """
+    return {
+        "bool": {
+            "should": [
+                {"term": {"object": object_name}},
+                {"term": {"object_en": object_name}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
 def _is_real_type(object_name) -> bool:
     """Похоже ли имя объекта на тип языка, а не на заголовок раздела справки.
 
@@ -156,7 +177,7 @@ class SearchService:
         if types:
             filters.append({"terms": {"type": types}})
         if object_name:
-            filters.append({"term": {"object": object_name}})
+            filters.append(_object_filter(object_name))
 
         if filters:
             es_query["query"] = {"bool": {"must": [es_query["query"]], "filter": filters}}
@@ -193,7 +214,7 @@ class SearchService:
         for group_name, types in groups.items():
             response = await self.es_client.search({
                 "query": {"bool": {"filter": [
-                    {"term": {"object": object_name}},
+                    _object_filter(object_name),
                     {"terms": {"type": types}},
                 ]}},
                 "size": 0,
@@ -217,7 +238,7 @@ class SearchService:
         """
         response = await self.es_client.search({
             "query": {"bool": {"filter": [
-                {"term": {"object": object_name}},
+                _object_filter(object_name),
                 {"term": {"type": "object_constructor"}},
             ]}},
             "size": 50,
@@ -250,7 +271,7 @@ class SearchService:
         """Получить список элементов объекта с фильтрацией по типу."""
         try:
             # Базовый фильтр по объекту
-            query_filters = [{"term": {"object": object_name}}]
+            query_filters = [_object_filter(object_name)]
             
             # Добавляем фильтры по типу элементов. "all" тоже фильтруется —
             # без ограничения по OBJECT_MEMBER_KINDS запрос ловил документ
@@ -379,7 +400,7 @@ class SearchService:
                 }
             }]
             if object_name:
-                filters.append({"term": {"object": object_name}})
+                filters.append(_object_filter(object_name))
 
             response = await self.es_client.search({
                 "query": {"bool": {"filter": filters}},
@@ -492,7 +513,7 @@ class SearchService:
         исключение всплывёт к вызывающему и станет честной ошибкой.
         """
         response = await self.es_client.search({
-            "query": {"bool": {"filter": [{"term": {"object": object_name}}]}},
+            "query": {"bool": {"filter": [_object_filter(object_name)]}},
             "size": 0,
         }, index=self.index)
         total = (response or {}).get("hits", {}).get("total", {})
