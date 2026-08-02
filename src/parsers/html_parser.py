@@ -9,6 +9,7 @@ from src.models.doc_models import (
     ObjectMethod, ObjectProperty, ObjectEvent,
 )
 from src.core.logging import get_logger
+from src.parsers.dialects import Chapter, HelpDialect, RU_DIALECT
 from src.parsers.text_utils import (
     split_type_and_note, normalize_whitespace, clean_description, text_from_html,
 )
@@ -57,7 +58,18 @@ ELEMENT_KIND_BY_TYPE = {
 
 class HTMLParser:
     """Парсер HTML документации 1С."""
-    
+
+    def __init__(self, dialect: HelpDialect = RU_DIALECT):
+        self.dialect = dialect
+        # Флаги обязательности параметра — часть текста справки на языке
+        # диалекта, поэтому регэксп собирается из него, а не фиксируется на
+        # русских словах: на другом языке справка пишет флаг иначе.
+        self._parameter_heading_re = re.compile(
+            r'<\s*(?P<name>[^<>]*)\s*>\s*(?:\((?P<flag>'
+            + '|'.join((dialect.required_flag, dialect.optional_flag))
+            + r')\))?\s*\Z'
+        )
+
     def parse_html_content(self, content: bytes, file_path: str) -> Optional[Documentation]:
         """Парсит HTML содержимое и извлекает документацию."""
         try:
@@ -262,10 +274,9 @@ class HTMLParser:
         # Ищем заголовок "Возвращаемое значение" в V8SH_chapter
         chapter_headers = soup.find_all('p', class_='V8SH_chapter')
         for header in chapter_headers:
-            header_text = header.get_text(strip=True).lower()
-            if 'возвращаемое' in header_text or 'return' in header_text:
+            if self.dialect.chapter_of(header.get_text(strip=True)) is Chapter.RETURN_VALUE:
                 return True
-        
+
         # По умолчанию считаем процедурой
         return False
     
@@ -381,8 +392,7 @@ class HTMLParser:
         desc_headers = soup.find_all('p', class_='V8SH_chapter')
         
         for header in desc_headers:
-            header_text = header.get_text(strip=True).lower()
-            if 'описание' in header_text or 'description' in header_text:
+            if self.dialect.chapter_of(header.get_text(strip=True)) is Chapter.DESCRIPTION:
                 # Ищем в тексте после заголовка до следующего V8SH_chapter
                 description_parts = []
 
@@ -416,15 +426,15 @@ class HTMLParser:
     def _extract_element_sections(self, soup: BeautifulSoup, doc: Documentation):
         """Разделы, относящиеся к элементу целиком, а не к варианту вызова."""
         for heading, html in self._chapters(soup):
-            lowered = heading.lower().rstrip(':').strip()
+            chapter = self.dialect.chapter_of(heading)
 
-            if lowered == 'доступность':
+            if chapter is Chapter.AVAILABILITY:
                 doc.availability = self._parse_availability(html)
-            elif lowered == 'примечание':
+            elif chapter is Chapter.NOTE:
                 doc.note = clean_description(text_from_html(html))
-            elif lowered == 'использование':
-                # Ровно «Использование:». Заголовок «Использование в версии:»
-                # говорит о версии платформы и в доступ к свойству не годится.
+            elif chapter is Chapter.USAGE:
+                # USAGE, а не VERSION: «Использование в версии:» говорит о
+                # версии платформы и в доступ к свойству не годится.
                 doc.usage = normalize_whitespace(text_from_html(html)).rstrip('.').lower()
 
     @staticmethod
@@ -458,12 +468,12 @@ class HTMLParser:
         собственного HTML, а не из уже собранного doc.description.
         """
         for heading, html in self._chapters(soup):
-            if heading.lower().rstrip(':').strip() != 'описание':
+            if self.dialect.chapter_of(heading) is not Chapter.DESCRIPTION:
                 continue
 
             text = text_from_html(html).strip()
-            if text.startswith('Тип:'):
-                doc.value_type, doc.description = split_type_and_note(html)
+            if text.startswith(self.dialect.type_label):
+                doc.value_type, doc.description = split_type_and_note(html, self.dialect.type_label)
             break
 
     def _extract_russian_object_name(self, soup: BeautifulSoup) -> Optional[str]:
@@ -484,9 +494,8 @@ class HTMLParser:
     # но искать его надо от пары <...>, что стоит прямо перед концом строки
     # (или перед флагом) — то есть от последней настоящей пары скобок, а не от
     # первой встречной: иначе на этом же случае теряется флаг обязательности.
-    _PARAMETER_HEADING_RE = re.compile(
-        r'<\s*(?P<name>[^<>]*)\s*>\s*(?:\((?P<flag>обязательный|необязательный)\))?\s*\Z'
-    )
+    # Сами слова флага — часть текста справки, поэтому регэксп собран в
+    # __init__ из self.dialect, а не зафиксирован здесь константой класса.
 
     def _parse_parameter_header(self, text: str):
         """Возвращает (имя, обязательность) из '<Индекс> (обязательный)'.
@@ -494,17 +503,13 @@ class HTMLParser:
         BeautifulSoup уже превратил &lt; в <, поэтому имя ищется в угловых
         скобках. Обязательность None — справка о ней молчит.
         """
-        match = self._PARAMETER_HEADING_RE.search(text.replace('\xa0', ' '))
+        match = self._parameter_heading_re.search(text.replace('\xa0', ' '))
         if not match:
             return "", None
 
         name = match.group('name').strip()
-        flag = match.group('flag')
-        if flag == 'обязательный':
-            return name, True
-        if flag == 'необязательный':
-            return name, False
-        return name, None
+        required = self.dialect.required_from_flag(match.group('flag') or "")
+        return name, required
 
     def _parse_parameters(self, html: str):
         """Параметры одной главы «Параметры:»."""
@@ -520,7 +525,7 @@ class HTMLParser:
                 continue
 
             parts = [str(u) for u in nodes_until_boundary(rubric, ('V8SH_rubric',))]
-            param_type, description = split_type_and_note("".join(parts))
+            param_type, description = split_type_and_note("".join(parts), self.dialect.type_label)
             params.append(
                 Parameter(name=name, type=param_type, description=description,
                           required=is_required)
@@ -545,20 +550,19 @@ class HTMLParser:
             return current
 
         for heading, html in self._chapters(soup):
-            lowered = heading.lower().rstrip(':').strip()
+            chapter = self.dialect.chapter_of(heading)
 
-            if lowered.startswith('вариант синтаксиса'):
-                variant_name = heading.split(':', 1)[1].strip() if ':' in heading else ""
-                current = SyntaxVariant(variant=variant_name)
+            if chapter is Chapter.SYNTAX_VARIANT:
+                current = SyntaxVariant(variant=self.dialect.variant_name(heading))
                 parsed_variants.append(current)
-            elif lowered == 'синтаксис':
+            elif chapter is Chapter.SYNTAX:
                 take_current().syntax = normalize_whitespace(text_from_html(html))
-            elif lowered.startswith('параметр'):
+            elif chapter is Chapter.PARAMETERS:
                 take_current().parameters = self._parse_parameters(html)
-            elif lowered.startswith('возвращаемое значение'):
+            elif chapter is Chapter.RETURN_VALUE:
                 variant = take_current()
                 variant.return_type, variant.return_description = \
-                    split_type_and_note(html)
+                    split_type_and_note(html, self.dialect.type_label)
 
         if doc.type == DocumentType.OBJECT_CONSTRUCTOR:
             # У конструкторов варианты разложены по отдельным страницам справки,
@@ -581,10 +585,9 @@ class HTMLParser:
         example_headers = soup.find_all('p', class_='V8SH_chapter')
         
         for header in example_headers:
-            header_text = header.get_text(strip=True).lower()
-            if 'пример' not in header_text and 'example' not in header_text:
+            if self.dialect.chapter_of(header.get_text(strip=True)) is not Chapter.EXAMPLE:
                 continue
-                
+
             # Ищем таблицы с кодом после заголовка
             for elem in nodes_until_boundary(header, ('V8SH_chapter',)):
                 # Пропускаем текстовые узлы и элементы без методов find
@@ -649,9 +652,9 @@ class HTMLParser:
                 version = version_match.group(0)
                 
                 # Определяем тип версии по контексту
-                if 'доступен' in version_text.lower() or 'начиная' in version_text.lower():
+                if self.dialect.is_version_available(version_text):
                     doc.version_from = version
-                elif 'изменен' in version_text.lower() or 'описание' in version_text.lower():
+                elif self.dialect.is_version_changed(version_text):
                     # Это версия изменения, можно сохранить как дополнительную информацию
                     if not doc.version_from:
                         doc.version_from = version
@@ -659,7 +662,9 @@ class HTMLParser:
     def _extract_object_methods(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает методы объекта."""
         # Ищем секцию "Методы:"
-        methods_section = self._get_content_after_chapter(soup, ['методы'])
+        methods_section = self._get_content_after_chapter(
+            soup, [self.dialect.chapters[Chapter.METHODS].rstrip(':').lower()]
+        )
         if not methods_section:
             return
             
@@ -689,7 +694,9 @@ class HTMLParser:
     def _extract_object_properties(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает свойства объекта."""
         # Ищем секцию "Свойства:"
-        properties_section = self._get_content_after_chapter(soup, ['свойства'])
+        properties_section = self._get_content_after_chapter(
+            soup, [self.dialect.chapters[Chapter.PROPERTIES].rstrip(':').lower()]
+        )
         if not properties_section:
             return
             
@@ -719,7 +726,9 @@ class HTMLParser:
     def _extract_object_events(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает события объекта."""
         # Ищем секцию "События:"
-        events_section = self._get_content_after_chapter(soup, ['события'])
+        events_section = self._get_content_after_chapter(
+            soup, [self.dialect.chapters[Chapter.EVENTS].rstrip(':').lower()]
+        )
         if not events_section:
             return
             

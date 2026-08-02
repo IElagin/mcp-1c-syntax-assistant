@@ -7,6 +7,7 @@
 """
 
 import re
+from typing import Tuple
 
 from bs4 import BeautifulSoup
 
@@ -43,7 +44,7 @@ def text_from_html(html: str) -> str:
     return soup.get_text().replace('\xa0', ' ')
 
 
-def split_type_and_note(html: str) -> tuple:
+def split_type_and_note(html: str, type_label: str = "Тип:") -> Tuple[str, str]:
     """Разделяет 'Тип: <a>Массив</a>. <br>Пояснение' на ('Массив', 'Пояснение').
 
     Тип и пояснение раньше лежали в одном поле, и половина «типов» была абзацем
@@ -51,12 +52,16 @@ def split_type_and_note(html: str) -> tuple:
 
     Перечисление типов через запятую («Тип: Строка, Число.») сохраняется целиком:
     выбирать один из них сервер не вправе.
+
+    Метка приходит аргументом: в английской книге тот же раздел начинается с
+    «Type:», и захардкоженное «Тип:» молча отдало бы весь текст как описание,
+    оставив тип пустым.
     """
     text = text_from_html(html).strip()
-    if not text.startswith('Тип:'):
+    if not text.startswith(type_label):
         return "", clean_description(text)
 
-    rest = text[len('Тип:'):].strip()
+    rest = text[len(type_label):].strip()
     boundaries = [p for p in (rest.find('.'), rest.find('\n')) if p != -1]
     if not boundaries:
         return normalize_whitespace(rest), ""
