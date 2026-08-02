@@ -91,9 +91,6 @@ data/
 # Exclude .hbk files from root directory
 *.hbk
 
-# Docker
-.dockerignore
-
 # Elasticsearch data (handled by Docker volumes)
 data/elasticsearch/
 
@@ -146,3 +143,9 @@ debug_*.py
 
 # Docker artifacts
 *.tar
+
+# Рабочие материалы агентов
+.superpowers/
+
+# Локальные переопределения compose остаются локальными
+docker-compose.override.yml

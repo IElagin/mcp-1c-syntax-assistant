@@ -1,6 +1,8 @@
-#!/bin/bash
 # MCP Server Start Script for PowerShell/Unix
 # Скрипт запуска MCP сервера для PowerShell/Unix
+
+# Скрипт лежит в scripts/, а venv и src/ — в корне репозитория.
+Set-Location (Split-Path $PSScriptRoot -Parent)
 
 Write-Host "Starting 1C Syntax Helper MCP Server..." -ForegroundColor Green
 Write-Host "Запуск MCP сервера синтаксис-помощника 1С..." -ForegroundColor Green
@@ -39,8 +41,8 @@ Write-Host "Запускаем MCP сервер на http://localhost:8000" -For
 Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Yellow
 Write-Host "Нажмите Ctrl+C для остановки сервера" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "To force reindex, use: .\start_mcp_server.ps1 --reindex" -ForegroundColor Cyan
-Write-Host "Для принудительной переиндексации: .\start_mcp_server.ps1 --reindex" -ForegroundColor Cyan
+Write-Host "To force reindex, use: .\scripts\start_server.ps1 --reindex" -ForegroundColor Cyan
+Write-Host "Для принудительной переиндексации: .\scripts\start_server.ps1 --reindex" -ForegroundColor Cyan
 Write-Host ""
 
 # Передаём все аргументы скрипта в main.py

@@ -14,6 +14,10 @@ import random
 import re
 import sys
 from collections import Counter
+from pathlib import Path
+
+# Скрипт лежит в scripts/, а пакет src/ — в корне репозитория.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.core.elasticsearch import es_client
 from src.search.search_service import SearchService

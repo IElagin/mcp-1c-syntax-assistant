@@ -12,8 +12,13 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Копирование и установка Python зависимостей
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-dev.txt ./
+
+# INSTALL_DEV=true добавляет pytest и линтеры — используется docker-compose.dev.yml.
+# Продуктовый образ собирается без них.
+ARG INSTALL_DEV=false
+RUN pip install --no-cache-dir -r requirements.txt && \
+    if [ "$INSTALL_DEV" = "true" ]; then pip install --no-cache-dir -r requirements-dev.txt; fi
 
 # Копирование исходного кода
 COPY src/ ./src/

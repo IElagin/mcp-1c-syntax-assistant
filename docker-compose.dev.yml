@@ -1,0 +1,24 @@
+# Контур разработки. Запуск:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# Отличия от продуктового compose: образ собирается с dev-зависимостями,
+# а исходники, тесты и служебные скрипты монтируются внутрь.
+
+services:
+  mcp-server:
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+    environment:
+      # true — переиндексировать при каждом старте, false — только если индекс пуст.
+      - REINDEX_ON_STARTUP=false
+    volumes:
+      # src монтируется намеренно: в продуктовом образе он копируется внутрь
+      # (COPY src/ ./src/), и без монтирования правка кода требует пересборки.
+      # Без неё pytest молча проверяет старую версию и показывает зелёный,
+      # которого нет.
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./pytest.ini:/app/pytest.ini:ro
+      - ./scripts:/app/scripts:ro

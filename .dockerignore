@@ -1,0 +1,32 @@
+# Данные справки — монтируются томом, в образ не нужны (36 МБ .hbk).
+data/
+
+# Тесты и служебные скрипты монтируются docker-compose.dev.yml.
+tests/
+scripts/
+pytest.ini
+
+# Документация и история.
+docs/
+*.md
+.git/
+.github/
+.claude/
+.superpowers/
+
+# Артефакты Python.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage*
+
+# Локальное окружение.
+.env
+venv/
+.venv/
+
+# Compose-файлы разработки.
+docker-compose*.yml
+Dockerfile

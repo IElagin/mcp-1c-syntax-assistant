@@ -2,6 +2,9 @@
 REM MCP Server Start Script for Windows
 REM Скрипт запуска MCP сервера для Windows
 
+REM Скрипт лежит в scripts/, а venv и src/ — в корне репозитория.
+cd /d "%~dp0.."
+
 echo Starting 1C Syntax Helper MCP Server...
 echo Запуск MCP сервера синтаксис-помощника 1С...
 
@@ -39,8 +42,8 @@ echo Запускаем MCP сервер на http://localhost:8000
 echo Press Ctrl+C to stop the server
 echo Нажмите Ctrl+C для остановки сервера
 echo.
-echo To force reindex, use: start_mcp_server.bat --reindex
-echo Для принудительной переиндексации: start_mcp_server.bat --reindex
+echo To force reindex, use: scripts\start_server.bat --reindex
+echo Для принудительной переиндексации: scripts\start_server.bat --reindex
 echo.
 
 venv\Scripts\python.exe src/main.py %*

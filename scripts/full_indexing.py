@@ -13,7 +13,8 @@ import concurrent.futures
 # Отключаем предупреждения от внешних библиотек
 warnings.filterwarnings("ignore", category=FutureWarning, module="soupsieve")
 
-sys.path.insert(0, str(Path(__file__).parent))
+# Скрипт лежит в scripts/, а пакет src/ — в корне репозитория.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.core.config import settings
 from src.core.elasticsearch import es_client
