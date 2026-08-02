@@ -37,6 +37,22 @@ def sample_hbk_path():
 
 
 @pytest.fixture
+def es_client_without_en_index():
+    """Мок клиента ES, у которого нет английского индекса.
+
+    Реальный help1c_docs_en сейчас существует и заполнен (23 104 документа) —
+    удалять его ради теста нельзя, поэтому ветку «индекса нет» имитирует мок:
+    index_exists(index="help1c_docs_en") возвращает False, как при первом
+    запуске без английской книги (задача 8).
+    """
+    from unittest.mock import AsyncMock
+
+    client = AsyncMock()
+    client.index_exists = AsyncMock(return_value=False)
+    return client
+
+
+@pytest.fixture
 def mock_elasticsearch():
     """Мок для Elasticsearch клиента."""
     from unittest.mock import Mock

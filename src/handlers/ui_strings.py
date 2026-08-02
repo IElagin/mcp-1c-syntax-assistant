@@ -137,6 +137,16 @@ class UiStrings:
     found_count: str               # «Найдено {total} элементов по запросу «{query}».»
     full_card_hint_generic: str    # «Полная карточка: get_1c_element(name=…, object=…)»
 
+    # Кросс-языковые запросы (mcp_handlers._language_mismatch). Молчаливое
+    # «ничего не найдено» здесь — не честный отрицательный ответ, а введение
+    # в заблуждение: элемент существует, просто не в этой книге и не под этим
+    # именем. Обе строки печатаются только при lang="en" — при lang="ru" эта
+    # проверка не срабатывает вовсе (русская книга несёт оба имени), так что
+    # в RU_STRINGS они не нужны по смыслу, но живут в общей таблице как единый
+    # контракт полей.
+    english_index_missing: str        # «English reference is not indexed: …»
+    russian_name_in_english_book: str  # «The English reference book contains no Russian names…»
+
     # Заголовки ошибок mcp_formatter.create_error_response. Ошибка на языке,
     # которого агент не читает, ничем не лучше ошибки без текста: он не может
     # решить следующий шаг.
@@ -264,6 +274,22 @@ RU_STRINGS = UiStrings(
         'members="all", чтобы увидеть весь состав.'
     ),
     object_missing="Объект «{object}» в справке не найден. Похожие объекты: {similar}.",
+    # На практике не печатаются: _language_mismatch срабатывает только при
+    # lang="en" (задача 6 — русская книга несёт оба имени, кросс-языковой
+    # проблемы у неё нет). Значения — не заглушки, а полноценный русский
+    # перевод: таблица строк не оставляет полей без перевода ни при каких
+    # условиях, даже недостижимых сегодняшней логикой обработчиков.
+    english_index_missing=(
+        "Английская справка не проиндексирована: книга shcntx_root.hbk "
+        "отсутствует в data/hbk-en. Скопируйте её из каталога bin установленной "
+        "1С:Предприятие и перезапустите сервер, либо повторите вызов с "
+        'lang="ru". См. docs/CONFIGURATION.md.'
+    ),
+    russian_name_in_english_book=(
+        "Английская справка не содержит русских имён, поэтому такой запрос "
+        'заведомо ничего не найдёт. Повторите вызов с lang="ru" либо укажите '
+        "английское имя элемента."
+    ),
     found_count="Найдено {total} элементов по запросу «{query}».",
     full_card_hint_generic="Полная карточка: get_1c_element(name=…, object=…)",
     search_error_title="Ошибка поиска",
@@ -400,6 +426,17 @@ EN_STRINGS = UiStrings(
     object_missing=(
         'The object "{object}" was not found in the reference. Similar '
         "objects: {similar}."
+    ),
+    english_index_missing=(
+        "English reference is not indexed: the book shcntx_root.hbk is missing "
+        "from data/hbk-en. Copy it from the bin directory of your 1C:Enterprise "
+        "installation and restart the server, or repeat the call with lang=\"ru\". "
+        "See docs/CONFIGURATION.md."
+    ),
+    russian_name_in_english_book=(
+        "The English reference book contains no Russian names, so this query "
+        "cannot match anything. Repeat the call with lang=\"ru\", or pass the "
+        "English name of the element."
     ),
     found_count='Found {total} elements for the query "{query}".',
     full_card_hint_generic="Full card: get_1c_element(name=…, object=…)",

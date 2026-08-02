@@ -1,5 +1,8 @@
 """Обработчики MCP запросов."""
 
+import re
+from typing import Optional
+
 from src.api.mcp_tools import KIND_TO_TYPE, SEARCH_LIMIT_MAX, MEMBERS_LIMIT_MAX
 from src.core.config import settings
 from src.core.elasticsearch import ElasticsearchClient
@@ -30,6 +33,59 @@ def index_for(lang: str) -> str:
 
 def _text_response(text: str) -> MCPResponse:
     return mcp_formatter.create_success_response([{"type": "text", "text": text}])
+
+
+_CYRILLIC = re.compile(r"[а-яёА-ЯЁ]")
+
+
+def has_cyrillic(text: str) -> bool:
+    """Есть ли в строке хоть одна кириллическая буква.
+
+    Нужна не для угадывания языка ответа — его задаёт lang, и только он, —
+    а чтобы отличить «такого элемента нет» от «вы ищете русское имя в
+    английской книге, где русских имён не печатали». Любая кириллица, а не
+    только «вся строка кириллична»: у «Add (Добавить)» латиница несёт
+    настоящее английское имя, а кириллица в скобках — то же самое имя
+    по-русски, и по ней запрос в англоязычном индексе всё равно даст пустую
+    выдачу. Ошибиться в сторону лишнего срабатывания здесь дешевле, чем в
+    другую: непойманная кириллица оставляет агента с необъяснённой пустой
+    выдачей, а лишнее срабатывание — самое большее с советом, который не
+    понадобится.
+    """
+    return bool(_CYRILLIC.search(text or ""))
+
+
+async def _language_mismatch(
+    request_lang: str, values: tuple, es_client: ElasticsearchClient, strings: UiStrings
+) -> Optional[str]:
+    """Сообщение о том, почему поиск заведомо пуст, или None.
+
+    Обе проверки идут до запроса в Elasticsearch: пустая выдача уже
+    неотличима от отсутствия элемента, и объяснять постфактум нечем — по
+    результату «ничего не найдено» нельзя понять задним числом, искали ли
+    кириллическое имя в английской книге или элемента в справке действительно
+    нет.
+
+    Кириллица проверяется первой, отсутствие индекса — второй: первая
+    проверка не стоит ничего (чистая функция без обращения к ES), а вторая —
+    сетевой вызов. Порядок и не влияет на результат при обеих проблемах
+    сразу: кириллическое имя всё равно не найдётся в английском индексе,
+    даже когда он есть, так что это самостоятельная причина независимо от
+    того, поднят ли индекс.
+    """
+    if request_lang != "en":
+        # Симметричной проверки для lang="ru" нет и не должно быть: русская
+        # книга несёт оба имени (задача 6), и find_1c_help("Add", lang="ru")
+        # обязан продолжать находить элемент.
+        return None
+
+    if any(has_cyrillic(v) for v in values if v):
+        return strings.russian_name_in_english_book
+
+    if not await es_client.index_exists(index=index_for("en")):
+        return strings.english_index_missing
+
+    return None
 
 
 async def _why_empty(
@@ -98,6 +154,12 @@ async def handle_find_1c_help(
     lang = request.lang.value
     strings = strings_for(lang)
     try:
+        mismatch = await _language_mismatch(
+            lang, (request.query, request.object), es_client, strings
+        )
+        if mismatch:
+            return _text_response(mismatch)
+
         service = SearchService(es_client, index=index_for(lang))
         result = await service.find_help_filtered(
             request.query,
@@ -147,6 +209,12 @@ async def handle_get_1c_element(
     lang = request.lang.value
     strings = strings_for(lang)
     try:
+        mismatch = await _language_mismatch(
+            lang, (request.name, request.object), es_client, strings
+        )
+        if mismatch:
+            return _text_response(mismatch)
+
         service = SearchService(es_client, index=index_for(lang))
         response = await service.element_card(
             request.name, request.object, request.variant
@@ -210,6 +278,10 @@ async def handle_list_1c_object_members(
     lang = request.lang.value
     strings = strings_for(lang)
     try:
+        mismatch = await _language_mismatch(lang, (request.object,), es_client, strings)
+        if mismatch:
+            return _text_response(mismatch)
+
         service = SearchService(es_client, index=index_for(lang))
         result = await service.get_object_members_list(
             request.object, request.members.value, request.limit
