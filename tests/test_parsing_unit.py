@@ -158,7 +158,7 @@ def test_documentation_examples(mock_parsed_hbk):
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
+def test_canonical_object_path_does_not_double_the_name():
     """У документа самого объекта object равен его имени — склеивать нельзя.
 
     Склейка object + "." + имя давала «ТаблицаЗначений.ТаблицаЗначений» у 2 286
@@ -177,7 +177,7 @@ def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_kanonicheskiy_put_obekta_s_shablonnym_imenem_sohranyaet_tip():
+def test_canonical_object_path_with_placeholder_name_keeps_the_type():
     """У 220 объектов имя страницы — заполнитель, а тип лежит в object.
 
     Там склейка и есть канонический путь заголовка справки, и по нему же лежат

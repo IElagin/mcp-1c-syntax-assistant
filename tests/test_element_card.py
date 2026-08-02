@@ -22,7 +22,7 @@ from src.handlers.element_card import (
 
 # Реальный документ индекса: сам объект ТаблицаЗначений. variants у документов
 # объектов пусты всегда — конструкторы лежат отдельными документами.
-OBEKT_TABLITSA_ZNACHENIY = {
+VALUE_TABLE_OBJECT = {
     "name": "ТаблицаЗначений", "name_ru": "ТаблицаЗначений",
     "type": "object", "element_kind": "объект",
     "object": "ТаблицаЗначений", "object_ru": "ТаблицаЗначений",
@@ -31,7 +31,7 @@ OBEKT_TABLITSA_ZNACHENIY = {
     "description": "Таблица значений.", "examples": [],
 }
 
-NAYTI_STROKI = {
+FIND_ROWS_METHOD = {
     "name": "НайтиСтроки (FindRows)",
     "name_ru": "НайтиСтроки",
     "name_en": "FindRows",
@@ -59,7 +59,7 @@ NAYTI_STROKI = {
     "examples": [],
 }
 
-UDALIT_DVA_VARIANTA = {
+DELETE_TWO_VARIANTS = {
     "name": "Удалить (Delete)",
     "name_ru": "Удалить",
     "type": "object_procedure",
@@ -87,7 +87,7 @@ UDALIT_DVA_VARIANTA = {
     "examples": [],
 }
 
-KOLONKI = {
+COLUMNS_PROPERTY = {
     "name": "Колонки (Columns)",
     "name_ru": "Колонки",
     "type": "object_property",
@@ -108,7 +108,7 @@ KOLONKI = {
 # Реальный документ индекса (help1c_docs): Массив.По количеству элементов.
 # Единственный вариант вызова, но с непустым именем варианта — проверяет, что
 # карточка конструктора не путается с обобщённой веткой elif kind в _heading.
-MASSIV_PO_KOLICHESTVU_ELEMENTOV = {
+ARRAY_CONSTRUCTOR_BY_COUNT = {
     "name": "По количеству элементов",
     "name_ru": "По количеству элементов",
     "type": "object_constructor",
@@ -140,7 +140,7 @@ MASSIV_PO_KOLICHESTVU_ELEMENTOV = {
 # реально ведёт себя иначе, чем "функция"/"процедура" — только у типа,
 # начинающегося с "global", _heading добавляет «глобального контекста».
 # Параметр несёт required=None — так размечено в самой справке.
-PERED_NACHALOM_RABOTY_SISTEMY = {
+BEFORE_START_EVENT = {
     "name": "ПередНачаломРаботыСистемы (BeforeStart)",
     "name_ru": "ПередНачаломРаботыСистемы",
     "name_en": "BeforeStart",
@@ -170,8 +170,8 @@ PERED_NACHALOM_RABOTY_SISTEMY = {
 
 
 @pytest.mark.unit
-def test_kartochka_metoda_neset_vyzov_parametry_i_vozvrat():
-    text = render_element_card(NAYTI_STROKI)
+def test_method_card_carries_call_params_and_return():
+    text = render_element_card(FIND_ROWS_METHOD)
 
     assert "ТаблицаЗначений.НайтиСтроки" in text
     assert "Вызов: ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)" in text
@@ -182,9 +182,9 @@ def test_kartochka_metoda_neset_vyzov_parametry_i_vozvrat():
 
 
 @pytest.mark.unit
-def test_kartochka_pechataet_oba_varianta():
+def test_card_prints_both_variants():
     """Второй способ вызова обязан быть виден: иначе агент о нём не узнает."""
-    text = render_element_card(UDALIT_DVA_VARIANTA)
+    text = render_element_card(DELETE_TWO_VARIANTS)
 
     assert "По индексу" in text
     assert "По элементу" in text
@@ -193,25 +193,25 @@ def test_kartochka_pechataet_oba_varianta():
 
 
 @pytest.mark.unit
-def test_protsedura_govorit_chto_nichego_ne_vozvrashchaet():
-    text = render_element_card(UDALIT_DVA_VARIANTA)
+def test_procedure_states_it_returns_nothing():
+    text = render_element_card(DELETE_TWO_VARIANTS)
     assert "нет (процедура)" in text
 
 
 @pytest.mark.unit
-def test_pustye_varianty_ne_skryvayut_stroku_parametry():
+def test_empty_variants_do_not_hide_params_line():
     """variants=[] — не повод молчать про параметры.
 
     Спека §5 требует «Параметры: нет» в списке всегда печатаемых полей;
     молчание неотличимо от «параметров нет» и агент об этом не узнает.
     """
-    doc = dict(NAYTI_STROKI, variants=[])
+    doc = dict(FIND_ROWS_METHOD, variants=[])
     text = render_element_card(doc)
     assert "Параметры: нет" in text
 
 
 @pytest.mark.unit
-def test_kartochka_konstruktora_nazyvaet_i_vyzyvaet_po_novomu():
+def test_constructor_card_names_and_calls_with_new():
     """Реальный конструктор из индекса (Массив.По количеству элементов).
 
     Утверждения специфичны для конструктора, а не для любого вызываемого
@@ -220,15 +220,15 @@ def test_kartochka_konstruktora_nazyvaet_i_vyzyvaet_po_novomu():
     вызова — начинаться со слова «Новый» (так конструкторы объектов и
     вызываются, в отличие от Объект.Метод(...) у функций/процедур).
     """
-    text = render_element_card(MASSIV_PO_KOLICHESTVU_ELEMENTOV)
+    text = render_element_card(ARRAY_CONSTRUCTOR_BY_COUNT)
 
     assert "Массив.По количеству элементов — конструктор объекта Массив" in text
 
-    stroka_vyzova = next(s for s in text.split("\n") if s.startswith("Вызов:"))
-    vyzov = stroka_vyzova.removeprefix("Вызов:").strip()
-    assert vyzov.startswith("Новый"), \
+    call_line = next(s for s in text.split("\n") if s.startswith("Вызов:"))
+    call = call_line.removeprefix("Вызов:").strip()
+    assert call.startswith("Новый"), \
         "конструктор вызывается через «Новый Тип(...)», а не Объект.Метод(...)"
-    assert vyzov == "Новый Массив(<КоличествоЭлементов1>,...,<КоличествоЭлементовN>)"
+    assert call == "Новый Массив(<КоличествоЭлементов1>,...,<КоличествоЭлементовN>)"
 
     assert "КоличествоЭлементовN" in text and "Число" in text
     assert "Параметры: нет" not in text
@@ -236,7 +236,7 @@ def test_kartochka_konstruktora_nazyvaet_i_vyzyvaet_po_novomu():
 
 
 @pytest.mark.unit
-def test_kartochka_globalnogo_sobytiya_nazyvaet_kontekst():
+def test_global_event_card_names_the_context():
     """Реальное глобальное событие из индекса (ПередНачаломРаботыСистемы).
 
     Единственное место, где element_kind="событие" отличается от
@@ -246,7 +246,7 @@ def test_kartochka_globalnogo_sobytiya_nazyvaet_kontekst():
     станет «событие объекта Глобальный контекст» вместо «событие глобального
     контекста» — эта строгая проверка формулировки поймает такую регрессию.
     """
-    text = render_element_card(PERED_NACHALOM_RABOTY_SISTEMY)
+    text = render_element_card(BEFORE_START_EVENT)
 
     assert "ПередНачаломРаботыСистемы — событие глобального контекста" in text
     assert "Отказ" in text
@@ -254,22 +254,22 @@ def test_kartochka_globalnogo_sobytiya_nazyvaet_kontekst():
 
 
 @pytest.mark.unit
-def test_otsutstvie_primerov_skazano_pryamo():
+def test_missing_examples_stated_explicitly():
     """Примеры есть лишь у 6% элементов справки — молчать об этом нельзя."""
-    text = render_element_card(NAYTI_STROKI)
+    text = render_element_card(FIND_ROWS_METHOD)
     assert "Примеров в справке нет" in text
 
 
 @pytest.mark.unit
-def test_otsutstvie_dostupnosti_skazano_pryamo():
-    doc = dict(NAYTI_STROKI, availability=[])
+def test_missing_availability_stated_explicitly():
+    doc = dict(FIND_ROWS_METHOD, availability=[])
     text = render_element_card(doc)
     assert "Доступность: в справке не указана" in text
 
 
 @pytest.mark.unit
-def test_kartochka_svoystva_obrashchenie_tip_i_dostup():
-    text = render_element_card(KOLONKI)
+def test_property_card_shows_access_type_and_mode():
+    text = render_element_card(COLUMNS_PROPERTY)
 
     assert "Обращение: ТаблицаЗначений.Колонки" in text
     assert "Вызов:" not in text, "свойство не вызывают"
@@ -278,9 +278,9 @@ def test_kartochka_svoystva_obrashchenie_tip_i_dostup():
 
 
 @pytest.mark.unit
-def test_neizvestnaya_obyazatelnost_ne_vydaetsya_za_obyazatelnost():
+def test_unknown_requiredness_is_not_passed_off_as_required():
     """required=None — справка молчит; выдавать это за «обязательный» нельзя."""
-    doc = dict(NAYTI_STROKI)
+    doc = dict(FIND_ROWS_METHOD)
     doc["variants"] = [dict(doc["variants"][0])]
     doc["variants"][0]["parameters"] = [
         {"name": "Х", "type": "Строка", "required": None, "description": "Что-то."}
@@ -293,22 +293,22 @@ def test_neizvestnaya_obyazatelnost_ne_vydaetsya_za_obyazatelnost():
 
 
 @pytest.mark.unit
-def test_stroka_spiska_odna_stroka_i_neset_vyzov():
-    stroka = list_line(NAYTI_STROKI)
+def test_list_line_is_single_line_and_carries_call():
+    line = list_line(FIND_ROWS_METHOD)
 
-    assert "\n" not in stroka
-    assert "ТаблицаЗначений.НайтиСтроки" in stroka
-
-
-@pytest.mark.unit
-def test_stroka_spiska_soobshchaet_o_variantah():
-    stroka = list_line(UDALIT_DVA_VARIANTA)
-    assert "вариантов вызова: 2" in stroka
+    assert "\n" not in line
+    assert "ТаблицаЗначений.НайтиСтроки" in line
 
 
 @pytest.mark.unit
-def test_spisok_kandidatov_nazyvaet_chislo_i_sposob_utochnit():
-    text = candidate_list("Количество", [NAYTI_STROKI, KOLONKI], total=275)
+def test_list_line_reports_variants():
+    line = list_line(DELETE_TWO_VARIANTS)
+    assert "вариантов вызова: 2" in line
+
+
+@pytest.mark.unit
+def test_candidate_list_states_count_and_how_to_narrow():
+    text = candidate_list("Количество", [FIND_ROWS_METHOD, COLUMNS_PROPERTY], total=275)
 
     assert "275" in text
     assert "get_1c_element" in text
@@ -318,39 +318,39 @@ def test_spisok_kandidatov_nazyvaet_chislo_i_sposob_utochnit():
 
 
 @pytest.mark.unit
-def test_zagolovok_kandidatov_ne_obeshchaet_veroyatnosti():
+def test_candidates_heading_promises_no_likelihood():
     """Заголовок обязан называть порядок, а не обещать ранжирование.
 
     «Наиболее вероятные» были заявкой без покрытия: окно набиралось
     фильтрующим запросом с равными оценками, а сортировка шла по алфавиту.
     """
-    text = candidate_list("Количество", [NAYTI_STROKI, KOLONKI], total=275)
+    text = candidate_list("Количество", [FIND_ROWS_METHOD, COLUMNS_PROPERTY], total=275)
 
     assert "Наиболее вероятные" not in text
     assert "числом элементов в справке" in text
 
 
 @pytest.mark.unit
-def test_kandidaty_govoryat_kogda_poryadok_ne_po_vsem_sovpadeniyam():
+def test_candidates_state_when_order_is_not_over_all_matches():
     """Если упорядочены не все совпадения — об этом сказано, а не умолчано."""
     text = candidate_list(
-        "Количество", [NAYTI_STROKI], total=900, full_order=False
+        "Количество", [FIND_ROWS_METHOD], total=900, full_order=False
     )
 
     assert "не по всем совпадениям" in text
 
 
 @pytest.mark.unit
-def test_kartochka_obekta_ne_pechataet_spiski_chlenov():
+def test_object_card_does_not_print_member_lists():
     text = render_object_card(
-        OBEKT_TABLITSA_ZNACHENIY, {"methods": 46, "properties": 5, "events": 0}, []
+        VALUE_TABLE_OBJECT, {"methods": 46, "properties": 5, "events": 0}, []
     )
 
     assert "46" in text and "list_1c_object_members" in text
 
 
 @pytest.mark.unit
-def test_kartochka_obekta_nazyvaet_konstruktory():
+def test_object_card_names_constructors():
     """Конструкторы объекта лежат отдельными документами, и карточка их печатает.
 
     Раньше карточка читала variants самого объекта — а они пусты у всех 2 506
@@ -359,7 +359,7 @@ def test_kartochka_obekta_nazyvaet_konstruktory():
     у ТаблицаЗначений там лежит «Новый ТаблицаЗначений».
     """
     text = render_object_card(
-        OBEKT_TABLITSA_ZNACHENIY, {"methods": 22, "properties": 2, "events": 0},
+        VALUE_TABLE_OBJECT, {"methods": 22, "properties": 2, "events": 0},
         ["Новый ТаблицаЗначений"],
     )
 
@@ -369,20 +369,20 @@ def test_kartochka_obekta_nazyvaet_konstruktory():
 
 
 @pytest.mark.unit
-def test_kartochka_obekta_bez_konstruktorov_govorit_eto_tolko_posle_proverki():
+def test_object_card_reports_no_constructors_only_after_checking():
     """Пустой список — «проверено, конструкторов нет»; None — «не проверялись».
 
     Разница не косметическая: утверждать «в справке не указано», не спросив
     индекс, — ровно тот дефект, ради которого написана вся ветка.
     """
-    proveryali = render_object_card(OBEKT_TABLITSA_ZNACHENIY, {}, [])
-    ne_proveryali = render_object_card(OBEKT_TABLITSA_ZNACHENIY, {})
+    checked = render_object_card(VALUE_TABLE_OBJECT, {}, [])
+    not_checked = render_object_card(VALUE_TABLE_OBJECT, {})
 
-    assert f"Конструкторы: {NOT_IN_HELP}" in proveryali
-    assert "Конструкторы: не проверялись" in ne_proveryali
+    assert f"Конструкторы: {NOT_IN_HELP}" in checked
+    assert "Конструкторы: не проверялись" in not_checked
 
 
-def _dokument_obekta(name: str, object_name: str) -> dict:
+def _object_document(name: str, object_name: str) -> dict:
     """Документ объекта в том виде, в каком он ложится в индекс.
 
     Путь собирает боевой код — Documentation.build_call_strings() и
@@ -401,7 +401,7 @@ def _dokument_obekta(name: str, object_name: str) -> dict:
 
 # Пары (object, имя страницы) взяты из индекса как есть; ожидаемый ключ — тот,
 # под которым в индексе действительно лежат члены этих объектов.
-PARY_PUTEY_OBEKTOV = [
+OBJECT_PATH_CASES = [
     # 2 286 объектов: object равен имени страницы, склейка удваивала имя.
     ("ТаблицаЗначений", "ТаблицаЗначений", "ТаблицаЗначений"),
     # 104 объекта: имя страницы — заполнитель, тип в object, склейка нужна.
@@ -418,27 +418,27 @@ PARY_PUTEY_OBEKTOV = [
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("object_name, name, klyuch", PARY_PUTEY_OBEKTOV)
-def test_sovet_kartochki_obekta_sobran_iz_puti_bez_povtorov(object_name, name, klyuch):
+@pytest.mark.parametrize("object_name, name, key", OBJECT_PATH_CASES)
+def test_object_card_hint_is_built_from_path_without_repeats(object_name, name, key):
     """Совет обязан быть исполнимым — то есть называть ключ индекса без повторов.
 
     Раньше full_path объекта собирался как object + "." + имя, и удвоенное имя
     текло в совет: list_1c_object_members(object="ТаблицаЗначений.ТаблицаЗначений")
     отвечал «объект в справке не найден».
     """
-    doc = _dokument_obekta(name, object_name)
+    doc = _object_document(name, object_name)
 
     text = render_object_card(doc, {"methods": 22}, [])
 
-    assert doc["full_path"] == klyuch, doc["full_path"]
-    assert f'list_1c_object_members(object="{klyuch}")' in text
-    segmenty = klyuch.split(".")
-    povtory = [a for a, b in zip(segmenty, segmenty[1:]) if a == b]
-    assert not povtory, f"сегмент повторён подряд: {povtory}"
+    assert doc["full_path"] == key, doc["full_path"]
+    assert f'list_1c_object_members(object="{key}")' in text
+    segments = key.split(".")
+    repeats = [a for a, b in zip(segments, segments[1:]) if a == b]
+    assert not repeats, f"сегмент повторён подряд: {repeats}"
 
 
 @pytest.mark.unit
-def test_kartochka_bez_chlenov_ne_pechataet_neispolnimyy_sovet():
+def test_card_without_members_prints_no_unusable_hint():
     """У 100 страниц справки заголовок разобран как объект, а членов нет.
 
     «Расширение формы клиентского приложения для документа.Ключ» не встречается
@@ -446,7 +446,7 @@ def test_kartochka_bez_chlenov_ne_pechataet_neispolnimyy_sovet():
     найден». Призыв к действию, который не сработает, хуже его отсутствия:
     поле остаётся на месте и прямо говорит, что перечислять нечего.
     """
-    doc = _dokument_obekta("Ключ", "Расширение формы клиентского приложения для документа")
+    doc = _object_document("Ключ", "Расширение формы клиентского приложения для документа")
 
     text = render_object_card(doc, {"methods": 0, "properties": 0, "events": 0}, [])
 

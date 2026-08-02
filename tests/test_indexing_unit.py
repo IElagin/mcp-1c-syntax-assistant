@@ -98,7 +98,7 @@ def test_prepare_document_for_indexing(mock_parsed_hbk):
 
     # Параметры теперь лежат внутри варианта вызова (Task 3), а не на самом
     # документе.
-    variant_parametry = doc.variants[0].parameters if doc.variants else []
+    variant_parameters = doc.variants[0].parameters if doc.variants else []
 
     # Эмулируем подготовку для индексации
     prepared = {
@@ -115,7 +115,7 @@ def test_prepare_document_for_indexing(mock_parsed_hbk):
                 'description': p.description,
                 'required': p.required
             }
-            for p in variant_parametry
+            for p in variant_parameters
         ],
         'full_path': doc.full_path
     }
@@ -124,8 +124,8 @@ def test_prepare_document_for_indexing(mock_parsed_hbk):
     assert prepared['name'] is not None
 
     # Проверяем что параметры корректно сериализованы
-    if variant_parametry:
-        assert len(prepared['parameters']) == len(variant_parametry)
+    if variant_parameters:
+        assert len(prepared['parameters']) == len(variant_parameters)
         assert all('name' in p for p in prepared['parameters'])
 
 
@@ -180,7 +180,7 @@ def test_index_name_generation():
 
 @pytest.mark.unit
 @pytest.mark.indexer
-def test_dokument_indeksa_neset_dostupnost_i_varianty():
+def test_index_document_carries_availability_and_variants():
     """Поле, извлечённое парсером и не попавшее в индекс, бесполезно.
 
     Так было с usage: парсер его читал, а _prepare_document не переносил.
@@ -224,7 +224,7 @@ def test_dokument_indeksa_neset_dostupnost_i_varianty():
 
 @pytest.mark.unit
 @pytest.mark.indexer
-def test_svoystvo_neset_tip_i_dostup():
+def test_property_carries_type_and_access():
     from src.models.doc_models import Documentation, DocumentType
     from src.parsers.indexer import ElasticsearchIndexer
 

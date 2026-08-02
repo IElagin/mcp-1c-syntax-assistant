@@ -23,15 +23,15 @@ from src.core.elasticsearch import es_client
 from src.search.search_service import SearchService
 
 
-def imena(rezultaty):
-    return [(r.get("object"), r.get("name")) for r in rezultaty]
+def names(results):
+    return [(r.get("object"), r.get("name")) for r in results]
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.search
 @pytest.mark.asyncio
-async def test_tochechnaya_zapis_nahodit_imenno_etot_metod():
+async def test_dotted_query_finds_exactly_that_method():
     """'ТаблицаЗначений.Добавить' возвращает нужный элемент первым.
 
     Так разработчик пишет запрос естественнее всего — копирует выражение
@@ -43,12 +43,12 @@ async def test_tochechnaya_zapis_nahodit_imenno_etot_metod():
         res = await service.find_help_by_query("ТаблицаЗначений.Добавить", limit=5)
 
         assert not res.get("error"), res.get("error")
-        rezultaty = res.get("results", [])
-        assert rezultaty, "Пустой ответ на точечную запись"
+        results = res.get("results", [])
+        assert results, "Пустой ответ на точечную запись"
 
-        pervyy = rezultaty[0]
-        assert pervyy.get("object") == "ТаблицаЗначений", imena(rezultaty)
-        assert pervyy.get("name", "").startswith("Добавить"), imena(rezultaty)
+        first = results[0]
+        assert first.get("object") == "ТаблицаЗначений", names(results)
+        assert first.get("name", "").startswith("Добавить"), names(results)
     finally:
         await es_client.disconnect()
 
@@ -57,21 +57,21 @@ async def test_tochechnaya_zapis_nahodit_imenno_etot_metod():
 @pytest.mark.elasticsearch
 @pytest.mark.search
 @pytest.mark.asyncio
-async def test_tochechnaya_zapis_ne_puskaet_chuzhie_obekty():
+async def test_dotted_query_admits_no_foreign_objects():
     """В выдаче по 'Объект.Метод' нет элементов других объектов."""
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
         service = SearchService(es_client)
         res = await service.find_help_by_query("МенеджерФоновыхЗаданий.ПолучитьФоновыеЗадания", limit=5)
 
-        rezultaty = res.get("results", [])
-        assert rezultaty, "Пустой ответ на точечную запись"
+        results = res.get("results", [])
+        assert results, "Пустой ответ на точечную запись"
 
-        chuzhie = sorted({
-            r.get("object") for r in rezultaty
+        foreign = sorted({
+            r.get("object") for r in results
             if r.get("object") != "МенеджерФоновыхЗаданий"
         })
-        assert not chuzhie, f"Просочились чужие объекты: {chuzhie}"
+        assert not foreign, f"Просочились чужие объекты: {foreign}"
     finally:
         await es_client.disconnect()
 
@@ -80,7 +80,7 @@ async def test_tochechnaya_zapis_ne_puskaet_chuzhie_obekty():
 @pytest.mark.elasticsearch
 @pytest.mark.search
 @pytest.mark.asyncio
-async def test_tochnoe_imya_vyshe_chastichnogo():
+async def test_exact_name_ranks_above_partial():
     """Точное совпадение имени ранжируется выше частичного.
 
     'Записать' — точное имя метода у многих объектов; 'ЗаписатьАтрибут',
@@ -91,13 +91,13 @@ async def test_tochnoe_imya_vyshe_chastichnogo():
         service = SearchService(es_client)
         res = await service.find_help_by_query("Записать", limit=5)
 
-        rezultaty = res.get("results", [])
-        assert rezultaty, "Пустой ответ"
+        results = res.get("results", [])
+        assert results, "Пустой ответ"
 
-        pervoe_imya = rezultaty[0].get("name", "")
+        first_name = results[0].get("name", "")
         # name хранится как "Записать (Write)" — сравниваем русскую часть
-        assert pervoe_imya.split(" (")[0] == "Записать", (
-            f"Первым пришло частичное совпадение: {imena(rezultaty)}"
+        assert first_name.split(" (")[0] == "Записать", (
+            f"Первым пришло частичное совпадение: {names(results)}"
         )
     finally:
         await es_client.disconnect()
@@ -107,25 +107,25 @@ async def test_tochnoe_imya_vyshe_chastichnogo():
 @pytest.mark.elasticsearch
 @pytest.mark.search
 @pytest.mark.asyncio
-async def test_poisk_po_angliyskomu_imeni_tochnyy():
+async def test_search_by_english_name_is_exact():
     """Английское имя находит тот же элемент: ValueIsFilled."""
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
         service = SearchService(es_client)
         res = await service.find_help_by_query("ValueIsFilled", limit=5)
 
-        rezultaty = res.get("results", [])
-        assert rezultaty, "Пустой ответ"
+        results = res.get("results", [])
+        assert results, "Пустой ответ"
         assert any(
-            "ЗначениеЗаполнено" in (r.get("name") or "") for r in rezultaty[:3]
-        ), imena(rezultaty)
+            "ЗначениеЗаполнено" in (r.get("name") or "") for r in results[:3]
+        ), names(results)
     finally:
         await es_client.disconnect()
 
 
 @pytest.mark.unit
 @pytest.mark.search
-def test_zaprosy_ne_ssylayutsya_na_udalennye_polya():
+def test_queries_do_not_reference_removed_fields():
     """Буст по несуществующему полю — тихий ноль, а не ошибка.
 
     syntax_en был пуст у 100% методов и всё равно стоял в бустах; parameters.*
@@ -137,7 +137,7 @@ def test_zaprosy_ne_ssylayutsya_na_udalennye_polya():
     from src.search.query_builder import QueryBuilder
 
     builder = QueryBuilder()
-    zaprosy = [
+    queries = [
         builder.build_search_query("ЗначениеЗаполнено", 10, "exact"),
         builder.build_search_query("как получить количество строк", 10, "semantic"),
         builder.build_search_query("ТаблицаЗначений.Добавить", 10, "auto"),
@@ -146,16 +146,16 @@ def test_zaprosy_ne_ssylayutsya_na_udalennye_polya():
         builder.build_exact_query("Добавить"),
     ]
 
-    tekst = json.dumps(zaprosy, ensure_ascii=False)
-    for pole in ("syntax_ru", "syntax_en", "parameters.name", "parameters.description"):
-        assert pole not in tekst, f"запрос ссылается на удалённое поле {pole}"
+    text = json.dumps(queries, ensure_ascii=False)
+    for field in ("syntax_ru", "syntax_en", "parameters.name", "parameters.description"):
+        assert field not in text, f"запрос ссылается на удалённое поле {field}"
 
-    assert "syntax_all" in tekst, "поисковое поле синтаксиса не используется"
+    assert "syntax_all" in text, "поисковое поле синтаксиса не используется"
 
 
 @pytest.mark.unit
 @pytest.mark.search
-def test_formatter_ne_teryaet_polya_kartochki():
+def test_formatter_does_not_lose_card_fields():
     """Форматтер, вырезающий поля, делает карточку неполной ещё до рендера."""
     from src.search.formatter import SearchFormatter
 
@@ -174,10 +174,10 @@ def test_formatter_ne_teryaet_polya_kartochki():
         "version_from": "8.0", "examples": [],
     }
 
-    rezultat = SearchFormatter().format_search_results(
+    result = SearchFormatter().format_search_results(
         [{"document": doc, "score": 12.5}]
     )[0]
 
-    for pole in ("availability", "variants", "call_primary", "note", "element_kind"):
-        assert pole in rezultat, f"форматтер потерял поле {pole}"
-    assert rezultat["_score"] == 12.5
+    for field in ("availability", "variants", "call_primary", "note", "element_kind"):
+        assert field in result, f"форматтер потерял поле {field}"
+    assert result["_score"] == 12.5

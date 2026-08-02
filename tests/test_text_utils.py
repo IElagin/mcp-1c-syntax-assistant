@@ -15,42 +15,42 @@ from src.parsers.text_utils import (
 
 
 @pytest.mark.unit
-def test_nerazryvnye_probely_ubirayutsya():
+def test_non_breaking_spaces_are_removed():
     """Код с неразрывными пробелами не компилируется в 1С."""
     assert normalize_whitespace("Отбор\xa0=\xa0Новый\xa0Структура();") == \
         "Отбор = Новый Структура();"
 
 
 @pytest.mark.unit
-def test_probel_posle_tochki_vosstanavlivaetsya():
+def test_space_after_period_is_restored():
     assert clean_description("не по ссылке.Не работает") == "не по ссылке. Не работает"
 
 
 @pytest.mark.unit
-def test_versiya_ne_lomaetsya():
+def test_version_number_is_not_broken():
     """8.0 — не граница фразы, точку между цифрами не трогаем."""
     assert clean_description("Доступен с версии 8.0 и выше") == \
         "Доступен с версии 8.0 и выше"
 
 
 @pytest.mark.unit
-def test_tip_iz_ssylki():
+def test_type_from_link():
     html = 'Тип: <a href="v8help://x/Array.html">Массив</a>. <br>Массив строк.'
-    tip, poyasnenie = split_type_and_note(html)
-    assert tip == "Массив"
-    assert poyasnenie == "Массив строк."
+    type_name, note = split_type_and_note(html)
+    assert type_name == "Массив"
+    assert note == "Массив строк."
 
 
 @pytest.mark.unit
-def test_perechislenie_tipov_sohranyaetsya():
+def test_type_enumeration_is_preserved():
     """Выбирать один тип из перечисления сервер не вправе."""
-    tip, _ = split_type_and_note("Тип: Строка, Число. <br>Что-то.")
-    assert tip == "Строка, Число"
+    type_name, _ = split_type_and_note("Тип: Строка, Число. <br>Что-то.")
+    assert type_name == "Строка, Число"
 
 
 @pytest.mark.unit
-def test_bez_razdela_tipa_tip_pustoy():
+def test_type_is_empty_without_type_section():
     """Нет раздела «Тип:» — поле пустое, а не заполненное заглушкой."""
-    tip, poyasnenie = split_type_and_note("Просто описание без типа.")
-    assert tip == ""
-    assert poyasnenie == "Просто описание без типа."
+    type_name, note = split_type_and_note("Просто описание без типа.")
+    assert type_name == ""
+    assert note == "Просто описание без типа."

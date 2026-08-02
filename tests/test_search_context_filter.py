@@ -22,7 +22,7 @@ from src.search.search_service import SearchService
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_filtr_po_obektu_suzhaet_vyborku():
+async def test_object_filter_narrows_selection():
     """Фильтр по объекту обязан сужать выдачу.
 
     Прежде условия по типу и по объекту складывались в один should, и фильтр по
@@ -32,13 +32,13 @@ async def test_filtr_po_obektu_suzhaet_vyborku():
     try:
         service = SearchService(es_client)
 
-        bez_filtra = await service.find_help_filtered("Количество", [], None, 20)
-        s_filtrom = await service.find_help_filtered(
+        without_filter = await service.find_help_filtered("Количество", [], None, 20)
+        with_filter = await service.find_help_filtered(
             "Количество", ["object_function"], "ТаблицаЗначений", 20
         )
 
-        assert s_filtrom["results"], "фильтр по объекту не должен обнулять выдачу"
-        assert all(r.get("object") == "ТаблицаЗначений" for r in s_filtrom["results"])
-        assert s_filtrom["total"] < bez_filtra["total"]
+        assert with_filter["results"], "фильтр по объекту не должен обнулять выдачу"
+        assert all(r.get("object") == "ТаблицаЗначений" for r in with_filter["results"])
+        assert with_filter["total"] < without_filter["total"]
     finally:
         await es_client.disconnect()

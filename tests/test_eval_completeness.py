@@ -15,7 +15,7 @@ from eval_search import ambiguous_names, measure_completeness, measure_disambigu
 
 
 @pytest.mark.unit
-def test_protivorechie_obyazatelnosti_lovitsya():
+def test_requiredness_contradiction_is_caught():
     """required=True при '(необязательный)' префиксом описания — это противоречие."""
     docs = [
         {"type": "object_function", "parameters": [
@@ -33,7 +33,7 @@ def test_protivorechie_obyazatelnosti_lovitsya():
 
 
 @pytest.mark.unit
-def test_metka_vnutri_opisaniya_ne_protivorechie():
+def test_label_inside_description_is_not_a_contradiction():
     """Метка обязательности внутри описания (не префиксом) — не противоречие.
 
     Так размечена справка структуры-аргумента: параметр 'Параметры' у
@@ -58,7 +58,7 @@ def test_metka_vnutri_opisaniya_ne_protivorechie():
 
 
 @pytest.mark.unit
-def test_tip_vozvrata_abzats_otlichaetsya_ot_tipa():
+def test_return_paragraph_differs_from_return_type():
     """Тип длиной в три предложения типом не считается."""
     docs = [
         {"type": "object_function", "variants": [
@@ -75,7 +75,7 @@ def test_tip_vozvrata_abzats_otlichaetsya_ot_tipa():
 
 
 @pytest.mark.unit
-def test_perechislenie_tipov_cherez_zapyatuyu_eto_tip():
+def test_comma_separated_types_count_as_a_type():
     """Перечисление нескольких типов через запятую — тип, не абзац.
 
     Выбирать один тип из перечисления сервер не вправе (спека §4.2), значит
@@ -95,7 +95,7 @@ def test_perechislenie_tipov_cherez_zapyatuyu_eto_tip():
 
 
 @pytest.mark.unit
-def test_dlinnoe_odnoslovnoe_imya_tipa_ne_rezhetsya_dlinoy():
+def test_long_single_word_type_name_is_not_cut_by_length():
     """Настоящее имя типа длиннее 40 символов не должно резаться по длине."""
     docs = [
         {"type": "object_function", "variants": [
@@ -110,7 +110,7 @@ def test_dlinnoe_odnoslovnoe_imya_tipa_ne_rezhetsya_dlinoy():
 
 
 @pytest.mark.unit
-def test_fraza_s_mnogoslovnymi_elementami_ne_tip():
+def test_phrase_with_multiword_items_is_not_a_type():
     """Перечисление, где среди элементов есть многословная фраза, — не тип."""
     docs = [
         {"type": "object_function", "variants": [
@@ -126,7 +126,7 @@ def test_fraza_s_mnogoslovnymi_elementami_ne_tip():
 
 
 @pytest.mark.unit
-def test_s_dostupnostyu_pustoy_spisok_ne_schitaetsya():
+def test_empty_availability_list_is_not_counted():
     """Пустой список availability — то же, что его отсутствие: доступность неизвестна."""
     docs = [
         {"type": "object_function", "availability": ["Тонкий клиент", "Сервер"]},
@@ -141,7 +141,7 @@ def test_s_dostupnostyu_pustoy_spisok_ne_schitaetsya():
 
 
 @pytest.mark.unit
-def test_svoystv_s_tipom_i_dostupom_schitayutsya_tolko_u_svoystv():
+def test_type_and_usage_counters_apply_only_to_properties():
     """properties (и производные от него) считает только object_property.
 
     Функция или процедура с непустыми value_type/usage не должна попасть
@@ -161,7 +161,7 @@ def test_svoystv_s_tipom_i_dostupom_schitayutsya_tolko_u_svoystv():
 
 
 @pytest.mark.unit
-def test_mnogo_variantov_schitaet_tolko_bolshe_odnogo():
+def test_many_variants_counts_only_more_than_one():
     """Один вариант вызова — норма, больше одного — то, что считаем отдельно."""
     docs = [
         {"type": "object_function", "variants": [
@@ -176,7 +176,7 @@ def test_mnogo_variantov_schitaet_tolko_bolshe_odnogo():
 
 
 @pytest.mark.unit
-def test_param_bez_obyazatelnosti_tolko_dlya_none():
+def test_param_without_requiredness_counts_only_none():
     """required=None — обязательность неизвестна; True и False — известна."""
     docs = [
         {"type": "object_function", "parameters": [
@@ -193,7 +193,7 @@ def test_param_bez_obyazatelnosti_tolko_dlya_none():
 
 
 @pytest.mark.unit
-def test_neunikalnye_imena_nahodyatsya():
+def test_non_unique_names_are_found():
     """Имя, встречающееся у нескольких объектов, попадает в набор омонимов."""
     docs = [
         {"name_ru": "Количество", "object": "Массив"},
@@ -207,19 +207,19 @@ def test_neunikalnye_imena_nahodyatsya():
     assert "НайтиСтроки" not in homonyms
 
 
-class _PodstavnoyServis:
+class _StubService:
     """Знает ответ на имя заранее — без реального поиска по индексу."""
 
-    def __init__(self, otvety):
-        self._otvety = otvety
+    def __init__(self, answers):
+        self._answers = answers
 
-    async def element_card(self, imya):
-        return self._otvety[imya]
+    async def element_card(self, name):
+        return self._answers[name]
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_zamer_odnoznachnosti_schitaet_po_kind():
+async def test_disambiguation_measure_counts_by_kind():
     """reported/chose_silently считаются по полю kind, а не по факту вызова."""
     docs = [
         {"name_ru": "Количество", "object": "Массив"},
@@ -227,7 +227,7 @@ async def test_zamer_odnoznachnosti_schitaet_po_kind():
         {"name_ru": "Найти", "object": "Строка"},
         {"name_ru": "Найти", "object": "Массив"},
     ]
-    service = _PodstavnoyServis({
+    service = _StubService({
         "Количество": {"kind": "ambiguous"},
         "Найти": {"kind": "card"},
     })

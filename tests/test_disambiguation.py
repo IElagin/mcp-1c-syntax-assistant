@@ -22,14 +22,14 @@ from src.search.search_service import SearchService
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_omonim_ne_vybiraetsya_molcha():
+async def test_homonym_is_not_chosen_silently():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).element_card("Количество")
+        answer = await SearchService(es_client).element_card("Количество")
 
-        assert otvet["kind"] == "ambiguous", otvet.get("kind")
-        assert otvet["total"] > 100
-        assert otvet["candidates"], "перечень кандидатов пуст"
+        assert answer["kind"] == "ambiguous", answer.get("kind")
+        assert answer["total"] > 100
+        assert answer["candidates"], "перечень кандидатов пуст"
     finally:
         await es_client.disconnect()
 
@@ -37,16 +37,16 @@ async def test_omonim_ne_vybiraetsya_molcha():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_utochnennyy_obekt_daet_kartochku():
+async def test_qualified_object_yields_card():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).element_card(
+        answer = await SearchService(es_client).element_card(
             "НайтиСтроки", "ТаблицаЗначений"
         )
 
-        assert otvet["kind"] == "card"
-        assert otvet["document"]["object"] == "ТаблицаЗначений"
-        assert otvet["document"]["name_ru"] == "НайтиСтроки"
+        assert answer["kind"] == "card"
+        assert answer["document"]["object"] == "ТаблицаЗначений"
+        assert answer["document"]["name_ru"] == "НайтиСтроки"
     finally:
         await es_client.disconnect()
 
@@ -54,7 +54,7 @@ async def test_utochnennyy_obekt_daet_kartochku():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_nesushchestvuyushchiy_obekt_ne_podmenyaetsya_molcha():
+async def test_nonexistent_object_is_not_substituted_silently():
     """«ФоновыеЗадания» — идентификатор из кода, в справке объект зовётся иначе.
 
     Прежде сервис молча искал по одному имени метода и отдавал элементы чужих
@@ -62,12 +62,12 @@ async def test_nesushchestvuyushchiy_obekt_ne_podmenyaetsya_molcha():
     """
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).element_card(
+        answer = await SearchService(es_client).element_card(
             "Выполнить", "ФоновыеЗадания"
         )
 
-        assert otvet["kind"] == "object_not_found"
-        assert otvet["object"] == "ФоновыеЗадания"
+        assert answer["kind"] == "object_not_found"
+        assert answer["object"] == "ФоновыеЗадания"
     finally:
         await es_client.disconnect()
 
@@ -75,14 +75,14 @@ async def test_nesushchestvuyushchiy_obekt_ne_podmenyaetsya_molcha():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_kandidaty_nachinayutsya_s_nastoyashchih_tipov():
+async def test_candidates_start_with_real_types():
     """Настоящие типы важнее заголовков разделов справки вида «ОбъектМетаданных: Х»."""
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).element_card("Количество")
+        answer = await SearchService(es_client).element_card("Количество")
 
-        pervyy = otvet["candidates"][0]["object"] or ""
-        assert " " not in pervyy and ":" not in pervyy, pervyy
+        first_object = answer["candidates"][0]["object"] or ""
+        assert " " not in first_object and ":" not in first_object, first_object
     finally:
         await es_client.disconnect()
 
@@ -90,7 +90,7 @@ async def test_kandidaty_nachinayutsya_s_nastoyashchih_tipov():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_poryadok_kandidatov_stroitsya_po_vsem_sovpadeniyam():
+async def test_candidate_order_is_built_over_all_matches():
     """Порядок не должен зависеть от произвольного окна выдачи.
 
     Прежде кандидаты брались запросом size:50 с одинаковыми оценками у всех
@@ -101,14 +101,14 @@ async def test_poryadok_kandidatov_stroitsya_po_vsem_sovpadeniyam():
     """
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        otvet = await SearchService(es_client).element_card("Количество")
+        answer = await SearchService(es_client).element_card("Количество")
 
-        assert otvet["full_order"] is True, (
+        assert answer["full_order"] is True, (
             "275 совпадений обязаны упорядочиваться целиком, а не окном"
         )
-        obekty = [k.get("object") for k in otvet["candidates"]]
-        assert "ТаблицаЗначений" in obekty, obekty
-        assert "СписокЗначений" in obekty, obekty
+        objects = [k.get("object") for k in answer["candidates"]]
+        assert "ТаблицаЗначений" in objects, objects
+        assert "СписокЗначений" in objects, objects
     finally:
         await es_client.disconnect()
 
@@ -116,7 +116,7 @@ async def test_poryadok_kandidatov_stroitsya_po_vsem_sovpadeniyam():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_konstruktory_berutsya_iz_otdelnyh_dokumentov():
+async def test_constructors_come_from_separate_documents():
     """У документа объекта variants пуст — конструкторы лежат отдельно.
 
     Карточка объекта читала пустые variants и заявляла «Конструкторы: в справке
@@ -138,7 +138,7 @@ async def test_konstruktory_berutsya_iz_otdelnyh_dokumentov():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
+async def test_canonical_object_path_does_not_double_the_name():
     """full_path объекта — его имя, а не «ТаблицаЗначений.ТаблицаЗначений».
 
     Удвоенное имя текло в совет карточки и в строки списков, а вызов с ним не
@@ -147,16 +147,16 @@ async def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
         service = SearchService(es_client)
-        otvet = await service.element_card("ТаблицаЗначений")
+        answer = await service.element_card("ТаблицаЗначений")
 
-        assert otvet["kind"] == "card", otvet.get("kind")
-        put = otvet["document"]["full_path"]
-        assert put == "ТаблицаЗначений", put
+        assert answer["kind"] == "card", answer.get("kind")
+        path = answer["document"]["full_path"]
+        assert path == "ТаблицаЗначений", path
 
         # Совет карточки строится из этого же пути — проверяем, что по нему
         # действительно находится состав объекта.
-        sostav = await service.get_object_members_list(put, "all", limit=1)
-        assert sostav["total"] > 0, sostav
+        members = await service.get_object_members_list(path, "all", limit=1)
+        assert members["total"] > 0, members
     finally:
         await es_client.disconnect()
 
@@ -164,7 +164,7 @@ async def test_kanonicheskiy_put_obekta_ne_udvaivaet_imya():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_sovet_kartochki_obekta_s_perekrytiem_ispolnim():
+async def test_object_card_hint_with_overlapping_path_is_executable():
     """У 16 объектов хвост object повторял начало имени страницы.
 
     Склейка давала «…КубЗапись.<Имя внешнего источника>.<Имя внешнего
@@ -178,19 +178,19 @@ async def test_sovet_kartochki_obekta_s_perekrytiem_ispolnim():
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
         service = SearchService(es_client)
-        otvet = await service.element_card(
+        answer = await service.element_card(
             "<Имя внешнего источника>.<Имя куба>",
             "ВнешнийИсточникДанныхКубЗапись.<Имя внешнего источника>",
         )
-        assert otvet["kind"] == "card", otvet.get("kind")
+        assert answer["kind"] == "card", answer.get("kind")
 
-        tekst = await build_object_card(service, otvet["document"])
+        text = await build_object_card(service, answer["document"])
 
-        sovet = re.search(r'list_1c_object_members\(object="(.+?)"\)', tekst)
-        assert sovet, tekst
-        sostav = await service.get_object_members_list(sovet.group(1), "all", 50)
-        assert sostav["total"] == 2, sostav["total"]
-        assert "свойств: 2" in tekst, tekst
+        hint = re.search(r'list_1c_object_members\(object="(.+?)"\)', text)
+        assert hint, text
+        members = await service.get_object_members_list(hint.group(1), "all", 50)
+        assert members["total"] == 2, members["total"]
+        assert "свойств: 2" in text, text
     finally:
         await es_client.disconnect()
 
@@ -198,16 +198,16 @@ async def test_sovet_kartochki_obekta_s_perekrytiem_ispolnim():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_neizvestnoe_imya_daet_not_found_a_ne_pustuyu_kartochku():
+async def test_unknown_name_gives_not_found_not_an_empty_card():
     """Точного совпадения по имени нет вообще — сервис называет это прямо."""
     assert await es_client.connect(), "Elasticsearch недоступен"
     try:
-        imya = "ЗаведомоНесуществующееИмяЭлементаXYZ123Qwerty"
-        otvet = await SearchService(es_client).element_card(imya)
+        name = "ЗаведомоНесуществующееИмяЭлементаXYZ123Qwerty"
+        answer = await SearchService(es_client).element_card(name)
 
-        assert otvet["kind"] == "not_found"
-        assert otvet["name"] == imya
-        assert isinstance(otvet["similar"], list)
+        assert answer["kind"] == "not_found"
+        assert answer["name"] == name
+        assert isinstance(answer["similar"], list)
     finally:
         await es_client.disconnect()
 
@@ -215,7 +215,7 @@ async def test_neizvestnoe_imya_daet_not_found_a_ne_pustuyu_kartochku():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_neizvestnyy_variant_nazyvaet_sushchestvuyushchie_a_ne_vybiraet_molcha():
+async def test_unknown_variant_lists_existing_ones_instead_of_choosing_silently():
     """У 'ДанныеФормыКоллекция.Выгрузить' два варианта вызова.
 
     Несуществующее имя варианта не выбирает один из них молча, а называет оба
@@ -226,19 +226,19 @@ async def test_neizvestnyy_variant_nazyvaet_sushchestvuyushchie_a_ne_vybiraet_mo
     try:
         service = SearchService(es_client)
 
-        ne_naiden = await service.element_card(
+        unknown_variant = await service.element_card(
             "Выгрузить", "ДанныеФормыКоллекция", variant="НесуществующийВариант"
         )
-        assert ne_naiden["kind"] == "variant_not_found"
-        assert ne_naiden["variants"] == ["Выгрузить колонки", "Выгрузить по отбору"]
+        assert unknown_variant["kind"] == "variant_not_found"
+        assert unknown_variant["variants"] == ["Выгрузить колонки", "Выгрузить по отбору"]
 
-        naiden = await service.element_card(
+        known_variant = await service.element_card(
             "Выгрузить", "ДанныеФормыКоллекция", variant="Выгрузить колонки"
         )
-        assert naiden["kind"] == "card"
-        varianty = naiden["document"]["variants"]
-        assert len(varianty) == 1
-        assert varianty[0]["variant"] == "Выгрузить колонки"
+        assert known_variant["kind"] == "card"
+        narrowed_variants = known_variant["document"]["variants"]
+        assert len(narrowed_variants) == 1
+        assert narrowed_variants[0]["variant"] == "Выгрузить колонки"
     finally:
         await es_client.disconnect()
 
@@ -246,7 +246,7 @@ async def test_neizvestnyy_variant_nazyvaet_sushchestvuyushchie_a_ne_vybiraet_mo
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_pohozhie_obekty_ishchet_sredi_imen_obektov_a_ne_elementov():
+async def test_similar_objects_searches_object_names_not_element_names():
     """Подсказка о похожих объектах ищет среди имён объектов, а не элементов.
 
     Прежде нечёткий поиск шёл по имени элемента (name_ru метода/свойства) и

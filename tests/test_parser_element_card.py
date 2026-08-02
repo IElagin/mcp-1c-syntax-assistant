@@ -19,9 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.parsers.html_parser import HTMLParser
 
-FIKSTURY = Path(__file__).parent / "fixtures" / "hbk"
+FIXTURES = Path(__file__).parent / "fixtures" / "hbk"
 
-PUTI_V_ARHIVE = {
+ARCHIVE_PATHS = {
     "valuetable_findrows.html":
         "objects/catalog234/catalog236/ValueTable/methods/FindRows646.html",
     "valuetable_columns.html":
@@ -44,45 +44,45 @@ PUTI_V_ARHIVE = {
 }
 
 
-def razobrat(imya_fikstury):
+def parse_fixture(fixture_name):
     """Разбирает фикстуру, подставляя её настоящий путь в архиве."""
-    soderzhimoe = (FIKSTURY / imya_fikstury).read_bytes()
-    return HTMLParser().parse_html_content(soderzhimoe, PUTI_V_ARHIVE[imya_fikstury])
+    content = (FIXTURES / fixture_name).read_bytes()
+    return HTMLParser().parse_html_content(content, ARCHIVE_PATHS[fixture_name])
 
 
-def parametry(doc):
+def call_parameters(doc):
     """Параметры первого варианта вызова."""
     return doc.variants[0].parameters if doc.variants else []
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_tip_parametra_iz_ssylki_na_obekt():
+def test_param_type_from_object_link():
     """'Тип: <a …Structure.html>Структура</a>' — это Структура, а не Произвольный."""
-    doc = razobrat("valuetable_findrows.html")
+    doc = parse_fixture("valuetable_findrows.html")
 
-    par = parametry(doc)
-    assert len(par) == 1, f"ожидался один параметр, получено {len(par)}"
-    assert par[0].name == "ПараметрыОтбора"
-    assert par[0].type == "Структура", (
-        f"тип подменён заглушкой: {par[0].type!r}"
+    params = call_parameters(doc)
+    assert len(params) == 1, f"ожидался один параметр, получено {len(params)}"
+    assert params[0].name == "ПараметрыОтбора"
+    assert params[0].type == "Структура", (
+        f"тип подменён заглушкой: {params[0].type!r}"
     )
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_tip_parametra_obychnym_tekstom():
+def test_param_type_as_plain_text():
     """'Тип: Произвольный.' без ссылки тоже читается."""
-    doc = razobrat("global_valueisfilled.html")
+    doc = parse_fixture("global_valueisfilled.html")
 
-    par = parametry(doc)
-    assert par[0].name == "Значение"
-    assert par[0].type == "Произвольный"
+    params = call_parameters(doc)
+    assert params[0].name == "Значение"
+    assert params[0].type == "Произвольный"
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_neobyazatelnyy_parametr_ne_obyazatelnyy():
+def test_optional_param_is_not_required():
     """'(необязательный)' в справке даёт required=False, а не True.
 
     Разметка вариативного параметра смешивает экранированные и литеральные
@@ -91,32 +91,32 @@ def test_neobyazatelnyy_parametr_ne_obyazatelnyy():
     не обломком разметки с начала строки — агент подставляет это имя как имя
     аргумента в код.
     """
-    doc = razobrat("array_ctor_bycount.html")
+    doc = parse_fixture("array_ctor_bycount.html")
 
-    par = parametry(doc)
-    assert par, "у конструктора должен быть параметр"
-    assert par[0].name == "КоличествоЭлементовN", (
-        f"имя параметра испорчено обломком разметки: {par[0].name!r}"
+    params = call_parameters(doc)
+    assert params, "у конструктора должен быть параметр"
+    assert params[0].name == "КоличествоЭлементовN", (
+        f"имя параметра испорчено обломком разметки: {params[0].name!r}"
     )
-    assert par[0].required is False, (
+    assert params[0].required is False, (
         "справка помечает параметр необязательным, а карточка утверждает обратное"
     )
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_obyazatelnost_ne_dubliruetsya_v_opisanii():
+def test_requiredness_is_not_duplicated_in_description():
     """Флаг обязательности не повторяется текстом в описании параметра."""
-    doc = razobrat("valuetable_findrows.html")
+    doc = parse_fixture("valuetable_findrows.html")
 
-    opisanie = parametry(doc)[0].description
-    assert "(обязательный)" not in opisanie, opisanie
-    assert opisanie.startswith("Задает условия поиска")
+    description_text = call_parameters(doc)[0].description
+    assert "(обязательный)" not in description_text, description_text
+    assert description_text.startswith("Задает условия поиска")
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_oba_varianta_vyzova_izvlekayutsya():
+def test_both_call_variants_are_extracted():
     """У метода бывает несколько вариантов вызова с разными параметрами.
 
     ДанныеФормыКоллекция.Удалить вызывается и по индексу, и по элементу.
@@ -124,27 +124,27 @@ def test_oba_varianta_vyzova_izvlekayutsya():
     резал блок до следующего заголовка V8SH_. Агент узнавал ровно половину
     способов вызвать метод и не знал, что есть вторая.
     """
-    doc = razobrat("formdatacollection_delete.html")
+    doc = parse_fixture("formdatacollection_delete.html")
 
     assert len(doc.variants) == 2, [v.variant for v in doc.variants]
 
-    po_indeksu, po_elementu = doc.variants
-    assert po_indeksu.variant == "По индексу"
-    assert po_indeksu.syntax == "Удалить(<Индекс>)"
-    assert [p.name for p in po_indeksu.parameters] == ["Индекс"]
-    assert po_indeksu.parameters[0].type == "Число"
+    by_index, by_element = doc.variants
+    assert by_index.variant == "По индексу"
+    assert by_index.syntax == "Удалить(<Индекс>)"
+    assert [p.name for p in by_index.parameters] == ["Индекс"]
+    assert by_index.parameters[0].type == "Число"
 
-    assert po_elementu.variant == "По элементу"
-    assert po_elementu.syntax == "Удалить(<Элемент>)"
-    assert [p.name for p in po_elementu.parameters] == ["Элемент"]
-    assert po_elementu.parameters[0].type == "ДанныеФормыЭлементКоллекции"
+    assert by_element.variant == "По элементу"
+    assert by_element.syntax == "Удалить(<Элемент>)"
+    assert [p.name for p in by_element.parameters] == ["Элемент"]
+    assert by_element.parameters[0].type == "ДанныеФормыЭлементКоллекции"
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_odin_variant_bez_imeni():
+def test_single_variant_has_no_name():
     """Страница без «Вариант синтаксиса» даёт один безымянный вариант."""
-    doc = razobrat("valuetable_findrows.html")
+    doc = parse_fixture("valuetable_findrows.html")
 
     assert len(doc.variants) == 1
     assert doc.variants[0].variant == ""
@@ -153,16 +153,16 @@ def test_odin_variant_bez_imeni():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_opisanie_obshchee_dlya_variantov():
+def test_description_is_shared_by_variants():
     """Описание и доступность относятся к элементу, а не к варианту."""
-    doc = razobrat("formdatacollection_delete.html")
+    doc = parse_fixture("formdatacollection_delete.html")
 
     assert doc.description.startswith("Удаляет элемент из коллекции")
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_konstruktor_neset_imya_varianta():
+def test_constructor_carries_variant_name():
     """У конструктора имя варианта — это имя страницы справки.
 
     Заголовка «Вариант синтаксиса» на страницах конструкторов нет: варианты
@@ -170,7 +170,7 @@ def test_konstruktor_neset_imya_varianta():
     имя элемента, откуда собирался бессмысленный путь
     «Массив.По количеству элементов».
     """
-    doc = razobrat("array_ctor_bycount.html")
+    doc = parse_fixture("array_ctor_bycount.html")
 
     assert len(doc.variants) == 1
     assert doc.variants[0].variant == "По количеству элементов"
@@ -178,14 +178,14 @@ def test_konstruktor_neset_imya_varianta():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_tip_vozvrata_otdelen_ot_poyasneniya():
+def test_return_type_is_separated_from_note():
     """Тип возврата — «Массив», а не абзац в три предложения.
 
     Раньше при отсутствии def_-ссылки в return_type писался весь раздел целиком,
     и у половины заполненных значений «тип» был текстом с точками внутри —
     прочитать из него тип машинно нельзя.
     """
-    doc = razobrat("valuetable_findrows.html")
+    doc = parse_fixture("valuetable_findrows.html")
 
     variant = doc.variants[0]
     assert variant.return_type == "Массив"
@@ -195,13 +195,13 @@ def test_tip_vozvrata_otdelen_ot_poyasneniya():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_dostupnost_izvlekaetsya():
+def test_availability_is_extracted():
     """Где вызов законен — главный вопрос, на который справка отвечает, а сервер молчал.
 
     НайтиСтроки недоступен на тонком клиенте: агент, не знающий этого,
     напишет код, который не заработает.
     """
-    doc = razobrat("valuetable_findrows.html")
+    doc = parse_fixture("valuetable_findrows.html")
 
     assert "сервер" in doc.availability
     assert "толстый клиент" in doc.availability
@@ -210,7 +210,7 @@ def test_dostupnost_izvlekaetsya():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_dostupnost_ne_vbiraet_prozu_posle_perechnya():
+def test_availability_does_not_absorb_prose_after_list():
     """После перечня контекстов в справке бывает проза — она не контекст.
 
     Настоящая страница НайтиПоСсылкам: «Сервер, толстый клиент, внешнее
@@ -220,43 +220,43 @@ def test_dostupnost_ne_vbiraet_prozu_posle_perechnya():
     автономный сервер. вызов метода выполняет обращение к серверу» как место,
     где вызов законен. Замер по индексу до правки: 1 106 таких документов.
     """
-    doc = razobrat("global_findbyref.html")
+    doc = parse_fixture("global_findbyref.html")
 
     assert doc.availability == [
         "сервер", "толстый клиент", "внешнее соединение",
         "мобильное приложение (сервер)", "мобильный автономный сервер",
     ]
-    assert not any("." in kontekst for kontekst in doc.availability), doc.availability
-    assert not any("вызов метода" in kontekst for kontekst in doc.availability)
+    assert not any("." in context for context in doc.availability), doc.availability
+    assert not any("вызов метода" in context for context in doc.availability)
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_stranitsa_bez_razdela_dostupnosti_daet_pustoy_spisok():
+def test_page_without_availability_section_gives_empty_list():
     """Раздела «Доступность» может не быть вовсе — тогда список пуст, а не выдуман.
 
     Пустой список карточка печатает как «Доступность: в справке не указана»:
     отличать «справка молчит» от «контексты такие-то» обязан сам парсер, иначе
     отличать будет нечему.
     """
-    doc = razobrat("formextension_compactmode.html")
+    doc = parse_fixture("formextension_compactmode.html")
 
     assert doc.availability == []
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_primechanie_izvlekaetsya():
-    doc = razobrat("valuetable_findrows.html")
+def test_note_is_extracted():
+    doc = parse_fixture("valuetable_findrows.html")
 
     assert doc.note.startswith("Метод эффективно использовать")
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_svoystvo_tip_znacheniya_i_dostup():
+def test_property_value_type_and_access():
     """У свойства свои два вопроса: какого типа значение и можно ли писать."""
-    doc = razobrat("valuetable_columns.html")
+    doc = parse_fixture("valuetable_columns.html")
 
     assert doc.value_type == "КоллекцияКолонокТаблицыЗначений"
     assert doc.usage == "только чтение"
@@ -265,31 +265,31 @@ def test_svoystvo_tip_znacheniya_i_dostup():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_ispolzovanie_v_versii_ne_putaetsya_s_dostupom():
+def test_version_usage_is_not_confused_with_access():
     """На странице два раздела со словом «Использование» — в usage идёт нужный."""
-    doc = razobrat("valuetable_columns.html")
+    doc = parse_fixture("valuetable_columns.html")
 
     assert "версии" not in (doc.usage or "")
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_vid_elementa_i_russkiy_vladelets():
+def test_element_kind_and_russian_owner():
     """Вид элемента назван по-русски, владелец глобальной функции — «Глобальный контекст»."""
-    funktsiya = razobrat("global_valueisfilled.html")
-    assert funktsiya.element_kind == "функция"
-    assert funktsiya.object_ru == "Глобальный контекст"
+    function_doc = parse_fixture("global_valueisfilled.html")
+    assert function_doc.element_kind == "функция"
+    assert function_doc.object_ru == "Глобальный контекст"
 
-    svoystvo = razobrat("valuetable_columns.html")
-    assert svoystvo.element_kind == "свойство"
-    assert svoystvo.object_ru == "ТаблицаЗначений"
+    property_doc = parse_fixture("valuetable_columns.html")
+    assert property_doc.element_kind == "свойство"
+    assert property_doc.object_ru == "ТаблицаЗначений"
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_stroka_vyzova_metoda_s_obektom():
+def test_method_call_line_includes_object():
     """Вызов должен быть готов к копированию в код."""
-    doc = razobrat("valuetable_findrows.html")
+    doc = parse_fixture("valuetable_findrows.html")
 
     assert doc.variants[0].call == "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)"
     assert doc.call_primary == "ТаблицаЗначений.НайтиСтроки(<ПараметрыОтбора>)"
@@ -297,9 +297,9 @@ def test_stroka_vyzova_metoda_s_obektom():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_globalnaya_funktsiya_bez_prefiksa():
+def test_global_function_has_no_prefix():
     """«Global context.ЗначениеЗаполнено (ValueIsFilled)» — не строка вызова."""
-    doc = razobrat("global_valueisfilled.html")
+    doc = parse_fixture("global_valueisfilled.html")
 
     assert doc.call_primary == "ЗначениеЗаполнено(<Значение>)"
     assert doc.full_path == "ЗначениеЗаполнено"
@@ -308,25 +308,25 @@ def test_globalnaya_funktsiya_bez_prefiksa():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_konstruktor_uzhe_soderzhit_novyy():
-    doc = razobrat("array_ctor_bycount.html")
+def test_constructor_already_contains_new():
+    doc = parse_fixture("array_ctor_bycount.html")
 
     assert doc.call_primary.startswith("Новый Массив(")
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_konstruktor_po_umolchaniyu_dostraivaetsya():
+def test_default_constructor_call_is_completed():
     """У «По умолчанию» синтаксис в справке пуст, но вызов существует."""
-    doc = razobrat("valuetable_ctor_auto.html")
+    doc = parse_fixture("valuetable_ctor_auto.html")
 
     assert doc.call_primary == "Новый ТаблицаЗначений"
 
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_svoystvo_obrashchenie_bez_skobok():
-    doc = razobrat("valuetable_columns.html")
+def test_property_access_has_no_parentheses():
+    doc = parse_fixture("valuetable_columns.html")
 
     assert doc.call_primary == "ТаблицаЗначений.Колонки"
     assert doc.full_path == "ТаблицаЗначений.Колонки"
@@ -334,9 +334,9 @@ def test_svoystvo_obrashchenie_bez_skobok():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_opisanie_bez_slipshihsya_fraz():
+def test_description_has_no_glued_sentences():
     """«не по ссылке.Не работает» — 5,3% описаний в индексе слиплись так."""
-    doc = razobrat("global_valueisfilled.html")
+    doc = parse_fixture("global_valueisfilled.html")
 
     assert ".Не работает" not in doc.description
     assert ". Не работает" in doc.description
@@ -344,9 +344,9 @@ def test_opisanie_bez_slipshihsya_fraz():
 
 @pytest.mark.unit
 @pytest.mark.parser
-def test_primer_bez_nerazryvnyh_probelov():
+def test_example_has_no_non_breaking_spaces():
     """Пример из справки должен компилироваться после копирования."""
-    doc = razobrat("valuetable_findrows.html")
+    doc = parse_fixture("valuetable_findrows.html")
 
     assert doc.examples, "у НайтиСтроки в справке есть пример"
     assert "\xa0" not in doc.examples[0]

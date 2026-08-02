@@ -14,62 +14,62 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.api.mcp_tools import TOOLS
 
-IMENA = {"find_1c_help", "get_1c_element", "list_1c_object_members"}
+TOOL_NAMES = {"find_1c_help", "get_1c_element", "list_1c_object_members"}
 
 
 @pytest.mark.unit
-def test_rovno_tri_instrumenta_bez_peresecheniy():
-    assert {t["name"] for t in TOOLS} == IMENA
+def test_exactly_three_tools_without_overlap():
+    assert {t["name"] for t in TOOLS} == TOOL_NAMES
 
 
 @pytest.mark.unit
-def test_schema_zadaet_enum_i_default():
+def test_schema_defines_enum_and_default():
     """Без enum и default модель угадывает допустимые значения."""
-    po_imeni = {t["name"]: t for t in TOOLS}
+    by_name = {t["name"]: t for t in TOOLS}
 
-    poisk = po_imeni["find_1c_help"]["inputSchema"]
-    assert poisk["properties"]["kind"]["enum"] == [
+    search = by_name["find_1c_help"]["inputSchema"]
+    assert search["properties"]["kind"]["enum"] == [
         "any", "global", "method", "property", "event", "constructor"
     ]
-    assert poisk["properties"]["kind"]["default"] == "any"
-    assert poisk["properties"]["limit"]["default"] == 10
-    assert poisk["properties"]["limit"]["minimum"] == 1
-    assert poisk["properties"]["limit"]["maximum"] == 200
-    assert poisk["required"] == ["query"]
-    assert poisk["additionalProperties"] is False
+    assert search["properties"]["kind"]["default"] == "any"
+    assert search["properties"]["limit"]["default"] == 10
+    assert search["properties"]["limit"]["minimum"] == 1
+    assert search["properties"]["limit"]["maximum"] == 200
+    assert search["required"] == ["query"]
+    assert search["additionalProperties"] is False
 
-    sostav = po_imeni["list_1c_object_members"]["inputSchema"]
-    assert sostav["properties"]["members"]["enum"] == [
+    members_schema = by_name["list_1c_object_members"]["inputSchema"]
+    assert members_schema["properties"]["members"]["enum"] == [
         "all", "methods", "properties", "events", "constructors"
     ]
-    assert sostav["properties"]["limit"]["default"] == 100
+    assert members_schema["properties"]["limit"]["default"] == 100
 
 
 @pytest.mark.unit
-def test_default_v_scheme_sovpadaet_s_modelyu():
+def test_schema_default_matches_the_model():
     """Схема обещает — модель обязана делать то же."""
     from src.models.mcp_models import Find1CHelpRequest, List1CObjectMembersRequest
 
-    po_imeni = {t["name"]: t for t in TOOLS}
+    by_name = {t["name"]: t for t in TOOLS}
 
     assert Find1CHelpRequest(query="х").limit == \
-        po_imeni["find_1c_help"]["inputSchema"]["properties"]["limit"]["default"]
+        by_name["find_1c_help"]["inputSchema"]["properties"]["limit"]["default"]
     assert List1CObjectMembersRequest(object="х").limit == \
-        po_imeni["list_1c_object_members"]["inputSchema"]["properties"]["limit"]["default"]
+        by_name["list_1c_object_members"]["inputSchema"]["properties"]["limit"]["default"]
 
 
 @pytest.mark.unit
-def test_opisanie_govorit_kogda_ne_vyzyvat():
+def test_description_states_when_not_to_call():
     """Разграничение инструментов должно быть в тексте, а не в догадках модели."""
-    po_imeni = {t["name"]: t for t in TOOLS}
+    by_name = {t["name"]: t for t in TOOLS}
 
-    assert "get_1c_element" in po_imeni["find_1c_help"]["description"]
-    assert "find_1c_help" in po_imeni["get_1c_element"]["description"]
-    assert "get_1c_element" in po_imeni["list_1c_object_members"]["description"]
+    assert "get_1c_element" in by_name["find_1c_help"]["description"]
+    assert "find_1c_help" in by_name["get_1c_element"]["description"]
+    assert "get_1c_element" in by_name["list_1c_object_members"]["description"]
 
 
 @pytest.mark.unit
-def test_element_prinimaet_object_i_variant():
+def test_element_tool_accepts_object_and_variant():
     element = {t["name"]: t for t in TOOLS}["get_1c_element"]["inputSchema"]
 
     assert element["required"] == ["name"]
@@ -79,35 +79,35 @@ def test_element_prinimaet_object_i_variant():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_oshibka_pomechaetsya_kak_oshibka():
+async def test_error_is_marked_as_error():
     """isError обязан отражать реальность, иначе агент примет отказ за успех."""
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
             "params": {"name": "get_1c_element", "arguments": {}},
         })
 
-    telo = otvet.json()
-    assert telo["result"]["isError"] is True, telo
-    assert telo["result"]["content"], "текст ошибки не передан агенту"
+    body = response.json()
+    assert body["result"]["isError"] is True, body
+    assert body["result"]["content"], "текст ошибки не передан агенту"
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_kartochka_prihodit_tekstom():
+async def test_card_arrives_as_text():
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
             "params": {"name": "get_1c_element",
                        "arguments": {"name": "НайтиСтроки", "object": "ТаблицаЗначений"}},
         })
 
-    text = otvet.json()["result"]["content"][0]["text"]
+    text = response.json()["result"]["content"][0]["text"]
     assert "Вызов: ТаблицаЗначений.НайтиСтроки" in text
     assert "Доступность:" in text
 
@@ -121,7 +121,7 @@ async def test_kartochka_prihodit_tekstom():
     ("Get1CElementRequest", {"name": "х", "object_name": "Массив"}),
     ("List1CObjectMembersRequest", {"object": "х", "member_type": "all"}),
 ])
-def test_lishnii_argument_ne_proglatyvaetsya_molcha(model_cls, kwargs):
+def test_extra_argument_is_not_swallowed_silently(model_cls, kwargs):
     """additionalProperties: false в схеме обязан работать и в модели.
 
     Раньше pydantic по умолчанию тихо отбрасывал незнакомые поля: вызов со
@@ -138,7 +138,7 @@ def test_lishnii_argument_ne_proglatyvaetsya_molcha(model_cls, kwargs):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_error_kind_stanovitsya_oshibkoi_a_ne_tihim_otvetom(monkeypatch):
+async def test_error_kind_becomes_an_error_not_a_quiet_answer(monkeypatch):
     """element_card помечает сбой ES kind="error" — обработчик обязан
     вернуть isError, а не "элемент не найден".
 
@@ -164,52 +164,52 @@ async def test_error_kind_stanovitsya_oshibkoi_a_ne_tihim_otvetom(monkeypatch):
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_initialize_ne_obeshchaet_lishnih_capabilities():
+async def test_initialize_promises_no_extra_capabilities():
     """resources/prompts/roots/sampling убраны: заявленное, но не работающее
     хуже отсутствующего — клиент узнаёт о расхождении не заранее, а на вызове.
     """
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 40, "method": "initialize", "params": {},
         })
 
-    assert otvet.json()["result"]["capabilities"] == {"tools": {}}
+    assert response.json()["result"]["capabilities"] == {"tools": {}}
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_prompts_list_chestno_vozvrashchaet_metod_ne_naiden():
+async def test_prompts_list_honestly_returns_method_not_found():
     """prompts/list раньше отдавал пустой список при неснятой capability —
     теперь метод не объявлен, и клиент честно получает -32601."""
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 41, "method": "prompts/list", "params": {},
         })
 
-    assert otvet.json()["error"]["code"] == -32601
+    assert response.json()["error"]["code"] == -32601
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_sostav_ne_otritsaet_obekt_iz_za_otsutstviya_odnogo_vida():
+async def test_member_list_does_not_deny_object_over_one_missing_kind():
     """У ТаблицаЗначений нет событий, но сама она есть — инструмент не должен
     называть её "не найденной" и тут же предлагать её же как похожую."""
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 42, "method": "tools/call",
             "params": {"name": "list_1c_object_members",
                        "arguments": {"object": "ТаблицаЗначений", "members": "events"}},
         })
 
-    text = otvet.json()["result"]["content"][0]["text"]
+    text = response.json()["result"]["content"][0]["text"]
     assert "не найден" not in text, text
     assert "ТаблицаЗначений" in text
 
@@ -217,7 +217,7 @@ async def test_sostav_ne_otritsaet_obekt_iz_za_otsutstviya_odnogo_vida():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_obekt_bez_chlenov_pri_members_all_ne_obeshchaet_prizrachnyi_element():
+async def test_object_without_members_promises_no_phantom_element_on_all():
     """members="all" — значение по умолчанию, основной путь. У JSON нет ни
     одного настоящего метода/свойства/события/конструктора: раньше запрос
     ловил документ самого объекта (у него object тоже равен "JSON"), и ответ
@@ -226,13 +226,13 @@ async def test_obekt_bez_chlenov_pri_members_all_ne_obeshchaet_prizrachnyi_eleme
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 46, "method": "tools/call",
             "params": {"name": "list_1c_object_members",
                        "arguments": {"object": "JSON", "members": "all"}},
         })
 
-    text = otvet.json()["result"]["content"][0]["text"]
+    text = response.json()["result"]["content"][0]["text"]
     assert "Показано 0 из 1" not in text, (
         "документ самого объекта не должен обещаться как скрытый член: " + text
     )
@@ -242,7 +242,7 @@ async def test_obekt_bez_chlenov_pri_members_all_ne_obeshchaet_prizrachnyi_eleme
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_sovet_v_kartochke_omonima_vypolnim():
+async def test_hint_in_homonym_card_is_executable():
     """Совет "вызовите find_1c_help с limit=N" обязан укладываться в тот же
     потолок, что и схема find_1c_help, иначе агент получит validation error
     вместо списка, следуя честному на вид совету карточки."""
@@ -250,46 +250,46 @@ async def test_sovet_v_kartochke_omonima_vypolnim():
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 43, "method": "tools/call",
             "params": {"name": "get_1c_element", "arguments": {"name": "Количество"}},
         })
 
-    text = otvet.json()["result"]["content"][0]["text"]
-    sovpadenie = re.search(r"limit=(\d+)", text)
-    assert sovpadenie, text
-    predlozhennyi = int(sovpadenie.group(1))
-    assert predlozhennyi <= 200, "совет превышает потолок схемы find_1c_help"
+    text = response.json()["result"]["content"][0]["text"]
+    match = re.search(r"limit=(\d+)", text)
+    assert match, text
+    suggested = int(match.group(1))
+    assert suggested <= 200, "совет превышает потолок схемы find_1c_help"
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        provereno = await client.post("/mcp", json={
+        verification = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 44, "method": "tools/call",
             "params": {"name": "find_1c_help",
-                       "arguments": {"query": "Количество", "limit": predlozhennyi}},
+                       "arguments": {"query": "Количество", "limit": suggested}},
         })
 
-    telo = provereno.json()
-    assert telo["result"]["isError"] is False, telo
+    body = verification.json()
+    assert body["result"]["isError"] is False, body
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_staroe_imya_parametra_daet_oshibku_a_ne_tihoe_otbrasyvanie():
+async def test_old_param_name_gives_error_not_silent_drop():
     """object_name — упразднённое имя параметра get_1c_element (актуальное —
     object). Раньше pydantic тихо отбрасывал незнакомое поле, и вызов уходил
     без фильтра по объекту, возвращая список омонимов вместо карточки."""
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 45, "method": "tools/call",
             "params": {"name": "get_1c_element",
                        "arguments": {"name": "НайтиСтроки", "object_name": "ТаблицаЗначений"}},
         })
 
-    telo = otvet.json()
-    assert telo["result"]["isError"] is True, telo
+    body = response.json()
+    assert body["result"]["isError"] is True, body
 
 
 # --- Фикс-раунд 2: находки итогового ревью ветки ---
@@ -298,7 +298,7 @@ async def test_staroe_imya_parametra_daet_oshibku_a_ne_tihoe_otbrasyvanie():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_pustaya_vydacha_poiska_razlichaet_net_elementa_i_net_obekta():
+async def test_empty_search_result_distinguishes_no_element_from_no_object():
     """find_1c_help с object= обязан отличать «нет элемента» от «нет объекта».
 
     ФоновыеЗадания — канонический пример спеки §3.6: идентификатор из кода не
@@ -309,13 +309,13 @@ async def test_pustaya_vydacha_poiska_razlichaet_net_elementa_i_net_obekta():
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 47, "method": "tools/call",
             "params": {"name": "find_1c_help",
                        "arguments": {"query": "Выполнить", "object": "ФоновыеЗадания"}},
         })
 
-    text = otvet.json()["result"]["content"][0]["text"]
+    text = response.json()["result"]["content"][0]["text"]
     assert "«ФоновыеЗадания» в справке не найден" in text, text
     assert "МенеджерФоновыхЗаданий" in text, text
     assert 'list_1c_object_members(object="ФоновыеЗадания")' not in text, (
@@ -326,18 +326,18 @@ async def test_pustaya_vydacha_poiska_razlichaet_net_elementa_i_net_obekta():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_pustaya_vydacha_nazyvaet_filtr_po_vidu():
+async def test_empty_search_result_names_the_kind_filter():
     """Если выдачу обнулил фильтр kind, об этом сказано прямо."""
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 48, "method": "tools/call",
             "params": {"name": "find_1c_help",
                        "arguments": {"query": "НайтиСтроки", "kind": "event"}},
         })
 
-    text = otvet.json()["result"]["content"][0]["text"]
+    text = response.json()["result"]["content"][0]["text"]
     assert 'kind="event"' in text, text
     assert 'kind="any"' in text, text
 
@@ -345,7 +345,7 @@ async def test_pustaya_vydacha_nazyvaet_filtr_po_vidu():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_sovet_o_postranichnosti_ne_obeshchaet_nevozmozhnogo():
+async def test_paging_hint_promises_nothing_impossible():
     """«Повторите с limit=200 за остальными» вернёт те же первые 200.
 
     Параметра смещения у find_1c_help нет, поэтому обещать «остальные» нельзя:
@@ -354,12 +354,12 @@ async def test_sovet_o_postranichnosti_ne_obeshchaet_nevozmozhnogo():
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 49, "method": "tools/call",
             "params": {"name": "find_1c_help", "arguments": {"query": "Добавить"}},
         })
 
-    text = otvet.json()["result"]["content"][0]["text"]
+    text = response.json()["result"]["content"][0]["text"]
     assert "за остальными" not in text, text
     assert "За один вызов можно получить не более 200" in text, text
 
@@ -367,7 +367,7 @@ async def test_sovet_o_postranichnosti_ne_obeshchaet_nevozmozhnogo():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_sovet_kartochki_obekta_vypolnim():
+async def test_object_card_hint_is_executable():
     """Карточка объекта советует list_1c_object_members — совет обязан работать.
 
     Раньше в совет уходил удвоенный full_path
@@ -387,21 +387,21 @@ async def test_sovet_kartochki_obekta_vypolnim():
         assert "Новый ТаблицаЗначений" in text, text
         assert 'list_1c_object_members(object="ТаблицаЗначений")' in text, text
 
-        sostav = await client.post("/mcp", json={
+        members_response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 51, "method": "tools/call",
             "params": {"name": "list_1c_object_members",
                        "arguments": {"object": "ТаблицаЗначений"}},
         })
 
-    otvet_sostava = sostav.json()["result"]["content"][0]["text"]
-    assert "не найден" not in otvet_sostava, otvet_sostava
-    assert "ТаблицаЗначений.НайтиСтроки" in otvet_sostava, otvet_sostava
+    members_text = members_response.json()["result"]["content"][0]["text"]
+    assert "не найден" not in members_text, members_text
+    assert "ТаблицаЗначений.НайтиСтроки" in members_text, members_text
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_neizvestnyi_instrument_eto_oshibka_vyzova_a_ne_polomka_servera():
+async def test_unknown_tool_is_a_call_error_not_a_server_failure():
     """Промах по имени инструмента обязан читаться как промах вызывающего.
 
     Раньше MCPRequest бросал ValidationError на enum, тот долетал до общего
@@ -412,39 +412,39 @@ async def test_neizvestnyi_instrument_eto_oshibka_vyzova_a_ne_polomka_servera():
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 52, "method": "tools/call",
             "params": {"name": "get_1c_help", "arguments": {"query": "x"}},
         })
 
-    telo = otvet.json()
-    assert otvet.status_code == 400, telo
-    assert telo["error"]["code"] == -32602, telo
+    body = response.json()
+    assert response.status_code == 400, body
+    assert body["error"]["code"] == -32602, body
 
-    soobshchenie = telo["error"]["message"]
-    assert "get_1c_help" in soobshchenie, soobshchenie
+    message = body["error"]["message"]
+    assert "get_1c_help" in message, message
     # Перечень имён — то, чем промах чинится: без него агент знает только, что
     # ошибся, но не знает чем заменить.
-    for imya in IMENA:
-        assert imya in soobshchenie, soobshchenie
-    assert "Internal error" not in soobshchenie, soobshchenie
-    assert "pydantic" not in soobshchenie, soobshchenie
+    for name in TOOL_NAMES:
+        assert name in message, message
+    assert "Internal error" not in message, message
+    assert "pydantic" not in message, message
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
-async def test_arguments_ne_obektom_tozhe_oshibka_vyzova():
+async def test_non_object_arguments_are_also_a_call_error():
     """arguments строкой вместо объекта — тот же класс: виноват вызов."""
     import httpx
 
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        otvet = await client.post("/mcp", json={
+        response = await client.post("/mcp", json={
             "jsonrpc": "2.0", "id": 53, "method": "tools/call",
             "params": {"name": "find_1c_help", "arguments": "query=x"},
         })
 
-    telo = otvet.json()
-    assert otvet.status_code == 400, telo
-    assert telo["error"]["code"] == -32602, telo
-    assert "Internal error" not in telo["error"]["message"], telo
+    body = response.json()
+    assert response.status_code == 400, body
+    assert body["error"]["code"] == -32602, body
+    assert "Internal error" not in body["error"]["message"], body
