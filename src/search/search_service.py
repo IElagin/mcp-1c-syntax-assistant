@@ -54,8 +54,11 @@ def _is_real_type(object_name) -> bool:
 class SearchService:
     """Сервис поиска по документации 1С."""
     
-    def __init__(self, es_client: ElasticsearchClient):
+    def __init__(self, es_client: ElasticsearchClient, index: Optional[str] = None):
         self.es_client = es_client
+        # Индекс фиксируется на время жизни сервиса: один запрос агента — один
+        # язык, и смешивать индексы внутри одного ответа нельзя.
+        self.index = index
         self.query_builder = QueryBuilder()
         self.ranker = SearchRanker()
         self.formatter = SearchFormatter()
@@ -83,7 +86,7 @@ class SearchService:
             )
 
             # Выполняем поиск
-            response = await self.es_client.search(es_query)
+            response = await self.es_client.search(es_query, index=self.index)
 
             # Прежде здесь стоял повторный поиск по одному имени элемента, если
             # объект из запроса «Объект.Метод» не опознан. Он возвращал элементы
@@ -158,7 +161,7 @@ class SearchService:
         if filters:
             es_query["query"] = {"bool": {"must": [es_query["query"]], "filter": filters}}
 
-        response = await self.es_client.search(es_query)
+        response = await self.es_client.search(es_query, index=self.index)
         if not response:
             return {"results": [], "total": 0, "query": query,
                     "error": "Ошибка выполнения поиска"}
@@ -194,7 +197,7 @@ class SearchService:
                     {"terms": {"type": types}},
                 ]}},
                 "size": 0,
-            })
+            }, index=self.index)
             total = (response or {}).get("hits", {}).get("total", {})
             totals[group_name] = total.get("value", 0) if isinstance(total, dict) else (total or 0)
         return totals
@@ -220,7 +223,7 @@ class SearchService:
             "size": 50,
             "sort": [{"name.keyword": {"order": "asc"}}],
             "_source": ["call_primary", "name_ru", "variants.variant"],
-        })
+        }, index=self.index)
 
         hits = (response or {}).get("hits", {}).get("hits", [])
         lines = []
@@ -280,7 +283,7 @@ class SearchService:
                 "sort": [{"name.keyword": {"order": "asc"}}]
             }
             
-            response = await self.es_client.search(elasticsearch_query)
+            response = await self.es_client.search(elasticsearch_query, index=self.index)
             
             # Группируем результаты
             methods = []
@@ -381,7 +384,7 @@ class SearchService:
             response = await self.es_client.search({
                 "query": {"bool": {"filter": filters}},
                 "size": 50,
-            })
+            }, index=self.index)
             hits = (response or {}).get("hits", {}).get("hits", [])
             total = (response or {}).get("hits", {}).get("total", {})
             total = total.get("value", 0) if isinstance(total, dict) else (total or 0)
@@ -442,7 +445,7 @@ class SearchService:
             "query": {"bool": {"filter": filters}},
             "size": min(max(total, 1), CANDIDATES_CAP),
             "_source": {"includes": LIST_LINE_FIELDS},
-        })
+        }, index=self.index)
         documents = [h["_source"] for h in (response or {}).get("hits", {}).get("hits", [])]
 
         member_counts = await self._member_count_by_object(
@@ -472,7 +475,7 @@ class SearchService:
             ]}},
             "size": 0,
             "aggs": {"by_object": {"terms": {"field": "object", "size": len(names)}}},
-        })
+        }, index=self.index)
         buckets = (response or {}).get("aggregations", {}).get("by_object", {}).get("buckets", [])
         return {b["key"]: b["doc_count"] for b in buckets}
 
@@ -491,7 +494,7 @@ class SearchService:
         response = await self.es_client.search({
             "query": {"bool": {"filter": [{"term": {"object": object_name}}]}},
             "size": 0,
-        })
+        }, index=self.index)
         total = (response or {}).get("hits", {}).get("total", {})
         total = total.get("value", 0) if isinstance(total, dict) else (total or 0)
         return total > 0
@@ -526,7 +529,7 @@ class SearchService:
             },
             "size": 50,
             "_source": ["name_ru"],
-        })
+        }, index=self.index)
 
         seen = []
         for h in (response or {}).get("hits", {}).get("hits", []):
@@ -549,5 +552,5 @@ class SearchService:
         response = await self.es_client.search({
             "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
             "size": limit,
-        })
+        }, index=self.index)
         return [h["_source"] for h in (response or {}).get("hits", {}).get("hits", [])]

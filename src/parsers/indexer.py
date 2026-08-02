@@ -37,8 +37,11 @@ def split_name_ru_en(name: Optional[str]) -> Tuple[str, Optional[str]]:
 class ElasticsearchIndexer:
     """Индексатор документации в Elasticsearch."""
     
-    def __init__(self, es_client: ElasticsearchClient):
+    def __init__(self, es_client: ElasticsearchClient, index: Optional[str] = None):
         self.es_client = es_client
+        # Индекс фиксируется на время жизни индексатора: один прогон
+        # индексации — одна книга справки, один язык, один индекс.
+        self.index = index
         self.batch_size = 100
         self.max_retries = 3
     
@@ -63,9 +66,9 @@ class ElasticsearchIndexer:
         
         try:
             # Проверяем/создаем индекс
-            if not await self.es_client.index_exists():
+            if not await self.es_client.index_exists(self.index):
                 logger.info("Создаем индекс Elasticsearch")
-                await self.es_client.create_index()
+                await self.es_client.create_index(self.index)
             
             # Индексируем документы батчами с отчётом о прогрессе
             total_docs = len(parsed_hbk.documentation)
@@ -85,7 +88,7 @@ class ElasticsearchIndexer:
                     logger.error(f"Ошибка индексации батча {i}-{i+len(batch)}")
             
             # Принудительно обновляем индекс для немедленного отражения изменений
-            await self.es_client.refresh_index()
+            await self.es_client.refresh_index(self.index)
             
             return indexed_count == total_docs
             
@@ -106,7 +109,9 @@ class ElasticsearchIndexer:
                 # Добавляем действие индексации
                 bulk_body.append({
                     "index": {
-                        "_index": self.es_client._config.index_name,
+                        # bulk-запрос идёт мимо ElasticsearchClient.search и
+                        # его _index() — имя индекса нужно разрешать здесь же.
+                        "_index": self.index or self.es_client._config.index_name,
                         "_id": doc.id
                     }
                 })
@@ -198,14 +203,13 @@ class ElasticsearchIndexer:
         Returns:
             bool: True если успешно, False иначе
         """
-        try:            
-            # Удаляем старый индекс если существует
-            if await self.es_client.index_exists():
-                if self.es_client._client:
-                    await self.es_client._client.indices.delete(index=self.es_client._config.index_name)
-            
+        try:
+            # Удаляем и создаём именно свой индекс (self.index): переиндексация
+            # английской книги не должна стереть русский индекс и наоборот.
+            await self.es_client.delete_index(self.index)
+
             # Создаем новый индекс
-            await self.es_client.create_index()
+            await self.es_client.create_index(self.index)
             
             # Индексируем документы с прогрессом
             return await self.index_documentation(parsed_hbk, progress_callback)
@@ -219,33 +223,36 @@ class ElasticsearchIndexer:
         try:
             if not await self.es_client.is_connected():
                 return None
-            
-            if not await self.es_client.index_exists():
+
+            if not await self.es_client.index_exists(self.index):
                 return {"exists": False, "documents_count": 0}
-            
-            # Получаем статистику
+
+            # Получаем статистику. Вызовы indices.stats/count идут мимо
+            # обёрток ElasticsearchClient — имя индекса разрешаем так же, как
+            # в _index_batch, а не читаем его из конфигурации напрямую.
             if self.es_client._client:
+                index_name = self.index or self.es_client._config.index_name
                 stats_response = await self.es_client._client.indices.stats(
-                    index=self.es_client._config.index_name
+                    index=index_name
                 )
-                
+
                 count_response = await self.es_client._client.count(
-                    index=self.es_client._config.index_name
+                    index=index_name
                 )
-                
+
                 return {
                     "exists": True,
                     "documents_count": count_response.get("count", 0),
-                    "size_in_bytes": stats_response["indices"][self.es_client._config.index_name]["total"]["store"]["size_in_bytes"],
-                    "index_name": self.es_client._config.index_name
+                    "size_in_bytes": stats_response["indices"][index_name]["total"]["store"]["size_in_bytes"],
+                    "index_name": index_name
                 }
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Ошибка получения статистики индекса: {e}")
             return None
-    
+
     async def search_documents(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Простой поиск документов для тестирования."""
         try:
@@ -266,8 +273,8 @@ class ElasticsearchIndexer:
                 ]
             }
             
-            response = await self.es_client.search(search_query)
-            
+            response = await self.es_client.search(search_query, index=self.index)
+
             if response and "hits" in response:
                 return [hit["_source"] for hit in response["hits"]["hits"]]
             

@@ -40,7 +40,15 @@ class ElasticsearchClient:
         self._config = settings.elasticsearch
         self._connection_timeout = ELASTICSEARCH_CONNECTION_TIMEOUT
         self._request_timeout = ELASTICSEARCH_REQUEST_TIMEOUT
-    
+
+    def _index(self, index: Optional[str] = None) -> str:
+        """Индекс запроса: явный аргумент важнее настройки.
+
+        Индекс стал параметром, потому что английская справка живёт во втором
+        индексе. Умолчание оставлено, чтобы существующие вызовы не менялись.
+        """
+        return index or self._config.index_name
+
     @retry_on_connection_error
     async def connect(self) -> bool:
         """Подключается к Elasticsearch с retry механизмом."""
@@ -80,15 +88,15 @@ class ElasticsearchClient:
             return False
     
     @retry_on_connection_error
-    async def index_exists(self) -> bool:
+    async def index_exists(self, index: Optional[str] = None) -> bool:
         """Проверяет существование индекса с retry."""
         if not self._client:
             raise ConnectionFailedError("No connection to Elasticsearch")
-        
-        return await self._client.indices.exists(index=self._config.index_name)
-    
+
+        return await self._client.indices.exists(index=self._index(index))
+
     @retry_on_connection_error
-    async def create_index(self) -> bool:
+    async def create_index(self, index: Optional[str] = None) -> bool:
         """Создает индекс с оптимизированной схемой с retry."""
         if not self._client:
             raise ConnectionFailedError("No connection to Elasticsearch")
@@ -163,39 +171,56 @@ class ElasticsearchClient:
             }
         }
         
-        await self._client.indices.create(index=self._config.index_name, body=index_config)
-        logger.info(f"Index '{self._config.index_name}' created successfully")
+        resolved_index = self._index(index)
+        await self._client.indices.create(index=resolved_index, body=index_config)
+        logger.info(f"Index '{resolved_index}' created successfully")
         return True
-    
+
     @retry_on_transient_error
-    async def get_documents_count(self) -> int:
+    async def get_documents_count(self, index: Optional[str] = None) -> int:
         """Получает количество документов в индексе с retry."""
         if not self._client:
             raise ConnectionFailedError("No connection to Elasticsearch")
-        
-        response = await self._client.count(index=self._config.index_name)
+
+        response = await self._client.count(index=self._index(index))
         return response["count"]
-    
-    async def refresh_index(self) -> bool:
+
+    async def refresh_index(self, index: Optional[str] = None) -> bool:
         """Принудительно обновляет индекс для немедленного отражения изменений."""
         if not self._client:
             return False
-        
+
         try:
-            await self._client.indices.refresh(index=self._config.index_name)
+            await self._client.indices.refresh(index=self._index(index))
             return True
         except Exception as e:
             logger.error(f"Ошибка обновления индекса: {e}")
             return False
-    
+
+    @retry_on_connection_error
+    async def delete_index(self, index: Optional[str] = None) -> bool:
+        """Удаляет индекс, если он существует.
+
+        Не бросает исключение при отсутствии индекса: reindex_all вызывает
+        удаление безусловно перед пересозданием, и первый прогон
+        переиндексации всегда стартует с пустой инфраструктуры.
+        """
+        if not self._client:
+            raise ConnectionFailedError("No connection to Elasticsearch")
+
+        resolved_index = self._index(index)
+        if await self._client.indices.exists(index=resolved_index):
+            await self._client.indices.delete(index=resolved_index)
+        return True
+
     @retry_on_transient_error
-    async def search(self, query: Dict[str, Any]) -> Dict[str, Any]:
+    async def search(self, query: Dict[str, Any], index: Optional[str] = None) -> Dict[str, Any]:
         """Выполняет поиск в индексе с retry."""
         if not self._client:
             raise ConnectionFailedError("No connection to Elasticsearch")
-        
+
         response = await self._client.search(
-            index=self._config.index_name,
+            index=self._index(index),
             body=query
         )
         return response
