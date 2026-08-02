@@ -55,6 +55,12 @@ ARCHIVE_PATHS = {
     # и обычное «Описание:» — для элемента в целом.
     "formdatacollection_unload.html":
         "objects/catalog1649/catalog1614/FormDataCollection/methods/Unload3853.html",
+    # Третий параметр называется по-английски («AddInName») внутри в остальном
+    # кириллической страницы — регрессия на _serialize_for_reparsing, см. тест
+    # test_latin_placeholder_survives_reparsing_in_russian_page ниже.
+    "serveragentconnection_unregsecurityprofileaddin.html":
+        "objects/catalog1369/catalog1384/catalog1386/IServerAgentConnection/"
+        "methods/UnregSecurityProfileAddIn4409.html",
 }
 
 
@@ -427,3 +433,36 @@ def test_element_description_is_not_replaced_by_variant_description():
 
     assert by_filter.variant == "Выгрузить по отбору"
     assert by_filter.description.startswith("Если указан отбор"), by_filter.description
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_latin_placeholder_survives_reparsing_in_russian_page():
+    """Параметр с латинским именем не должен теряться и в русской книге.
+
+    IServerAgentConnection.UnregSecurityProfileAddIn — редкий, но настоящий
+    случай: третий параметр называется по-английски («AddInName») внутри в
+    остальном кириллической страницы. До появления _serialize_for_reparsing
+    (найдено на английской фикстуре array_add.html, см.
+    tests/test_english_parsing.py) голый текстовый узел сериализовался через
+    str() без обратного HTML-экранирования, и text_from_html при повторном
+    разборе читал "<AddInName>" как настоящий (неизвестный) тег — html.parser
+    молча вырезал его, теряя имя параметра из синтаксиса. Кириллические
+    плейсхолдеры («<Кластер>», «<ИмяПрофиля>») эту ошибку не ловят: кириллица
+    не похожа на имя тега по правилам HTML5-токенизации, и текст уцелевал
+    случайно. Правка задачи 3 восстановила такие параметры не только в
+    английской книге, но и на 113 страницах русской — этот тест на одну из них.
+    """
+    doc = parse_fixture("serveragentconnection_unregsecurityprofileaddin.html")
+
+    params = call_parameters(doc)
+    assert [p.name for p in params] == ["Кластер", "ИмяПрофиля", "AddInName"]
+
+    add_in_name = params[2]
+    assert add_in_name.type == "Строка"
+    assert add_in_name.required is True
+    assert "Имя разрешенного внешнего компонента" in add_in_name.description
+
+    assert doc.variants[0].syntax == (
+        "UnregSecurityProfileAddIn(<Кластер>, <ИмяПрофиля>, <AddInName>)"
+    )

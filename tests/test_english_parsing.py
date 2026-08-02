@@ -78,5 +78,5 @@ def test_english_object_page_lists_its_members():
 def test_english_property_carries_its_value_type():
     doc = parse_fixture("valuetable_columns.html")
 
-    assert doc.value_type
-    assert doc.usage
+    assert doc.value_type == "ValueTableColumnCollection"
+    assert doc.usage == "read only"
