@@ -69,10 +69,13 @@ app = FastAPI(
 )
 
 # Добавляем CORS middleware
+# allow_credentials=True вместе с allow_origins=["*"] — невалидная пара по
+# спецификации CORS: браузер отвергает такой ответ. Учётные данные серверу не
+# нужны — аутентификации у него нет, — поэтому выключены явно.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

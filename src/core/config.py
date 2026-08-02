@@ -49,7 +49,10 @@ class Settings(BaseSettings):
     server_host: str = "0.0.0.0"
     server_port: int = 8000
     log_level: str = "INFO"
-    
+
+    # CORS: список источников через запятую. "*" — разрешить все.
+    cors_allow_origins: str = "*"
+
     # Пути к данным
     hbk_directory: str = "data/hbk"
     logs_directory: str = "data/logs"
@@ -113,6 +116,15 @@ class Settings(BaseSettings):
         if self.force_reindex:
             return True
         return self.reindex_on_startup.lower() in ("true", "1", "yes")
+
+    @property
+    def cors_origins(self) -> list:
+        """Разрешённые источники запросов как список."""
+        return [
+            origin.strip()
+            for origin in self.cors_allow_origins.split(",")
+            if origin.strip()
+        ]
 
 
 # Глобальный экземпляр настроек
