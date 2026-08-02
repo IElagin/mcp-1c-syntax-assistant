@@ -61,6 +61,11 @@ ARCHIVE_PATHS = {
     "serveragentconnection_unregsecurityprofileaddin.html":
         "objects/catalog1369/catalog1384/catalog1386/IServerAgentConnection/"
         "methods/UnregSecurityProfileAddIn4409.html",
+    # У этого метода V8SH_pagetitle — «Прочитать (Read)», без имени
+    # объекта-владельца вовсе (страница не повторяет длинное имя расширения).
+    "extdatasource_record_read.html":
+        "objects/catalog1649/catalog1890/Client application form extension "
+        "for external data source table record/methods/Read4577.html",
 }
 
 
@@ -466,3 +471,32 @@ def test_latin_placeholder_survives_reparsing_in_russian_page():
     assert doc.variants[0].syntax == (
         "UnregSecurityProfileAddIn(<Кластер>, <ИмяПрофиля>, <AddInName>)"
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_member_object_name_falls_back_to_v8sh_title():
+    """object берётся из V8SH_title, когда заголовок страницы не называет объект.
+
+    У «Расширение формы клиентского приложения для записи таблицы внешнего
+    источника данных» собственный заголовок метода — просто «Прочитать
+    (Read)», без имени объекта-владельца (в отличие от «Массив.Добавить»).
+    Старое правило (расщепление V8SH_pagetitle по точке) в этом случае
+    получало на входе строку без точки и по хвостовой ветке отдавало её
+    целиком — то есть в object попадало имя самого метода. У соседнего
+    объекта («...для объекта таблицы внешнего источника данных») тоже есть
+    метод «Прочитать», и оба получали id "Прочитать_Прочитать (Read)_...",
+    после чего один документ в Elasticsearch стирал другой при переиндексации.
+
+    V8SH_title несёт имя объекта-владельца всегда, даже когда собственный
+    заголовок страницы его не повторяет, — это и есть исправление.
+    """
+    doc = parse_fixture("extdatasource_record_read.html")
+
+    assert doc.name == "Прочитать (Read)"
+    assert doc.object == (
+        "Расширение формы клиентского приложения для записи "
+        "таблицы внешнего источника данных"
+    ), doc.object
+    assert doc.object != "Прочитать (Read)"
+    assert doc.object_ru == doc.object

@@ -1,15 +1,27 @@
 """Менеджер фоновой индексации."""
 
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Callable
+from typing import List, Optional, Callable
 from pathlib import Path
 
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
 from src.models.index_status import IndexingStatus, IndexProgressInfo
+from src.parsers.dialects import dialect_for
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class _IndexJob:
+    """Одна книга, ждущая своей очереди на индексацию."""
+
+    file_path: str
+    es_client: ElasticsearchClient
+    index: Optional[str]
+    lang: str
 
 
 class BackgroundIndexingManager:
@@ -39,43 +51,78 @@ class BackgroundIndexingManager:
         self._progress_info = IndexProgressInfo(status=IndexingStatus.IDLE)
         self._lock = asyncio.Lock()
         self._should_stop = False
-    
+        # Книги, ждущие своей очереди. Менеджер держит один активный слот
+        # намеренно: Elasticsearch поднят с кучей 1 ГБ, и параллельный разбор
+        # двух книг по ~23 тысячи документов боролся бы за память без всякой
+        # пользы — индексация всё равно фоновая, и клиенту важна готовность
+        # обеих книг, а не то, какая закончится первой. Поэтому вторая книга,
+        # запрошенная во время активной индексации, не отбрасывается, а
+        # встаёт в очередь и выполняется сразу за первой.
+        self._pending_jobs: List[_IndexJob] = []
+
     async def start_indexing(
-        self, 
-        file_path: str, 
-        es_client: ElasticsearchClient
+        self,
+        file_path: str,
+        es_client: ElasticsearchClient,
+        index: Optional[str] = None,
+        lang: str = "ru",
     ) -> None:
         """
-        Запустить индексацию в фоновом режиме.
-        
-        Выполняется одна попытка. При ошибке устанавливается status=FAILED.
-        
+        Запустить индексацию в фоновом режиме или поставить в очередь.
+
+        Если индексация уже идёт, книга не отбрасывается — она встаёт в
+        очередь и будет обработана сразу после текущей. is_indexing()
+        остаётся True всё это время: клиент, ждущий готовности индекса по
+        /health, не должен решить, что сервер свободен, пока не готова
+        последняя книга из очереди.
+
         Args:
             file_path: Путь к .hbk файлу
             es_client: Клиент Elasticsearch
+            index: Индекс назначения (None — индекс из конфигурации)
+            lang: Язык книги — выбирает диалект разбора
         """
+        job = _IndexJob(file_path=file_path, es_client=es_client, index=index, lang=lang)
+
         if self.is_indexing():
-            logger.warning("Индексация уже выполняется, пропускаем запрос")
+            self._pending_jobs.append(job)
+            logger.info(
+                f"Индексация уже выполняется — книга {file_path} ({lang}) поставлена в очередь"
+            )
             return
-        
+
         logger.info(f"Создание фоновой задачи индексации для файла: {file_path}")
-        
-        # Создаём фоновую задачу
-        self._current_task = asyncio.create_task(
-            self._do_indexing(file_path, es_client)
-        )
-    
+
+        # Одна задача обрабатывает всю очередь книг последовательно, поэтому
+        # is_indexing() (через self._current_task) остаётся True, пока не
+        # опустеет очередь, а не только на время первой книги.
+        self._current_task = asyncio.create_task(self._run_queue(job))
+
+    async def _run_queue(self, first_job: _IndexJob) -> None:
+        """Обрабатывает книгу и всё, что скопилось в очереди, одну за одной."""
+        job: Optional[_IndexJob] = first_job
+        try:
+            while job is not None:
+                await self._do_indexing(job.file_path, job.es_client, index=job.index, lang=job.lang)
+                job = self._pending_jobs.pop(0) if self._pending_jobs else None
+        finally:
+            self._current_task = None
+
     async def _do_indexing(
-        self, 
-        file_path: str, 
-        es_client: ElasticsearchClient
+        self,
+        file_path: str,
+        es_client: ElasticsearchClient,
+        index: Optional[str] = None,
+        lang: str = "ru",
     ):
         """
-        Выполнить индексацию (внутренний метод).
-        
+        Выполнить индексацию одной книги (внутренний метод).
+
         Args:
             file_path: Путь к .hbk файлу
             es_client: Клиент Elasticsearch
+            index: Индекс назначения (None — индекс из конфигурации)
+            lang: Язык книги — выбирает диалект разбора
         """
         try:
             # Устанавливаем статус IN_PROGRESS
@@ -94,8 +141,8 @@ class BackgroundIndexingManager:
             
             # Парсим .hbk файл в отдельном потоке (не блокируем event loop)
             from src.parsers.hbk_parser import HBKParser
-            parser = HBKParser()
-            
+            parser = HBKParser(dialect=dialect_for(lang))
+
             # Запускаем синхронный парсинг в executor
             loop = asyncio.get_event_loop()
             parsed_hbk = await loop.run_in_executor(
@@ -116,8 +163,8 @@ class BackgroundIndexingManager:
             
             # Индексируем с прогрессом
             from src.parsers.indexer import ElasticsearchIndexer
-            indexer = ElasticsearchIndexer(es_client)
-            
+            indexer = ElasticsearchIndexer(es_client, index=index)
+
             success = await indexer.reindex_all(
                 parsed_hbk,
                 progress_callback=self._update_progress
@@ -155,10 +202,10 @@ class BackgroundIndexingManager:
                 self._progress_info.status = IndexingStatus.FAILED
                 self._progress_info.error_message = error_msg
                 self._progress_info.end_time = datetime.now()
-        
-        finally:
-            self._current_task = None
-    
+            # Не поднимаем исключение дальше: одна книга не должна обрывать
+            # очередь — _run_queue обязан попробовать следующую книгу, даже
+            # если эта провалилась.
+
     def _update_progress(self, indexed: int, total: int):
         """
         Callback для обновления прогресса индексации.

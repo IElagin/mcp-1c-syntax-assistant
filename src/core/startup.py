@@ -7,6 +7,7 @@ from typing import Optional
 from src.core.config import settings
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
+from src.infrastructure.background.indexing_manager import get_indexing_manager
 from src.parsers.dialects import dialect_for
 
 logger = get_logger(__name__)
@@ -93,11 +94,16 @@ async def _delayed_background_indexing(
     """
     Отложенная фоновая индексация одной книги.
 
-    Даёт приложению время на полный запуск перед началом индексации. Каждый
-    вызов — самостоятельная задача без общего мьютекса: русская и английская
+    Даёт приложению время на полный запуск перед началом индексации, затем
+    передаёт книгу общему менеджеру фоновой индексации. Русская и английская
     книги планируются почти одновременно (обе с этой же 5-секундной паузой),
-    и менеджер с одним слотом отбросил бы вторую книгу как «индексация уже
-    идёт» вместо того, чтобы построить оба индекса.
+    но менеджер не запускает их параллельно — он держит один активный слот и
+    ставит вторую книгу в очередь. Это осознанный выбор, а не ограничение:
+    Elasticsearch поднят с кучей 1 ГБ, и обе книги всё равно строятся в фоне,
+    так что параллельный разбор не ускорил бы ответ пользователю, а только
+    боролся бы за память. Последовательная очередь даёт заодно честный
+    /health.indexing_active: он остаётся True, пока не готовы обе книги, а не
+    только первая.
 
     Args:
         file_path: Путь к .hbk файлу
@@ -111,7 +117,8 @@ async def _delayed_background_indexing(
     logger.info(f"Начинаем фоновую индексацию ({lang}): {file_path}")
 
     try:
-        await index_hbk_file(file_path, es_client, index=index, lang=lang)
+        manager = get_indexing_manager()
+        await manager.start_indexing(file_path=file_path, es_client=es_client, index=index, lang=lang)
     except Exception as e:
         logger.error(f"Ошибка при запуске фоновой индексации ({lang}): {e}")
 

@@ -135,12 +135,48 @@ class HTMLParser:
             # Извлекаем основную информацию
             self._extract_title_and_description(soup, doc)
             
-            # Для всех типов кроме глобальных переопределяем object из заголовка
-            if doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
+            # Члены объекта (метод/свойство/событие/конструктор) берут object
+            # из V8SH_title — он несёт имя объекта-владельца всегда, даже
+            # когда собственный заголовок страницы (V8SH_pagetitle) его не
+            # повторяет. У методов длинных «объектов-расширений» (например,
+            # «Расширение формы клиентского приложения для записи таблицы
+            # внешнего источника данных») заголовок страницы — просто
+            # «Прочитать (Read)», без имени объекта; расщепление такого
+            # заголовка по точке (_extract_object_name_from_title) не находит
+            # точки и по хвостовой ветке отдаёт его целиком, то есть в object
+            # попадает имя самого метода. У другого объекта-расширения того же
+            # семейства тоже есть метод «Прочитать», и оба документа получают
+            # общий id, стирая друг друга при индексации (см.
+            # tests/test_parser_element_card.py ::
+            # test_member_object_name_falls_back_to_v8sh_title).
+            #
+            # Страницы самого объекта (type == OBJECT) в этот приоритет
+            # намеренно не входят: у части объектов имя составное и с точками
+            # внутри («ВнешнийИсточникДанныхКубЗапись.<Имя внешнего
+            # источника>.<Имя куба>»), и то, что для них V8SH_title вообще-то
+            # тоже надёжен, — уже другая, более крупная правка (перекрытие
+            # object/name у таких объектов — известный, отдельно
+            # протестированный случай, см. Documentation._object_path и
+            # tests/test_disambiguation.py ::
+            # test_object_card_hint_with_overlapping_path_is_executable);
+            # трогать её в задаче об английской книге — не по адресу.
+            member_types = (
+                DocumentType.OBJECT_FUNCTION, DocumentType.OBJECT_PROCEDURE,
+                DocumentType.OBJECT_PROPERTY, DocumentType.OBJECT_EVENT,
+                DocumentType.OBJECT_CONSTRUCTOR,
+            )
+            russian_object_name = self._extract_russian_object_name(soup)
+            if doc.type in member_types:
+                doc.object = (
+                    russian_object_name
+                    or self._extract_object_name_from_title(soup)
+                    or doc.object
+                )
+            elif doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
                 doc.object = self._extract_object_name_from_title(soup)
 
             doc.element_kind = ELEMENT_KIND_BY_TYPE.get(doc.type, "")
-            doc.object_ru = self._extract_russian_object_name(soup) or doc.object
+            doc.object_ru = russian_object_name or doc.object
             self._extract_element_sections(soup, doc)
 
             if doc.type == DocumentType.OBJECT_PROPERTY:
