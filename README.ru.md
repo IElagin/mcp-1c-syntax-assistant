@@ -1,5 +1,6 @@
 # mcp-1c-syntax-assistant
 
+[![tests](https://github.com/IElagin/mcp-1c-syntax-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/IElagin/mcp-1c-syntax-assistant/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
