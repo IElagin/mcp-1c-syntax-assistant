@@ -7,7 +7,7 @@ from typing import Optional
 from src.core.config import settings
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
-from src.infrastructure.background.indexing_manager import get_indexing_manager
+from src.parsers.dialects import dialect_for
 
 logger = get_logger(__name__)
 
@@ -23,117 +23,150 @@ def resolve_hbk_file(hbk_directory: str, filename: str) -> Optional[Path]:
     return path if path.exists() else None
 
 
+async def _schedule_book(
+    es_client: ElasticsearchClient,
+    directory: str,
+    filename: str,
+    index: Optional[str],
+    lang: str,
+) -> None:
+    """Планирует индексацию одной книги в свой индекс.
+
+    Отсутствие книги — не ошибка: английская поставляется не всем, а русская
+    может быть ещё не скопирована в data/hbk при первом запуске.
+    """
+    hbk_file = resolve_hbk_file(directory, filename)
+    if hbk_file is None:
+        logger.info(f"Книга {filename} не найдена в {directory} — индекс {index} не строится")
+        return
+
+    if not settings.should_reindex_on_startup:
+        if await es_client.index_exists(index=index):
+            docs_count = await es_client.get_documents_count(index=index)
+            if docs_count > 0:
+                logger.info(f"Индекс {index} уже содержит {docs_count} документов")
+                return
+
+    logger.info(f"Запланирована фоновая индексация файла: {hbk_file} -> {index}")
+    asyncio.create_task(
+        _delayed_background_indexing(str(hbk_file), es_client, index=index, lang=lang)
+    )
+
+
 async def auto_index_on_startup(es_client: ElasticsearchClient):
     """
-    Автоматическая индексация в фоновом режиме при запуске.
-    
-    Проверяет наличие .hbk файла и запускает фоновую индексацию.
-    Поведение зависит от настроек:
-    - force_reindex=True или reindex_on_startup=true: всегда индексирует
-    - Иначе: индексирует только если индекс пуст или не существует
-    
+    Автоматическая индексация обеих книг в фоновом режиме при запуске.
+
+    Русская и английская книги независимы: у каждой свой каталог, свой индекс
+    и свой диалект разбора. Каждая планируется отдельным вызовом
+    _schedule_book, поэтому отсутствие или готовность одной книги не влияет
+    на решение по другой.
+
     Args:
         es_client: Подключённый клиент Elasticsearch
     """
     try:
-        hbk_file = resolve_hbk_file(
-            settings.data.hbk_directory, settings.data.hbk_filename
+        await _schedule_book(
+            es_client,
+            settings.data.hbk_directory,
+            settings.data.hbk_filename,
+            index=None,  # None -> settings.elasticsearch_index, как раньше
+            lang="ru",
         )
-
-        if hbk_file is None:
-            logger.warning(
-                f"Книга справки {settings.data.hbk_filename} не найдена "
-                f"в {settings.data.hbk_directory}"
-            )
-            return
-        
-        # Проверяем, нужна ли принудительная переиндексация
-        force_reindex = settings.should_reindex_on_startup
-        
-        if not force_reindex:
-            # Быстрая проверка индекса
-            index_exists = await es_client.index_exists()
-            if index_exists:
-                docs_count = await es_client.get_documents_count()
-                if docs_count > 0:
-                    logger.info(f"Индекс уже существует с {docs_count} документами. Пропускаем автоиндексацию.")
-                    return
-        else:
-            logger.info("Принудительная переиндексация при запуске (reindex_on_startup=true или --reindex)")
-        
-        # Запускаем фоновую индексацию с задержкой
-        logger.info(f"Запланирована фоновая индексация файла: {hbk_file}")
-        asyncio.create_task(_delayed_background_indexing(str(hbk_file), es_client))
-        
+        await _schedule_book(
+            es_client,
+            settings.data.hbk_directory_en,
+            settings.data.hbk_filename_en,
+            index=settings.elasticsearch_index_en,
+            lang="en",
+        )
     except Exception as e:
         logger.error(f"Ошибка при планировании автоиндексации: {e}")
 
 
-async def _delayed_background_indexing(file_path: str, es_client: ElasticsearchClient):
+async def _delayed_background_indexing(
+    file_path: str,
+    es_client: ElasticsearchClient,
+    index: Optional[str] = None,
+    lang: str = "ru",
+):
     """
-    Отложенная фоновая индексация.
-    
-    Даёт приложению время на полный запуск перед началом индексации.
-    
+    Отложенная фоновая индексация одной книги.
+
+    Даёт приложению время на полный запуск перед началом индексации. Каждый
+    вызов — самостоятельная задача без общего мьютекса: русская и английская
+    книги планируются почти одновременно (обе с этой же 5-секундной паузой),
+    и менеджер с одним слотом отбросил бы вторую книгу как «индексация уже
+    идёт» вместо того, чтобы построить оба индекса.
+
     Args:
         file_path: Путь к .hbk файлу
         es_client: Клиент Elasticsearch
+        index: Индекс назначения (None — индекс из конфигурации)
+        lang: Язык книги — выбирает диалект разбора
     """
     # Даём приложению 5 секунд на полный запуск
     await asyncio.sleep(5)
-    
-    logger.info("Начинаем фоновую индексацию...")
-    
+
+    logger.info(f"Начинаем фоновую индексацию ({lang}): {file_path}")
+
     try:
-        manager = get_indexing_manager()
-        await manager.start_indexing(file_path=file_path, es_client=es_client)
+        await index_hbk_file(file_path, es_client, index=index, lang=lang)
     except Exception as e:
-        logger.error(f"Ошибка при запуске фоновой индексации: {e}")
+        logger.error(f"Ошибка при запуске фоновой индексации ({lang}): {e}")
 
 
-async def index_hbk_file(file_path: str, es_client: ElasticsearchClient) -> bool:
+async def index_hbk_file(
+    file_path: str,
+    es_client: ElasticsearchClient,
+    index: Optional[str] = None,
+    lang: str = "ru",
+) -> bool:
     """
-    Индексирует .hbk файл в Elasticsearch (используется для ручной индексации через API).
-    
+    Индексирует .hbk файл в Elasticsearch (используется и для ручной
+    индексации через API, и для фоновой индексации при запуске).
+
     Args:
         file_path: Путь к .hbk файлу
         es_client: Подключённый клиент Elasticsearch
-        
+        index: Индекс назначения (None — индекс из конфигурации)
+        lang: Язык книги — выбирает диалект разбора HTML
+
     Returns:
         bool: True если индексация успешна, False иначе
     """
     try:
         from src.parsers.hbk_parser import HBKParser
         from src.parsers.indexer import ElasticsearchIndexer
-        
+
         logger.info(f"Начинаем синхронную индексацию файла: {file_path}")
-        
+
         # Парсим .hbk файл в отдельном потоке (не блокируем event loop)
-        parser = HBKParser()
+        parser = HBKParser(dialect=dialect_for(lang))
         logger.info("Запускаем парсинг HBK файла в отдельном потоке...")
         parsed_hbk = await asyncio.to_thread(parser.parse_file, file_path)
         logger.info("Парсинг HBK файла завершен")
-        
+
         if not parsed_hbk:
             logger.error("Ошибка парсинга .hbk файла")
             return False
-        
+
         if not parsed_hbk.documentation:
             logger.warning("В файле не найдена документация для индексации")
             return False
-        
+
         logger.info(f"Найдено {len(parsed_hbk.documentation)} документов для индексации")
-        
+
         # Индексируем в Elasticsearch
-        indexer = ElasticsearchIndexer(es_client)
+        indexer = ElasticsearchIndexer(es_client, index=index)
         success = await indexer.reindex_all(parsed_hbk)
-        
+
         if success:
-            docs_count = await es_client.get_documents_count()
+            docs_count = await es_client.get_documents_count(index=index)
             logger.info(f"Индексация завершена. Документов в индексе: {docs_count}")
-        
+
         return success
-        
+
     except Exception as e:
         logger.error(f"Ошибка индексации файла {file_path}: {e}")
         return False

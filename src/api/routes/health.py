@@ -32,12 +32,18 @@ async def health_check(
         es_connected = await es_client.is_connected()
         index_exists = bool(await es_client.index_exists()) if es_connected else False
         docs_count = await es_client.get_documents_count() if index_exists else None
-        
+
+        # Английский индекс — отдельно: его отсутствие не делает сервер
+        # нездоровым, книга проприетарная и есть не у всех.
+        index_en = settings.elasticsearch_index_en
+        index_en_exists = bool(await es_client.index_exists(index=index_en)) if es_connected else False
+        docs_count_en = await es_client.get_documents_count(index=index_en) if index_en_exists else None
+
         # Получаем статус фоновой индексации
         indexing_progress = await indexing_manager.get_status()
-    
+
     await metrics.increment("health_check.requests")
-    
+
     # Приложение считается healthy даже во время индексации
     return HealthResponse(
         status="healthy" if es_connected else "unhealthy",
@@ -45,5 +51,7 @@ async def health_check(
         index_exists=index_exists,
         documents_count=docs_count,
         indexing_status=indexing_progress.status.value,
-        indexing_active=indexing_manager.is_indexing()
+        indexing_active=indexing_manager.is_indexing(),
+        index_en_exists=index_en_exists,
+        documents_count_en=docs_count_en,
     )

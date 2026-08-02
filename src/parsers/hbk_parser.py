@@ -10,6 +10,7 @@ from pathlib import Path
 from src.models.doc_models import HBKFile, HBKEntry, ParsedHBK, CategoryInfo
 from src.core.logging import get_logger
 from src.parsers.html_parser import HTMLParser
+from src.parsers.dialects import HelpDialect, RU_DIALECT
 from src.core.utils import (
     safe_subprocess_run, 
     SafeSubprocessError, 
@@ -30,12 +31,21 @@ class HBKParserError(Exception):
 class HBKParser:
     """Парсер .hbk архивов с документацией 1С."""
     
-    def __init__(self, max_files_per_type: Optional[int] = None, max_total_files: Optional[int] = None):
+    def __init__(
+        self,
+        max_files_per_type: Optional[int] = None,
+        max_total_files: Optional[int] = None,
+        dialect: HelpDialect = RU_DIALECT,
+    ):
         self.supported_extensions = ['.hbk', '.zip', '.7z']
         self._zip_command = None
         self._archive_path = None
         self._max_file_size = MAX_FILE_SIZE_MB * 1024 * 1024  # MB в байты
-        self.html_parser = HTMLParser()  # Инициализируем HTML парсер
+        self.dialect = dialect
+        # Диалект прокидывается в HTMLParser: разбор английской книги
+        # отличается от русской только текстом заголовков разделов, а не
+        # структурой кода, поэтому HBKParser не ветвится по языку сам.
+        self.html_parser = HTMLParser(dialect=dialect)
         
         # Параметры ограничений для тестирования
         self.max_files_per_type = max_files_per_type  # None = без ограничений

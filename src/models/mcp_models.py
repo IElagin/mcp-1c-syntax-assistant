@@ -91,5 +91,10 @@ class HealthResponse(BaseModel):
     documents_count: Optional[int] = None
     indexing_status: Optional[str] = None
     indexing_active: Optional[bool] = None
+    # Отсутствие английского индекса — не болезнь сервера: книга необязательна.
+    # Поле присутствует всегда, чтобы клиент отличал «нет индекса» от «сервер
+    # не умеет английский».
+    index_en_exists: Optional[bool] = None
+    documents_count_en: Optional[int] = None
     # Версия — из src/__init__.py, единственного источника истины.
     version: str = __version__
