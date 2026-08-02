@@ -11,51 +11,62 @@ from typing import Any, Dict, List, Optional
 
 from src.api.mcp_tools import SEARCH_LIMIT_MAX
 from src.handlers.mcp_formatter import truncate_at_sentence
+from src.handlers.ui_strings import RU_STRINGS, UiStrings
 
-NOT_IN_HELP = "в справке не указано"
+# Оставлен для обратной совместимости: некоторые тесты сравнивают вывод с этой
+# константой напрямую. Значение живёт в таблице строк — здесь только ссылка,
+# чтобы не заводить второй источник истины для одного и того же текста.
+NOT_IN_HELP = RU_STRINGS.not_in_help
 
 # Бюджет описания в строке списка. Замер по индексу: медиана описания 103
 # знака, медиана первой фразы 65. При прежнем пределе 100 обрезалось 51.3%
 # описаний — больше половины превью были неполными.
 DESCRIPTION_LIMIT_IN_LIST = 140
 
-# Свойство не вызывают — к нему обращаются. Разные ярлыки не украшение:
-# по ярлыку агент понимает, ставить ли скобки.
-CALL_LABEL = {"свойство": "Обращение", "объект": "Конструкторы"}
+
+def _call_label(doc: Dict[str, Any], strings: UiStrings) -> str:
+    """Свойство не вызывают — к нему обращаются. Разные ярлыки не украшение:
+
+    по ярлыку агент понимает, ставить ли скобки. Ключи здесь — русские
+    значения element_kind, они не переводятся (см. модуль ui_strings).
+    """
+    kind = doc.get("element_kind") or ""
+    if kind == "свойство":
+        return strings.call_property
+    if kind == "объект":
+        return strings.call_object
+    return strings.call
 
 
-def _call_label(doc: Dict[str, Any]) -> str:
-    return CALL_LABEL.get(doc.get("element_kind") or "", "Вызов")
-
-
-def _heading(doc: Dict[str, Any]) -> str:
+def _heading(doc: Dict[str, Any], strings: UiStrings) -> str:
     """«ТаблицаЗначений.НайтиСтроки (ValueTable.FindRows) — функция объекта»."""
     path = doc.get("full_path") or doc.get("name_ru") or doc.get("name") or ""
     kind = doc.get("element_kind") or ""
     owner = doc.get("object_ru") or doc.get("object") or ""
+    kind_display = strings.element_kind_names.get(kind, kind)
 
     if kind in ("функция", "процедура", "событие") and doc.get("type", "").startswith("global"):
-        part = f"{kind} глобального контекста"
+        part = strings.heading_global.format(kind=kind_display)
     elif kind == "объект":
-        part = "объект"
+        part = strings.object_word
     elif kind:
-        part = f"{kind} объекта {owner}" if owner else kind
+        part = strings.heading_of_object.format(kind=kind_display, owner=owner) if owner else kind_display
     else:
         part = ""
 
     return f"{path} — {part}" if part else path
 
 
-def _parameter(p: Dict[str, Any]) -> List[str]:
+def _parameter(p: Dict[str, Any], strings: UiStrings) -> List[str]:
     """Две строки: сигнатура параметра и его описание."""
-    param_type = p.get("type") or NOT_IN_HELP
+    param_type = p.get("type") or strings.not_in_help
     required_flag = p.get("required")
     if required_flag is True:
-        flag = "обязательный"
+        flag = strings.required
     elif required_flag is False:
-        flag = "необязательный"
+        flag = strings.optional
     else:
-        flag = "обязательность в справке не указана"
+        flag = strings.requiredness_unknown
 
     lines = [f"    {p.get('name', '')} — {param_type}, {flag}"]
     if p.get("description"):
@@ -63,47 +74,47 @@ def _parameter(p: Dict[str, Any]) -> List[str]:
     return lines
 
 
-def _variant(v: Dict[str, Any], with_name: bool) -> List[str]:
+def _variant(v: Dict[str, Any], with_name: bool, strings: UiStrings) -> List[str]:
     lines = []
     if with_name and v.get("variant"):
-        lines.append(f"Вариант «{v['variant']}»")
+        lines.append(strings.variant_named.format(name=v["variant"]))
         indent = "  "
     else:
         indent = ""
 
-    lines.append(f"{indent}Вызов: {v.get('call') or v.get('syntax') or NOT_IN_HELP}")
+    lines.append(f"{indent}{strings.call}: {v.get('call') or v.get('syntax') or strings.not_in_help}")
 
     params = v.get("parameters") or []
     if params:
-        lines.append(f"{indent}Параметры:")
+        lines.append(f"{indent}{strings.parameters}")
         for p in params:
-            lines.extend(f"{indent}{s}" for s in _parameter(p))
+            lines.extend(f"{indent}{s}" for s in _parameter(p, strings))
     else:
-        lines.append(f"{indent}Параметры: нет")
+        lines.append(f"{indent}{strings.no_parameters}")
 
-    # «Описание варианта метода:» относится к этому конкретному варианту
-    # вызова, а не к элементу целиком — у метода с несколькими вариантами
-    # описания вариантов разные. Печать здесь, внутри _variant, а не слияние
-    # в Documentation.description — по той же причине, по которой задача 1
-    # перестала путать «Описание:» с «Описание варианта метода:» при разборе:
-    # склейка в одно поле стирает то, что относится не ко всем вариантам.
+    # «Описание варианта:» относится к этому конкретному варианту вызова, а
+    # не к элементу целиком — у метода с несколькими вариантами описания
+    # вариантов разные. Печать здесь, внутри _variant, а не слияние в
+    # Documentation.description — по той же причине, по которой задача 1
+    # перестала путать «Описание:» с «Описание варианта:» при разборе: склейка
+    # в одно поле стирает то, что относится не ко всем вариантам.
     if v.get("description"):
-        lines.append(f"{indent}Описание варианта: {v['description']}")
+        lines.append(f"{indent}{strings.variant_description.format(text=v['description'])}")
 
     return lines
 
 
-def _return_value(doc: Dict[str, Any]) -> List[str]:
+def _return_value(doc: Dict[str, Any], strings: UiStrings) -> List[str]:
     """Что вернёт вызов. Для процедуры — прямо сказать, что ничего."""
     variant_list = doc.get("variants") or []
     types = [v.get("return_type") for v in variant_list if v.get("return_type")]
 
     if not types:
         if doc.get("element_kind") == "процедура":
-            return ["Возвращает: нет (процедура)"]
-        return [f"Возвращает: {NOT_IN_HELP}"]
+            return [strings.returns_nothing]
+        return [strings.returns.format(value=strings.not_in_help)]
 
-    lines = [f"Возвращает: {types[0]}"]
+    lines = [strings.returns.format(value=types[0])]
     note = next(
         (v.get("return_description") for v in variant_list if v.get("return_description")),
         "",
@@ -113,25 +124,25 @@ def _return_value(doc: Dict[str, Any]) -> List[str]:
     return lines
 
 
-def _availability(doc: Dict[str, Any]) -> str:
+def _availability(doc: Dict[str, Any], strings: UiStrings) -> str:
     items = doc.get("availability") or []
     if not items:
-        return "Доступность: в справке не указана"
-    return "Доступность: " + ", ".join(items)
+        return strings.availability_unknown
+    return strings.availability.format(items=", ".join(items))
 
 
-def _examples(doc: Dict[str, Any]) -> List[str]:
+def _examples(doc: Dict[str, Any], strings: UiStrings) -> List[str]:
     examples = doc.get("examples") or []
     if not examples:
-        return ["Примеров в справке нет."]
+        return [strings.no_examples]
 
-    lines = ["Пример:"]
+    lines = [strings.example]
     for code in examples:
         lines.extend(f"  {line}" for line in code.split("\n"))
     return lines
 
 
-def render_element_card(doc: Dict[str, Any]) -> str:
+def render_element_card(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
     """Полная карточка элемента."""
     if (doc.get("element_kind") or "") == "объект":
         # Полная карточка объекта требует данных, которых в его документе нет:
@@ -139,38 +150,38 @@ def render_element_card(doc: Dict[str, Any]) -> str:
         # отдельными запросами и зовёт render_object_card напрямую — сюда
         # попадает только вызов в обход обработчика, и он честно говорит, что
         # конструкторы не проверялись, вместо «в справке не указано».
-        return render_object_card(doc, {})
+        return render_object_card(doc, {}, strings=strings)
 
-    lines = [_heading(doc), ""]
+    lines = [_heading(doc, strings), ""]
 
     if (doc.get("element_kind") or "") == "свойство":
-        lines.append(f"{_call_label(doc)}: {doc.get('call_primary') or NOT_IN_HELP}")
-        lines.append(f"Тип значения: {doc.get('value_type') or NOT_IN_HELP}")
-        lines.append(f"Доступ: {doc.get('usage') or NOT_IN_HELP}")
+        lines.append(f"{_call_label(doc, strings)}: {doc.get('call_primary') or strings.not_in_help}")
+        lines.append(strings.value_type.format(value=doc.get("value_type") or strings.not_in_help))
+        lines.append(strings.access.format(value=doc.get("usage") or strings.not_in_help))
     else:
         variant_list = doc.get("variants") or []
         if len(variant_list) > 1:
-            lines.append(f"Вариантов вызова: {len(variant_list)}")
+            lines.append(strings.variant_count.format(count=len(variant_list)))
             lines.append("")
         for v in variant_list:
-            lines.extend(_variant(v, with_name=len(variant_list) > 1))
+            lines.extend(_variant(v, len(variant_list) > 1, strings))
             lines.append("")
         if not variant_list:
-            lines.append(f"Вызов: {doc.get('call_primary') or NOT_IN_HELP}")
+            lines.append(f"{strings.call}: {doc.get('call_primary') or strings.not_in_help}")
             # Параметры — поле из списка «всегда печатаются»: пустые variants
             # не повод его пропускать, иначе молчание неотличимо от «данных нет».
-            lines.append("Параметры: нет")
-        lines.extend(_return_value(doc))
+            lines.append(strings.no_parameters)
+        lines.extend(_return_value(doc, strings))
 
-    lines.append(_availability(doc))
+    lines.append(_availability(doc, strings))
     if doc.get("version_from"):
-        lines.append(f"Доступно с: {doc['version_from']}")
+        lines.append(strings.available_since.format(version=doc["version_from"]))
 
     lines.append("")
-    lines.append(f"Описание: {doc.get('description') or 'в справке отсутствует'}")
+    lines.append(strings.description.format(text=doc.get("description") or strings.description_missing))
     if doc.get("note"):
-        lines.append(f"Примечание: {doc['note']}")
-    lines.extend(_examples(doc))
+        lines.append(strings.note.format(text=doc["note"]))
+    lines.extend(_examples(doc, strings))
 
     return "\n".join(lines)
 
@@ -180,6 +191,7 @@ def render_object_card(
     counts: Dict[str, int],
     constructors: Optional[List[str]] = None,
     key: Optional[str] = None,
+    strings: UiStrings = RU_STRINGS,
 ) -> str:
     """Карточка самого объекта: без списков членов, но с их числом.
 
@@ -206,35 +218,36 @@ def render_object_card(
     """
     name = doc.get("full_path") or doc.get("name_ru") or ""
     key = key or name
-    lines = [f"{name} — объект", ""]
+    lines = [f"{name} — {strings.object_word}", ""]
 
-    label = _call_label(doc)
+    label = _call_label(doc, strings)
     if constructors:
         lines.append(f"{label}:")
         lines.extend(f"  {k}" for k in constructors)
     elif constructors is not None:
-        lines.append(f"{label}: {NOT_IN_HELP}")
+        lines.append(f"{label}: {strings.not_in_help}")
     else:
-        lines.append(f"{label}: не проверялись")
+        lines.append(strings.constructors_not_checked)
 
-    lines.append(_availability(doc))
+    lines.append(_availability(doc, strings))
     if doc.get("version_from"):
-        lines.append(f"Доступно с: {doc['version_from']}")
+        lines.append(strings.available_since.format(version=doc["version_from"]))
 
     lines.append("")
-    lines.append(f"Описание: {doc.get('description') or 'в справке отсутствует'}")
+    lines.append(strings.description.format(text=doc.get("description") or strings.description_missing))
 
     if counts:
+        genitive = strings.member_names_genitive
         by_kind = (
-            ("методов", counts.get("methods", 0)),
-            ("свойств", counts.get("properties", 0)),
-            ("событий", counts.get("events", 0)),
+            (genitive["methods"], counts.get("methods", 0)),
+            (genitive["properties"], counts.get("properties", 0)),
+            (genitive["events"], counts.get("events", 0)),
         )
         parts = ", ".join(f"{kind_name}: {count}" for kind_name, count in by_kind)
-        lines.append(f"Состав — {parts}.")
+        lines.append(strings.composition.format(parts=parts))
 
         if sum(count for _, count in by_kind):
-            lines.append(f'Перечень: list_1c_object_members(object="{key}")')
+            lines.append(strings.listing_hint.format(key=key))
         else:
             # Совет печатается ровно тогда, когда под тем же ключом есть что
             # перечислять. У 100 страниц справки (параметры формы вроде
@@ -244,15 +257,12 @@ def render_object_card(
             # «объект в справке не найден». Подставить вместо него родителя
             # нельзя: его методы и свойства принадлежат не этой странице, и
             # выдать их за её состав значило бы заменить тупик на неправду.
-            lines.append(
-                f"Перечень: запрашивать нечего — под именем «{key}» в справке "
-                "нет ни одного метода, свойства или события."
-            )
+            lines.append(strings.nothing_to_list.format(key=key))
 
     return "\n".join(lines)
 
 
-def list_line(doc: Dict[str, Any]) -> str:
+def list_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
     """Одна строка на элемент — для выдачи поиска и состава объекта."""
     path = doc.get("full_path") or doc.get("name_ru") or ""
     kind = doc.get("element_kind") or ""
@@ -260,13 +270,13 @@ def list_line(doc: Dict[str, Any]) -> str:
 
     parts = [path]
     if kind:
-        parts.append(f"— {kind}")
+        parts.append(f"— {strings.element_kind_names.get(kind, kind)}")
     if call and call != path:
         parts.append(f"— {call}")
 
     variant_list = doc.get("variants") or []
     if len(variant_list) > 1:
-        parts.append(f"(вариантов вызова: {len(variant_list)})")
+        parts.append(strings.variant_count_short.format(count=len(variant_list)))
 
     description = doc.get("description") or ""
     if description:
@@ -276,7 +286,7 @@ def list_line(doc: Dict[str, Any]) -> str:
 
 
 def hint_about_remainder(
-    shown: int, total: int, tool_limit: int, call_template: str
+    shown: int, total: int, tool_limit: int, call_template: str, strings: UiStrings = RU_STRINGS
 ) -> str:
     """«Показано N из M» и выполнимый способ добрать остальное.
 
@@ -290,11 +300,8 @@ def hint_about_remainder(
     limit = min(total, tool_limit)
     call = call_template.format(limit=limit)
     if limit < total:
-        return (
-            f"Показано {shown} из {total}. За один вызов можно получить "
-            f"не более {limit}: {call}."
-        )
-    return f"Показано {shown} из {total}. Полный список: {call}."
+        return strings.shown_of_total_capped.format(shown=shown, total=total, limit=limit, call=call)
+    return strings.shown_of_total.format(shown=shown, total=total, call=call)
 
 
 def candidate_list(
@@ -302,6 +309,7 @@ def candidate_list(
     candidates: List[Dict[str, Any]],
     total: int,
     full_order: bool = True,
+    strings: UiStrings = RU_STRINGS,
 ) -> str:
     """Ответ при омонимии: перечень вместо молчаливого выбора одного из многих.
 
@@ -312,19 +320,14 @@ def candidate_list(
     АгрегатыРегистраНакопления, а ТаблицаЗначений не показывался вовсе.
     """
     lines = [
-        f"Имя «{name}» найдено у {total} элементов — "
-        f"карточка не может быть выбрана однозначно.",
-        f'Уточните объект: get_1c_element(name="{name}", object="<объект>")',
+        strings.ambiguous_header.format(name=name, total=total),
+        strings.ambiguous_hint.format(name=name),
         "",
-        "Кандидаты (сначала типы языка, внутри — объекты с бо́льшим числом "
-        "элементов в справке):",
+        strings.candidates_header,
     ]
-    lines.extend(f"  {list_line(k)}" for k in candidates)
+    lines.extend(f"  {list_line(k, strings)}" for k in candidates)
     if not full_order:
-        lines.append(
-            "  (порядок построен не по всем совпадениям — их слишком много "
-            "для одного запроса)"
-        )
+        lines.append(f"  {strings.partial_order_note}")
     lines.append("")
 
     # find_1c_help не примет limit больше SEARCH_LIMIT_MAX — совет с
@@ -333,6 +336,7 @@ def candidate_list(
     lines.append(hint_about_remainder(
         len(candidates), total, SEARCH_LIMIT_MAX,
         f'find_1c_help(query="{name}", limit={{limit}})',
+        strings,
     ))
     return "\n".join(lines)
 
@@ -345,6 +349,7 @@ def member_list(
     events: List[Dict[str, Any]],
     total: int,
     tool_limit: int,
+    strings: UiStrings = RU_STRINGS,
 ) -> str:
     """Состав объекта: та же строка списка, что и в выдаче поиска.
 
@@ -355,17 +360,17 @@ def member_list(
     ТаблицаЗначений». Спека настаивает на единственном месте сборки ответа —
     оно здесь.
     """
-    methods_label = "Конструкторы" if kind == "constructors" else "Методы"
+    methods_label = strings.constructors_word if kind == "constructors" else strings.methods_word
     shown = len(methods) + len(properties) + len(events)
 
-    lines = [f"Состав объекта {obj}.", ""]
+    lines = [strings.members_header.format(obj=obj), ""]
     for heading, elements in (
-        (methods_label, methods), ("Свойства", properties), ("События", events)
+        (methods_label, methods), (strings.properties_word, properties), (strings.events_word, events)
     ):
         if not elements:
             continue
         lines.append(f"{heading} ({len(elements)}):")
-        lines.extend(f"  {list_line(d)}" for d in elements)
+        lines.extend(f"  {list_line(d, strings)}" for d in elements)
         lines.append("")
 
     # Молчаливая неполнота — худшее, что может отдать справочный инструмент:
@@ -375,6 +380,7 @@ def member_list(
             shown, total, tool_limit,
             f'list_1c_object_members(object="{obj}", members="{kind}", '
             f'limit={{limit}})',
+            strings,
         ))
-    lines.append(f'Полная карточка: get_1c_element(name=…, object="{obj}")')
+    lines.append(strings.full_card_hint.format(obj=obj))
     return "\n".join(lines)
