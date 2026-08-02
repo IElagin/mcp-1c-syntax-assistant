@@ -1,6 +1,5 @@
 # mcp-1c-syntax-assistant
 
-[![tests](https://github.com/<OWNER>/mcp-1c-syntax-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/mcp-1c-syntax-assistant/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
@@ -79,7 +78,7 @@ Invoke-RestMethod http://localhost:8000/health
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
  "documents_count":23025,"indexing_status":"idle","indexing_active":false,
- "version":"1.0.0"}
+ "version":"2.0.0"}
 ```
 
 Сервер готов, когда `indexing_active` равно `false`, а `documents_count`
@@ -121,8 +120,8 @@ Invoke-RestMethod http://localhost:8000/health
 ## Отличия от базового проекта
 
 За основу взят [Antonio1C/1c-syntax-helper-mcp](https://github.com/Antonio1C/1c-syntax-helper-mcp)
-(MIT): от него — структура FastAPI-сервиса, разбор `.hbk` через 7-Zip и
-индексация в Elasticsearch. Что изменилось:
+(MIT — так объявлено в его README): от него — структура FastAPI-сервиса, разбор
+`.hbk` через 7-Zip и индексация в Elasticsearch. Что изменилось:
 
 - **Карточка элемента — контракт, а не свободный текст.** Набор полей
   печатается всегда, а отсутствие данных помечается («Доступность: в справке не

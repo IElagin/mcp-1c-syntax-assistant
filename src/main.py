@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src import __version__
 from src.core.config import settings
 from src.core.logging import get_logger
 from src.core.validation import ValidationError
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="1C Syntax Helper MCP Server",
     description="MCP сервер для поиска по синтаксису 1С",
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan
 )
 

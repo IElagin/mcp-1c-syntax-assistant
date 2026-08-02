@@ -195,7 +195,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
  "documents_count":23025,"indexing_status":"idle","indexing_active":false,
- "version":"1.0.0"}
+ "version":"2.0.0"}
 ```
 
 Этот же запрос стоит в `healthcheck` контейнера, поэтому `docker compose ps`

@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
+from src import __version__
 from src.api.mcp_tools import SEARCH_LIMIT_MAX
 
 
@@ -90,4 +91,5 @@ class HealthResponse(BaseModel):
     documents_count: Optional[int] = None
     indexing_status: Optional[str] = None
     indexing_active: Optional[bool] = None
-    version: str = "1.0.0"
+    # Версия — из src/__init__.py, единственного источника истины.
+    version: str = __version__

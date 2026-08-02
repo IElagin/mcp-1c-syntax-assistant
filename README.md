@@ -1,6 +1,5 @@
 # mcp-1c-syntax-assistant
 
-[![tests](https://github.com/<OWNER>/mcp-1c-syntax-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/mcp-1c-syntax-assistant/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [Русская версия](README.ru.md)
@@ -80,7 +79,7 @@ background. `/health` reports its progress:
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
  "documents_count":23025,"indexing_status":"idle","indexing_active":false,
- "version":"1.0.0"}
+ "version":"2.0.0"}
 ```
 
 The server is ready when `indexing_active` is `false` and `documents_count`
@@ -122,8 +121,8 @@ Full English reference support is planned — see [Roadmap](#roadmap).
 ## Differences from the upstream project
 
 Based on [Antonio1C/1c-syntax-helper-mcp](https://github.com/Antonio1C/1c-syntax-helper-mcp)
-(MIT), which contributed the FastAPI service layout, `.hbk` extraction through
-7-Zip and Elasticsearch indexing. What changed:
+(MIT, as declared in its README), which contributed the FastAPI service layout,
+`.hbk` extraction through 7-Zip and Elasticsearch indexing. What changed:
 
 - **The element card is a contract, not free text.** A fixed set of fields is
   always printed, and absent data is labelled (`Доступность: в справке не

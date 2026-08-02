@@ -6,6 +6,7 @@ import time
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from src import __version__
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
 from src.api.dependencies import get_elasticsearch_client
@@ -56,13 +57,17 @@ async def mcp_sse_endpoint():
             await asyncio.sleep(1)
             yield f"data: {json.dumps({'type': 'ping', 'timestamp': int(time.time())})}\n\n"
 
+    # Access-Control-Allow-Origin здесь не выставляется: заголовок ставит
+    # CORSMiddleware по настройке CORS_ALLOW_ORIGINS, как и для всех остальных
+    # ответов. Захардкоженная звёздочка переживала сужение списка источников —
+    # middleware для незнакомого Origin своего заголовка не добавляет и потому
+    # чужой не перетирал, — и запрещённый источник всё равно получал доступ.
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*"
         }
     )
 
@@ -103,9 +108,11 @@ async def mcp_jsonrpc_endpoint(
                     # работающее хуже отсутствующего: клиент не проверяет
                     # заранее, он узнаёт о расхождении на реальном вызове.
                     "capabilities": {"tools": {}},
+                    # Версия — из src/__init__.py: клиент видит ту же версию,
+                    # что объявляет пакет.
                     "serverInfo": {
                         "name": "1c-syntax-helper-mcp",
-                        "version": "1.0.0"
+                        "version": __version__
                     }
                 }
             })
