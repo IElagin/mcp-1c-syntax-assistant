@@ -138,6 +138,7 @@ class ElasticsearchClient:
                             "call": {"type": "keyword"},
                             "return_type": {"type": "keyword"},
                             "return_description": {"type": "text", "analyzer": "russian"},
+                            "description": {"type": "text", "analyzer": "russian"},
                             "parameters": {
                                 "type": "object",
                                 "properties": {

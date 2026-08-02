@@ -203,6 +203,7 @@ def test_index_document_carries_availability_and_variants():
                                   required=True, description="Задает условия поиска.")],
             return_type="Массив",
             return_description="Массив строк.",
+            description="Описание именно этого варианта вызова.",
         )],
     )
     doc.build_call_strings()
@@ -217,6 +218,7 @@ def test_index_document_carries_availability_and_variants():
     assert es_doc["variants"][0]["parameters"][0]["type"] == "Структура"
     assert es_doc["variants"][0]["parameters"][0]["required"] is True
     assert es_doc["variants"][0]["return_type"] == "Массив"
+    assert es_doc["variants"][0]["description"] == "Описание именно этого варианта вызова."
     assert "syntax_ru" not in es_doc
     assert "syntax_en" not in es_doc
 

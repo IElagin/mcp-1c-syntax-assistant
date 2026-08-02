@@ -2,7 +2,10 @@
 
 import pytest
 from pathlib import Path
-from src.models.doc_models import DocumentType
+from bs4 import BeautifulSoup
+
+from src.models.doc_models import Documentation, DocumentType
+from src.parsers.html_parser import HTMLParser
 
 
 @pytest.mark.unit
@@ -192,3 +195,32 @@ def test_canonical_object_path_with_placeholder_name_keeps_the_type():
     doc.build_call_strings()
 
     assert doc.full_path == "БазовыеВидыРасчета.<Имя плана видов расчета>"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_get_content_after_chapter_does_not_match_by_substring():
+    """«Общие методы:» — не то же самое, что «Методы:», хотя и содержит его как подстроку.
+
+    _get_content_after_chapter раньше искал секцию подстрочным сравнением
+    ('методы' in header_text), и заголовок вроде «Общие методы:» ловился бы
+    точно так же, как «Методы:» — агент получил бы либо не ту секцию, либо
+    объединение обеих. На реальном корпусе такого заголовка нет, поэтому
+    проверка — на синтетической, но правдоподобной странице объекта.
+    """
+    html = (
+        '<html><body>'
+        '<p class="V8SH_chapter">Общие методы:</p>'
+        '<a href="decoy.html">Ловушка (Decoy)</a><br>'
+        '<p class="V8SH_chapter">Методы:</p>'
+        '<a href="real.html">Настоящий (Real)</a><br>'
+        '<p class="V8SH_chapter">Свойства:</p>'
+        '<a href="prop.html">Свойство (Prop)</a><br>'
+        '</body></html>'
+    )
+    soup = BeautifulSoup(html, 'html.parser')
+    doc = Documentation(id="", type=DocumentType.OBJECT, name="Тест")
+
+    HTMLParser()._extract_object_methods(soup, doc)
+
+    assert [m.name for m in doc.methods] == ["Настоящий"], doc.methods

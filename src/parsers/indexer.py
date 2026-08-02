@@ -168,6 +168,7 @@ class ElasticsearchIndexer:
                     ],
                     "return_type": v.return_type,
                     "return_description": v.return_description,
+                    "description": v.description,
                 }
                 for v in doc.variants
             ],

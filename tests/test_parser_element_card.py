@@ -41,6 +41,14 @@ ARCHIVE_PATHS = {
     "formextension_compactmode.html":
         "objects/catalog1649/catalog1890/Client application form extension "
         "for reports/methods/method6189.html",
+    # Два варианта, у каждого своё «Описание варианта метода:», общего
+    # «Описание:» на странице нет вовсе.
+    "global_notifychanged.html":
+        "objects/Global context/methods/catalog27/NotifyChanged3763.html",
+    # Второй вариант несёт «Описание варианта метода:», но на странице есть
+    # и обычное «Описание:» — для элемента в целом.
+    "formdatacollection_unload.html":
+        "objects/catalog1649/catalog1614/FormDataCollection/methods/Unload3853.html",
 }
 
 
@@ -357,3 +365,59 @@ def test_example_has_no_non_breaking_spaces():
     assert "    ЭлементыФормы.СписокРаботников.ТекущаяСтрока = Строки[0];" in (
         doc.examples[0]
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_variant_description_attaches_to_its_own_variant():
+    """«Описание варианта метода:» относится к варианту, а не ко всему элементу.
+
+    ОповеститьОбИзменении: два варианта, у каждого своё «Описание варианта
+    метода:», общего «Описание:» на странице нет вовсе. Раньше подстрочный
+    поиск '«описание» in header_text' находил первый такой заголовок и отдавал
+    его текст в doc.description — второй вариант при этом описания не получал
+    вовсе, а первый ошибочно выдавался за описание всего метода. Оба текста
+    должны остаться при своих вариантах, а doc.description — пустым: справка
+    элементу в целом описания не дала.
+    """
+    doc = parse_fixture("global_notifychanged.html")
+
+    assert doc.description == "", doc.description
+    assert len(doc.variants) == 2, [v.variant for v in doc.variants]
+
+    one_object, many_objects = doc.variants
+    assert one_object.variant == "Изменен один объект"
+    assert one_object.description.startswith(
+        "Уведомляет динамические списки на клиенте об изменении одного объекта"
+    ), one_object.description
+
+    assert many_objects.variant == "Изменено много объектов"
+    assert many_objects.description.startswith(
+        "Уведомляет динамические списки на клиенте об изменении множества объектов"
+    ), many_objects.description
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_element_description_is_not_replaced_by_variant_description():
+    """Когда на странице есть и «Описание варианта метода:», и «Описание:» — побеждает второе.
+
+    ДанныеФормыКоллекция.Выгрузить: у второго варианта («Выгрузить по
+    отбору») есть «Описание варианта метода:», а у элемента в целом — своё
+    «Описание:» дальше по странице. Раньше подстрочный поиск находил
+    «Описание варианта метода:» первым (оно стоит раньше в документе) и
+    доклад доставался doc.description целиком, а настоящее «Описание:» —
+    про то, что метод строит таблицу значений — не читалось никогда.
+    """
+    doc = parse_fixture("formdatacollection_unload.html")
+
+    assert doc.description.startswith("Создает таблицу значений"), doc.description
+    assert "Если указан отбор" not in doc.description, doc.description
+
+    assert len(doc.variants) == 2, [v.variant for v in doc.variants]
+    by_columns, by_filter = doc.variants
+    assert by_columns.variant == "Выгрузить колонки"
+    assert by_columns.description == ""
+
+    assert by_filter.variant == "Выгрузить по отбору"
+    assert by_filter.description.startswith("Если указан отбор"), by_filter.description

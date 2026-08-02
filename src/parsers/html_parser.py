@@ -312,22 +312,25 @@ class HTMLParser:
             
         return title_text.strip()
     
-    def _get_content_after_chapter(self, soup: BeautifulSoup, chapter_keywords: list) -> str:
+    def _get_content_after_chapter(self, soup: BeautifulSoup, chapter: Chapter) -> str:
         """
         Универсальный метод для получения HTML контента после заголовка V8SH_chapter.
-        
+
         Args:
             soup: Объект BeautifulSoup
-            chapter_keywords: Список ключевых слов для поиска заголовка (в нижнем регистре)
-            
+            chapter: Раздел, который нужно найти
+
         Returns:
             HTML строка с контентом после найденного заголовка до следующего заголовка
+
+        Сравнение идёт через self.dialect.chapter_of, а не подстрокой: подстрочное
+        сравнение по «методы» матчило бы и заголовок «Общие методы:» — на реальном
+        корпусе такого раздела нет, но сама проверка не должна на это полагаться.
         """
         chapter_headers = soup.find_all('p', class_='V8SH_chapter')
-        
+
         for header in chapter_headers:
-            header_text = header.get_text(strip=True).lower()
-            if any(keyword in header_text for keyword in chapter_keywords):
+            if self.dialect.chapter_of(header.get_text(strip=True)) is chapter:
                 parent = header.parent
                 if parent:
                     header_html = str(header)
@@ -563,6 +566,8 @@ class HTMLParser:
                 variant = take_current()
                 variant.return_type, variant.return_description = \
                     split_type_and_note(html, self.dialect.type_label)
+            elif chapter is Chapter.VARIANT_DESCRIPTION:
+                take_current().description = clean_description(text_from_html(html))
 
         if doc.type == DocumentType.OBJECT_CONSTRUCTOR:
             # У конструкторов варианты разложены по отдельным страницам справки,
@@ -662,9 +667,7 @@ class HTMLParser:
     def _extract_object_methods(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает методы объекта."""
         # Ищем секцию "Методы:"
-        methods_section = self._get_content_after_chapter(
-            soup, [self.dialect.chapters[Chapter.METHODS].rstrip(':').lower()]
-        )
+        methods_section = self._get_content_after_chapter(soup, Chapter.METHODS)
         if not methods_section:
             return
             
@@ -694,9 +697,7 @@ class HTMLParser:
     def _extract_object_properties(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает свойства объекта."""
         # Ищем секцию "Свойства:"
-        properties_section = self._get_content_after_chapter(
-            soup, [self.dialect.chapters[Chapter.PROPERTIES].rstrip(':').lower()]
-        )
+        properties_section = self._get_content_after_chapter(soup, Chapter.PROPERTIES)
         if not properties_section:
             return
             
@@ -726,9 +727,7 @@ class HTMLParser:
     def _extract_object_events(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает события объекта."""
         # Ищем секцию "События:"
-        events_section = self._get_content_after_chapter(
-            soup, [self.dialect.chapters[Chapter.EVENTS].rstrip(':').lower()]
-        )
+        events_section = self._get_content_after_chapter(soup, Chapter.EVENTS)
         if not events_section:
             return
             

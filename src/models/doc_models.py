@@ -64,6 +64,12 @@ class SyntaxVariant(BaseModel):
     parameters: List[Parameter] = []
     return_type: str = ""
     return_description: str = ""
+    # Раздел «Описание варианта метода:» — у 174 методов справки описывает
+    # именно этот вариант вызова, а не элемент целиком. Класть его в
+    # Documentation.description означало бы либо потерять описание другого
+    # варианта (на странице их может быть несколько), либо, если у элемента
+    # есть отдельное «Описание:», задвоить смысл в двух полях сразу.
+    description: str = ""
 
 
 class Documentation(BaseModel):
