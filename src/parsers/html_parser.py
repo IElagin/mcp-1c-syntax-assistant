@@ -2,7 +2,7 @@
 
 import html
 import re
-from typing import Optional
+from typing import Optional, Tuple
 from bs4 import BeautifulSoup, NavigableString
 
 from src.models.doc_models import (
@@ -11,6 +11,7 @@ from src.models.doc_models import (
 )
 from src.core.logging import get_logger
 from src.parsers.dialects import Chapter, HelpDialect, RU_DIALECT
+from src.parsers.indexer import split_name_ru_en
 from src.parsers.text_utils import (
     split_type_and_note, normalize_whitespace, clean_description, text_from_html,
 )
@@ -165,10 +166,10 @@ class HTMLParser:
                 DocumentType.OBJECT_PROPERTY, DocumentType.OBJECT_EVENT,
                 DocumentType.OBJECT_CONSTRUCTOR,
             )
-            russian_object_name = self._extract_russian_object_name(soup)
+            object_name_ru, object_name_en = self._extract_object_names(soup)
             if doc.type in member_types:
                 doc.object = (
-                    russian_object_name
+                    object_name_ru
                     or self._extract_object_name_from_title(soup)
                     or doc.object
                 )
@@ -176,7 +177,8 @@ class HTMLParser:
                 doc.object = self._extract_object_name_from_title(soup)
 
             doc.element_kind = ELEMENT_KIND_BY_TYPE.get(doc.type, "")
-            doc.object_ru = russian_object_name or doc.object
+            doc.object_ru = object_name_ru or doc.object
+            doc.object_en = object_name_en
             self._extract_element_sections(soup, doc)
 
             if doc.type == DocumentType.OBJECT_PROPERTY:
@@ -426,13 +428,20 @@ class HTMLParser:
             title_text = title_tag.get_text(strip=True)
             if title_text:
                 if doc.type == DocumentType.OBJECT:
-                    # Для объектов берем часть после точки как имя
-                    # Убираем английскую часть в скобках
-                    if ' (' in title_text:
-                        title_text = title_text.split(' (')[0].strip()
-                    
-                    if '.' in title_text:
-                        # Извлекаем часть после точки как имя объекта
+                    # Английская часть остаётся в имени: split_name_ru_en
+                    # разложит её в name_en, а name_ru() отрежет для путей.
+                    # Раньше она отрезалась здесь, и поиск по ValueTable не
+                    # находил объект, хотя имя стоит в заголовке справки у
+                    # 2 905 страниц объектов из 3 063.
+                    #
+                    # Наличие точки проверяем по русской части (до " ("): у
+                    # «СправочникМенеджер.<Имя справочника> (CatalogManager.
+                    # <Catalog name>)» точка есть в обеих половинах, но
+                    # русская идёт первой — split по первой точке всей строки
+                    # попадает туда же, куда попал бы split по точке в одной
+                    # только русской части, и хвост с английской частью
+                    # остаётся целым.
+                    if '.' in title_text.split(' (')[0]:
                         doc.name = title_text.split('.', 1)[1].strip()
                     else:
                         doc.name = title_text
@@ -548,13 +557,22 @@ class HTMLParser:
                 doc.value_type, doc.description = split_type_and_note(html, self.dialect.type_label)
             break
 
-    def _extract_russian_object_name(self, soup: BeautifulSoup) -> Optional[str]:
-        """«ТаблицаЗначений (ValueTable)» → «ТаблицаЗначений»."""
+    def _extract_object_names(self, soup: BeautifulSoup) -> Tuple[Optional[str], Optional[str]]:
+        """«ТаблицаЗначений (ValueTable)» → («ТаблицаЗначений», «ValueTable»).
+
+        V8SH_title есть на каждой странице метода, свойства и конструктора, и
+        английское имя объекта лежит именно там — брать его больше неоткуда.
+        Расщепление то же, что и для doc.name (split_name_ru_en): владелец
+        глобальных функций назван двумя словами — «Глобальный контекст
+        (Global context)», а не однословным идентификатором, поэтому regex
+        принимает в скобках любой текст без кириллицы, а не только вид
+        "Identifier".
+        """
         title = soup.find('p', class_='V8SH_title')
         if not title:
-            return None
-        text = title.get_text(strip=True)
-        return text.split(' (')[0].strip() or None
+            return None, None
+        name_ru, name_en = split_name_ru_en(title.get_text(strip=True))
+        return name_ru or None, name_en
 
     # Обязательность параметра справка пишет в скобке после имени:
     # "<Индекс> (обязательный)". У вариативных параметров конструкторов

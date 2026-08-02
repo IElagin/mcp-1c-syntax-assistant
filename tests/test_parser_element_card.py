@@ -66,6 +66,10 @@ ARCHIVE_PATHS = {
     "extdatasource_record_read.html":
         "objects/catalog1649/catalog1890/Client application form extension "
         "for external data source table record/methods/Read4577.html",
+    # «СправочникМенеджер.<Имя справочника> (CatalogManager.<Catalog name>)» —
+    # точка есть и в русской, и в английской половине заголовка.
+    "catalogmanager_object.html":
+        "objects/catalog125/catalog126/object128.html",
 }
 
 

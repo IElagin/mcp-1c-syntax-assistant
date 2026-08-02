@@ -132,6 +132,7 @@ class ElasticsearchClient:
                     "object": {"type": "keyword"},
                     "element_kind": {"type": "keyword"},
                     "object_ru": {"type": "keyword"},
+                    "object_en": {"type": "keyword"},
                     "call_primary": {"type": "keyword"},
                     "syntax_all": {"type": "text"},
                     # object, а не nested: запросов по параметрам нет — прежние

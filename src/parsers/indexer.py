@@ -13,16 +13,27 @@ from src.core.logging import get_logger
 logger = get_logger(__name__)
 
 # Справка хранит имя элемента слитно: "Добавить (Add)", "ЗначениеЗаполнено (ValueIsFilled)".
-# Английская часть — латиница, возможна точка (например "ОбработкаЗаполнения (FillProcessing)").
-_NAME_RU_EN_RE = re.compile(r"^(?P<ru>.+?)\s+\((?P<en>[A-Za-z][A-Za-z0-9._]*)\)$")
+# У объектов (задача 11) английская часть бывает составной — с точками,
+# плейсхолдерами и пробелами: "ExternalDataSourceCubeRecord.<External source
+# name>.<Cube name>", "Global context". Однословный идентификатор
+# ([A-Za-z][A-Za-z0-9._]*) такое не матчил: regex не совпадал, и вся строка
+# целиком (вместе со скобкой) утекала в name_ru — карточка объекта с
+# перекрывающимся object/name переставала находиться по своему full_path
+# (см. tests/test_disambiguation.py ::
+# test_object_card_hint_with_overlapping_path_is_executable). Поэтому правило
+# другое: в скобках допустим любой текст без кириллицы, лишь бы в нём была
+# хотя бы одна латинская буква — так скобка с русским пояснением (если такая
+# когда-нибудь встретится) не будет принята за перевод.
+_NAME_RU_EN_RE = re.compile(
+    r"^(?P<ru>.+?)\s+\((?P<en>(?=[^)]*[A-Za-z])[^()Ѐ-ӿ]+)\)$"
+)
 
 
 def split_name_ru_en(name: Optional[str]) -> Tuple[str, Optional[str]]:
     """Раскладывает "Добавить (Add)" на русскую и английскую части.
 
-    Имя без английской части возвращается как есть — так устроены, например,
-    документы самих объектов ("ТаблицаЗначений") и разделы вида
-    "ОбъектМетаданных: Измерение".
+    Имя без английской части возвращается как есть — так устроены разделы
+    вида "ОбъектМетаданных: Измерение".
     """
     stripped = (name or "").strip()
     if not stripped:
@@ -151,6 +162,7 @@ class ElasticsearchIndexer:
             "name_en": name_en or "",
             "object": doc.object,
             "object_ru": doc.object_ru,
+            "object_en": doc.object_en,
             "full_path": doc.full_path,
             "call_primary": doc.call_primary,
             # Поисковое поле: строки синтаксиса всех вариантов. Заменило

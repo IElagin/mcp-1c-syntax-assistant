@@ -85,6 +85,7 @@ class Documentation(BaseModel):
     usage: Optional[str] = None  # Для свойств - "чтение и запись", "только чтение" и т.д.
     element_kind: str = ""          # функция / процедура / свойство / событие / конструктор / объект
     object_ru: Optional[str] = None  # «Глобальный контекст» вместо технического Global context
+    object_en: Optional[str] = None  # Английское имя объекта-владельца из V8SH_title, если есть
     value_type: str = ""            # тип значения свойства
     availability: List[str] = []    # контексты исполнения в нижнем регистре
     note: str = ""                  # раздел «Примечание»
