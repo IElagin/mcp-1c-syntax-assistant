@@ -1,6 +1,7 @@
 """Обработчики MCP запросов."""
 
 from src.api.mcp_tools import KIND_TO_TYPE, SEARCH_LIMIT_MAX, MEMBERS_LIMIT_MAX
+from src.core.config import settings
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.handlers.element_card import (
@@ -8,13 +9,23 @@ from src.handlers.element_card import (
     candidate_list, list_line,
 )
 from src.handlers.mcp_formatter import mcp_formatter
-from src.handlers.ui_strings import RU_STRINGS, UiStrings
+from src.handlers.ui_strings import RU_STRINGS, UiStrings, strings_for
 from src.models.mcp_models import (
     Find1CHelpRequest, Get1CElementRequest, List1CObjectMembersRequest, MCPResponse,
 )
 from src.search.search_service import SearchService
 
 logger = get_logger(__name__)
+
+
+def index_for(lang: str) -> str:
+    """Индекс по языку ответа.
+
+    Второй индекс, а не поле-фильтр: русская и английская книги живут в
+    разных индексах (задача 6), и запрос на одном языке не должен трогать
+    документы другого.
+    """
+    return settings.elasticsearch_index_en if lang == "en" else settings.elasticsearch_index
 
 
 def _text_response(text: str) -> MCPResponse:
@@ -80,12 +91,14 @@ async def build_object_card(
 
 
 async def handle_find_1c_help(
-    request: Find1CHelpRequest, es_client: ElasticsearchClient, strings: UiStrings = RU_STRINGS
+    request: Find1CHelpRequest, es_client: ElasticsearchClient
 ) -> MCPResponse:
     """Поиск кандидатов по справке."""
     logger.info(f"find_1c_help: {request.query!r} kind={request.kind.value}")
+    lang = request.lang.value
+    strings = strings_for(lang)
     try:
-        service = SearchService(es_client)
+        service = SearchService(es_client, index=index_for(lang))
         result = await service.find_help_filtered(
             request.query,
             KIND_TO_TYPE[request.kind.value],
@@ -127,12 +140,14 @@ async def handle_find_1c_help(
 
 
 async def handle_get_1c_element(
-    request: Get1CElementRequest, es_client: ElasticsearchClient, strings: UiStrings = RU_STRINGS
+    request: Get1CElementRequest, es_client: ElasticsearchClient
 ) -> MCPResponse:
     """Карточка элемента либо перечень кандидатов при неоднозначности."""
     logger.info(f"get_1c_element: {request.name!r} object={request.object!r}")
+    lang = request.lang.value
+    strings = strings_for(lang)
     try:
-        service = SearchService(es_client)
+        service = SearchService(es_client, index=index_for(lang))
         response = await service.element_card(
             request.name, request.object, request.variant
         )
@@ -188,12 +203,14 @@ async def handle_get_1c_element(
 
 
 async def handle_list_1c_object_members(
-    request: List1CObjectMembersRequest, es_client: ElasticsearchClient, strings: UiStrings = RU_STRINGS
+    request: List1CObjectMembersRequest, es_client: ElasticsearchClient
 ) -> MCPResponse:
     """Состав объекта."""
     logger.info(f"list_1c_object_members: {request.object!r} members={request.members.value}")
+    lang = request.lang.value
+    strings = strings_for(lang)
     try:
-        service = SearchService(es_client)
+        service = SearchService(es_client, index=index_for(lang))
         result = await service.get_object_members_list(
             request.object, request.members.value, request.limit
         )

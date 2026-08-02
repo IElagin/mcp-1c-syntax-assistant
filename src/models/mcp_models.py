@@ -6,6 +6,7 @@ from enum import Enum
 
 from src import __version__
 from src.api.mcp_tools import SEARCH_LIMIT_MAX
+from src.core.config import settings
 
 
 class MCPToolType(str, Enum):
@@ -34,6 +35,12 @@ class MemberType(str, Enum):
     CONSTRUCTORS = "constructors"
 
 
+class Lang(str, Enum):
+    """Язык ответа. Не язык запроса: искать можно по-русски, а получать по-английски."""
+    RU = "ru"
+    EN = "en"
+
+
 class MCPRequest(BaseModel):
     """Базовая модель MCP запроса."""
     tool: MCPToolType
@@ -57,6 +64,10 @@ class Find1CHelpRequest(BaseModel):
     # приводила к тому, что карточка советовала вызов, отвергаемый тем же
     # лимитом.
     limit: int = Field(10, ge=1, le=SEARCH_LIMIT_MAX, description="Сколько кандидатов вернуть")
+    lang: Lang = Field(
+        default_factory=lambda: Lang(settings.default_help_lang),
+        description="Язык ответа",
+    )
 
 
 class Get1CElementRequest(BaseModel):
@@ -66,6 +77,10 @@ class Get1CElementRequest(BaseModel):
     name: str = Field(..., description="Точное имя элемента")
     object: Optional[str] = Field(None, description="Объект справки")
     variant: Optional[str] = Field(None, description="Имя варианта вызова")
+    lang: Lang = Field(
+        default_factory=lambda: Lang(settings.default_help_lang),
+        description="Язык ответа",
+    )
 
 
 class List1CObjectMembersRequest(BaseModel):
@@ -75,6 +90,10 @@ class List1CObjectMembersRequest(BaseModel):
     object: str = Field(..., description="Имя объекта справки")
     members: MemberType = Field(MemberType.ALL, description="Какие элементы перечислить")
     limit: int = Field(100, ge=1, le=1000, description="Сколько элементов вернуть")
+    lang: Lang = Field(
+        default_factory=lambda: Lang(settings.default_help_lang),
+        description="Язык ответа",
+    )
 
 
 class MCPResponse(BaseModel):

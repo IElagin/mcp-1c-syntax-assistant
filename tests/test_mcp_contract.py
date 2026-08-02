@@ -73,7 +73,7 @@ def test_element_tool_accepts_object_and_variant():
     element = {t["name"]: t for t in TOOLS}["get_1c_element"]["inputSchema"]
 
     assert element["required"] == ["name"]
-    assert set(element["properties"]) == {"name", "object", "variant"}
+    assert set(element["properties"]) == {"name", "object", "variant", "lang"}
 
 
 @pytest.mark.integration
