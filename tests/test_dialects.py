@@ -114,6 +114,15 @@ ENGLISH_BOOK = Path("/app/data/hbk-en/shcntx_root.hbk")
 # Парсер их не разбирает ни на одном языке.
 _ALPHABET_HEADING = re.compile(r"^\W*\w\W*$")
 
+# Раздел «Values», из-за которого переписан этот тест, живёт именно здесь —
+# записью №44280 из 48 682, за пределами любого среза вроде entries[:400].
+# Если выборка снова сузится до первых записей архива, это же имя выпадет из
+# unknown-проверки, и assert ниже по коду упадёт раньше, чем тест научится
+# молчать о своей слепоте. Путь сравнивается по нормализованному разделителю:
+# Windows 7z.exe (хостовая проверка) отдаёт '\', линуксовый 7z в контейнере —
+# '/' для одного и того же архива.
+_KNOWN_VALUES_PAGE = "objects/catalog274/StyleColors.html"
+
 
 @pytest.mark.hbk_en
 @pytest.mark.slow
@@ -121,27 +130,43 @@ _ALPHABET_HEADING = re.compile(r"^\W*\w\W*$")
 def test_every_chapter_of_the_english_book_is_known_to_the_dialect():
     """Нераспознанная глава теряется молча — это и ловит тест.
 
-    Без него добавленный в новой версии платформы раздел просто не попадёт в
-    карточку, и ни один тест на фикстурах об этом не узнает: фикстуры сняты со
-    страниц, которые мы уже умеем разбирать.
+    Первая версия брала entries[:400] — первые 400 записей архива целиком
+    лежат в одной ветке objects/ (formparams/events одного каталога), а раздел
+    «Values» нашёлся записью №44280: тест был бы зелёным и не проверял бы ровно
+    тот класс дефектов, ради которого написан. Теперь просматриваются все
+    страницы objects/ — то же подмножество, что реально становится карточками
+    (HBKParser._analyze_structure берёт в работу только пути с 'objects/',
+    tables/ не разбирает вовсе — то же условие продублировано здесь, а не
+    выведено из HBKParser, чтобы тест не зависел от приватностей парсера).
+    Извлечение батчами по BATCH_SIZE — тем же способом, что и в
+    HBKParser._analyze_structure, — иначе поштучное извлечение (по одному
+    7z-процессу на файл) превратило бы прогон в многочасовой.
     """
+    from src.core.constants import BATCH_SIZE
     from src.parsers.hbk_parser import HBKParser
 
-    parser = HBKParser(max_total_files=400)
+    parser = HBKParser()
     entries = parser._extract_archive(ENGLISH_BOOK)
-    unknown = set()
+    object_pages = [
+        entry for entry in entries
+        if entry.path.endswith(".html")
+        and ('objects/' in entry.path or 'objects\\' in entry.path)
+    ]
 
-    for entry in entries[:400]:
-        if not entry.path.endswith(".html"):
-            continue
-        content = parser.extract_file_content(entry.path)
-        if not content:
-            continue
-        html = content.decode("utf-8", errors="replace")
-        for heading in re.findall(r'<p class="V8SH_chapter">(.*?)</p>', html):
-            if _ALPHABET_HEADING.match(heading.strip()):
-                continue
-            if EN_DIALECT.chapter_of(heading) is None:
-                unknown.add(heading.strip())
+    assert any(
+        entry.path.replace('\\', '/') == _KNOWN_VALUES_PAGE for entry in object_pages
+    ), f"{_KNOWN_VALUES_PAGE} выпала из выборки — тест снова ничего не проверяет"
+
+    unknown = set()
+    for i in range(0, len(object_pages), BATCH_SIZE):
+        batch = object_pages[i:i + BATCH_SIZE]
+        extracted = parser.extract_batch_files([entry.path for entry in batch])
+        for content in extracted.values():
+            html = content.decode("utf-8", errors="replace")
+            for heading in re.findall(r'<p class="V8SH_chapter">(.*?)</p>', html):
+                if _ALPHABET_HEADING.match(heading.strip()):
+                    continue
+                if EN_DIALECT.chapter_of(heading) is None:
+                    unknown.add(heading.strip())
 
     assert not unknown, f"диалект не знает разделов: {sorted(unknown)}"
