@@ -33,3 +33,27 @@ def test_both_languages_fill_every_field():
         assert en_value, f"в EN_STRINGS не заполнено {field.name}"
         if field.name != "lang":
             assert en_value != ru_value, f"{field.name} не переведено"
+
+
+def test_handler_messages_are_translated():
+    """Сообщения обработчиков — такая же часть ответа, как карточка."""
+    assert "not found" in EN_STRINGS.object_not_found.lower()
+    assert "не найден" in RU_STRINGS.object_not_found.lower()
+
+
+def test_message_templates_use_the_same_placeholders():
+    """Разошедшиеся подстановки роняют форматирование в проде, а не в тесте.
+
+    Раньше здесь были перечислены три поля вручную, и добавление нового поля с
+    расхождением прошло бы мимо теста молча. Прогон по всем строковым полям
+    таблицы закрывает это раз и навсегда — новое поле проверяется само, без
+    правки теста.
+    """
+    import re
+
+    for field in dataclasses.fields(RU_STRINGS):
+        if field.type is not str:
+            continue
+        ru_keys = set(re.findall(r"\{(\w+)\}", getattr(RU_STRINGS, field.name)))
+        en_keys = set(re.findall(r"\{(\w+)\}", getattr(EN_STRINGS, field.name)))
+        assert ru_keys == en_keys, field.name

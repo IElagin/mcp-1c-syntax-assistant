@@ -94,6 +94,42 @@ class UiStrings:
     candidates_header: str       # «Кандидаты (сначала типы языка, …):»
     partial_order_note: str      # «(порядок построен не по всем совпадениям …)»
 
+    # Сообщения обработчиков mcp_handlers.py: карточка отвечает "что вызывать",
+    # а эти строки — "почему карточки нет". Английский агент, получивший здесь
+    # русский текст, не может прочитать ни причину, ни совет, который из неё
+    # следует — ровно тот же дефект, что решает вся эта таблица для карточки.
+
+    # find_1c_help вернул пусто (_why_empty)
+    nothing_found: str            # «По запросу «{query}» ничего не найдено.»
+    object_exists_but_empty: str  # «Объект «{object}» в справке есть, но…»
+    object_not_found: str         # «Объект «{object}» в справке не найден — выдачу обнулил фильтр…»
+    object_name_differs_hint: str  # «Имя объекта в справке может отличаться…»
+    kind_filter_hint: str         # «Поиск был ограничен видом kind="{kind}"…»
+    no_filters_hint: str          # «Ни фильтра по объекту, ни фильтра по виду не было…»
+
+    # Фрагмент, а не готовая фраза: вставляется вместо пустого списка похожих
+    # объектов в трёх местах (_why_empty, get_1c_element, list_1c_object_members).
+    no_similar_objects: str       # «подходящих не найдено»
+
+    # get_1c_element: элемент искали у объекта, которого в справке нет
+    object_missing_for_element: str  # «Объект «{object}» в справке не найден, поэтому элемент…»
+
+    # get_1c_element: у элемента нет варианта с таким именем
+    variant_not_found: str        # «Варианта «{variant}» у элемента «{name}» нет…»
+    single_variant_no_name: str   # «вариант единственный и без имени»
+
+    # get_1c_element: точного совпадения по имени нет вообще
+    element_not_found: str        # «Элемент с точным именем «{name}» в справке не найден.»
+    similar_by_name: str          # «Похожие по имени:»
+    no_similar: str               # «Похожих по имени тоже нет — проверьте написание.»
+
+    # list_1c_object_members: объект есть, но состав пуст
+    no_members_at_all: str        # «…но ни методов, ни свойств, ни событий, ни конструкторов…»
+    no_members_of_kind: str       # «…но {kind} у него нет. Попробуйте members="all"…»
+
+    # list_1c_object_members: объекта в справке нет вовсе
+    object_missing: str           # «Объект «{object}» в справке не найден. Похожие объекты: {similar}.»
+
 
 # Значения списаны дословно из src/handlers/element_card.py — вплоть до
 # кавычек-ёлочек, тире и пробелов. Существующие тесты карточки проверяют эти
@@ -136,6 +172,7 @@ RU_STRINGS = UiStrings(
     composition="Состав — {parts}.",
     member_names_genitive={
         "methods": "методов", "properties": "свойств", "events": "событий",
+        "constructors": "конструкторов",
     },
     listing_hint='Перечень: list_1c_object_members(object="{key}")',
     nothing_to_list=(
@@ -166,6 +203,51 @@ RU_STRINGS = UiStrings(
         "(порядок построен не по всем совпадениям — их слишком много "
         "для одного запроса)"
     ),
+    nothing_found="По запросу «{query}» ничего не найдено.",
+    object_exists_but_empty=(
+        "Объект «{object}» в справке есть, но подходящих элементов у него не "
+        'нашлось. Весь его состав: list_1c_object_members(object="{object}").'
+    ),
+    object_not_found=(
+        "Объект «{object}» в справке не найден — выдачу обнулил фильтр по "
+        "нему, а не отсутствие элемента. Похожие объекты: {similar}."
+    ),
+    object_name_differs_hint=(
+        "Имя объекта в справке может отличаться от идентификатора в коде: "
+        "например, менеджер фоновых заданий зовётся МенеджерФоновыхЗаданий."
+    ),
+    kind_filter_hint=(
+        'Поиск был ограничен видом kind="{kind}" — повторите с kind="any", '
+        "чтобы искать по всем видам элементов."
+    ),
+    no_filters_hint=(
+        "Ни фильтра по объекту, ни фильтра по виду не было — совпадений нет "
+        "во всей справке. Что можно сделать: проверить имя по-русски и "
+        "по-английски; поискать по словам из описания; если известен "
+        "объект — посмотреть его состав через list_1c_object_members."
+    ),
+    no_similar_objects="подходящих не найдено",
+    object_missing_for_element=(
+        "Объект «{object}» в справке не найден, поэтому элемент «{name}» у "
+        "него искать негде. Похожие объекты: {similar}."
+    ),
+    variant_not_found=(
+        'Варианта «{variant}» у элемента «{name}» нет. Доступные варианты: '
+        "{variants}."
+    ),
+    single_variant_no_name="вариант единственный и без имени",
+    element_not_found='Элемент с точным именем «{name}» в справке не найден.',
+    similar_by_name="Похожие по имени:",
+    no_similar="Похожих по имени тоже нет — проверьте написание.",
+    no_members_at_all=(
+        "Объект «{object}» в справке есть, но ни методов, ни свойств, ни "
+        "событий, ни конструкторов у него не найдено."
+    ),
+    no_members_of_kind=(
+        'Объект «{object}» в справке есть, но {kind} у него нет. Попробуйте '
+        'members="all", чтобы увидеть весь состав.'
+    ),
+    object_missing="Объект «{object}» в справке не найден. Похожие объекты: {similar}.",
 )
 
 # Английские формулировки отсутствия данных переведены по смыслу, а не
@@ -213,6 +295,7 @@ EN_STRINGS = UiStrings(
     composition="Members — {parts}.",
     member_names_genitive={
         "methods": "methods", "properties": "properties", "events": "events",
+        "constructors": "constructors",
     },
     listing_hint='Full list: list_1c_object_members(object="{key}")',
     nothing_to_list=(
@@ -240,6 +323,60 @@ EN_STRINGS = UiStrings(
     ),
     partial_order_note=(
         "(the order does not cover all matches — there are too many for one query)"
+    ),
+    nothing_found='Nothing found for the query "{query}".',
+    object_exists_but_empty=(
+        'The object "{object}" is in the reference, but no matching elements '
+        'were found. Its full member list: list_1c_object_members(object="{object}").'
+    ),
+    object_not_found=(
+        'The object "{object}" was not found in the reference — the object '
+        "filter zeroed out the results, not an absence of a matching element. "
+        "Similar objects: {similar}."
+    ),
+    # Пример сохранён по смыслу, а не сокращён до метки: агент, столкнувшийся
+    # с этим же расхождением на английской книге, должен понять сам приём —
+    # что справочное имя объекта и код-идентификатор не обязаны совпадать, —
+    # а не только увидеть перевод русского примера.
+    object_name_differs_hint=(
+        "The object name in the reference may differ from the identifier used "
+        "in code: for example, the manager of background jobs is called "
+        "МенеджерФоновыхЗаданий in the reference, not ФоновыеЗадания."
+    ),
+    kind_filter_hint=(
+        'The search was limited to kind="{kind}" — repeat with kind="any" to '
+        "search across every kind of element."
+    ),
+    no_filters_hint=(
+        "Neither an object filter nor a kind filter was set — there are no "
+        "matches anywhere in the reference. What to try: check the name in "
+        "both Russian and English; search by words from the description; if "
+        "you know the object, look at its member list via list_1c_object_members."
+    ),
+    no_similar_objects="none found",
+    object_missing_for_element=(
+        'The object "{object}" was not found in the reference, so there is '
+        'nowhere to look for the element "{name}". Similar objects: {similar}.'
+    ),
+    variant_not_found=(
+        'There is no variant "{variant}" of the element "{name}". '
+        "Available variants: {variants}."
+    ),
+    single_variant_no_name="there is only one variant, and it has no name",
+    element_not_found='No element with the exact name "{name}" was found in the reference.',
+    similar_by_name="Similar by name:",
+    no_similar="There is nothing similar by name either — check the spelling.",
+    no_members_at_all=(
+        'The object "{object}" is in the reference, but no methods, '
+        "properties, events or constructors were found for it."
+    ),
+    no_members_of_kind=(
+        'The object "{object}" is in the reference, but it has no {kind}. '
+        'Try members="all" to see the full member list.'
+    ),
+    object_missing=(
+        'The object "{object}" was not found in the reference. Similar '
+        "objects: {similar}."
     ),
 )
 

@@ -8,6 +8,7 @@ from src.handlers.element_card import (
     candidate_list, list_line,
 )
 from src.handlers.mcp_formatter import mcp_formatter
+from src.handlers.ui_strings import RU_STRINGS, UiStrings
 from src.models.mcp_models import (
     Find1CHelpRequest, Get1CElementRequest, List1CObjectMembersRequest, MCPResponse,
 )
@@ -15,23 +16,13 @@ from src.search.search_service import SearchService
 
 logger = get_logger(__name__)
 
-# Название вида элементов на русском для сообщения "у объекта нет элементов
-# этого вида". "all" сюда не входит — для него сообщение формулируется иначе:
-# просить попробовать members="all", когда уже запрошено all, бессмысленно.
-MEMBER_KIND_RU = {
-    "methods": "методов",
-    "properties": "свойств",
-    "events": "событий",
-    "constructors": "конструкторов",
-}
-
 
 def _text_response(text: str) -> MCPResponse:
     return mcp_formatter.create_success_response([{"type": "text", "text": text}])
 
 
 async def _why_empty(
-    service: SearchService, request: Find1CHelpRequest
+    service: SearchService, request: Find1CHelpRequest, strings: UiStrings = RU_STRINGS
 ) -> str:
     """Почему выдача пуста: нет элемента, нет объекта или его убрал фильтр.
 
@@ -42,49 +33,34 @@ async def _why_empty(
     идентификатор из кода не совпадает с именем объекта справки. get_1c_element
     этот случай уже различал, а поиск с тем же аргументом object — нет.
     """
-    lines = [f"По запросу «{request.query}» ничего не найдено."]
+    lines = [strings.nothing_found.format(query=request.query)]
 
     if request.object:
         # Исключение из object_exists и similar_objects намеренно не
         # глушится: сбой Elasticsearch долетит до внешнего except обработчика и
         # станет ошибкой, а не тихим «объекта нет».
         if await service.object_exists(request.object):
-            lines.append(
-                f"Объект «{request.object}» в справке есть, но подходящих "
-                "элементов у него не нашлось. Весь его состав: "
-                f'list_1c_object_members(object="{request.object}").'
-            )
+            lines.append(strings.object_exists_but_empty.format(object=request.object))
         else:
             similar = ", ".join(await service.similar_objects(request.object)) \
-                or "подходящих не найдено"
+                or strings.no_similar_objects
             lines.append(
-                f"Объект «{request.object}» в справке не найден — выдачу обнулил "
-                f"фильтр по нему, а не отсутствие элемента. "
-                f"Похожие объекты: {similar}."
+                strings.object_not_found.format(object=request.object, similar=similar)
             )
-            lines.append(
-                "Имя объекта в справке может отличаться от идентификатора в коде: "
-                "например, менеджер фоновых заданий зовётся МенеджерФоновыхЗаданий."
-            )
+            lines.append(strings.object_name_differs_hint)
 
     if request.kind.value != "any":
-        lines.append(
-            f'Поиск был ограничен видом kind="{request.kind.value}" — '
-            'повторите с kind="any", чтобы искать по всем видам элементов.'
-        )
+        lines.append(strings.kind_filter_hint.format(kind=request.kind.value))
 
     if not request.object and request.kind.value == "any":
-        lines.append(
-            "Ни фильтра по объекту, ни фильтра по виду не было — совпадений нет "
-            "во всей справке. Что можно сделать: проверить имя по-русски и "
-            "по-английски; поискать по словам из описания; если известен "
-            "объект — посмотреть его состав через list_1c_object_members."
-        )
+        lines.append(strings.no_filters_hint)
 
     return "\n".join(lines)
 
 
-async def build_object_card(service: SearchService, doc: dict) -> str:
+async def build_object_card(
+    service: SearchService, doc: dict, strings: UiStrings = RU_STRINGS
+) -> str:
     """Карточка объекта: счётчики, конструкторы и совет — по одному ключу.
 
     Ключ, по которому в индексе лежат члены объекта, — его канонический путь: у
@@ -100,11 +76,11 @@ async def build_object_card(service: SearchService, doc: dict) -> str:
     key = doc.get("full_path") or doc.get("object") or ""
     counts = await service.member_count(key)
     constructors = await service.constructor_lines(key)
-    return render_object_card(doc, counts, constructors, key)
+    return render_object_card(doc, counts, constructors, key, strings)
 
 
 async def handle_find_1c_help(
-    request: Find1CHelpRequest, es_client: ElasticsearchClient
+    request: Find1CHelpRequest, es_client: ElasticsearchClient, strings: UiStrings = RU_STRINGS
 ) -> MCPResponse:
     """Поиск кандидатов по справке."""
     logger.info(f"find_1c_help: {request.query!r} kind={request.kind.value}")
@@ -122,7 +98,7 @@ async def handle_find_1c_help(
 
         found = result.get("results", [])
         if not found:
-            return _text_response(await _why_empty(service, request))
+            return _text_response(await _why_empty(service, request, strings))
 
         total = result.get("total", len(found))
         lines = [f"Найдено {total} элементов по запросу «{request.query}»."]
@@ -135,10 +111,10 @@ async def handle_find_1c_help(
             if request.kind.value != "any":
                 call += f', kind="{request.kind.value}"'
             lines.append(hint_about_remainder(
-                len(found), total, SEARCH_LIMIT_MAX, call + ", limit={limit})",
+                len(found), total, SEARCH_LIMIT_MAX, call + ", limit={limit})", strings,
             ))
         lines.append("")
-        lines.extend(list_line(d) for d in found)
+        lines.extend(list_line(d, strings) for d in found)
         lines.append("")
         lines.append("Полная карточка: get_1c_element(name=…, object=…)")
 
@@ -149,7 +125,7 @@ async def handle_find_1c_help(
 
 
 async def handle_get_1c_element(
-    request: Get1CElementRequest, es_client: ElasticsearchClient
+    request: Get1CElementRequest, es_client: ElasticsearchClient, strings: UiStrings = RU_STRINGS
 ) -> MCPResponse:
     """Карточка элемента либо перечень кандидатов при неоднозначности."""
     logger.info(f"get_1c_element: {request.name!r} object={request.object!r}")
@@ -163,39 +139,40 @@ async def handle_get_1c_element(
         if kind == "card":
             doc = response["document"]
             if (doc.get("element_kind") or "") == "объект":
-                return _text_response(await build_object_card(service, doc))
-            return _text_response(render_element_card(doc))
+                return _text_response(await build_object_card(service, doc, strings))
+            return _text_response(render_element_card(doc, strings))
 
         if kind == "ambiguous":
             return _text_response(candidate_list(
                 response["name"], response["candidates"], response["total"],
-                response.get("full_order", True),
+                response.get("full_order", True), strings,
             ))
 
         if kind == "object_not_found":
-            similar = ", ".join(response["similar"]) or "подходящих не найдено"
-            return _text_response(
-                f"Объект «{response['object']}» в справке не найден, поэтому элемент "
-                f"«{request.name}» у него искать негде. Похожие объекты: {similar}.\n"
-                "Имя объекта в справке может отличаться от идентификатора в коде: "
-                "например, менеджер фоновых заданий зовётся МенеджерФоновыхЗаданий."
-            )
+            similar = ", ".join(response["similar"]) or strings.no_similar_objects
+            lines = [
+                strings.object_missing_for_element.format(
+                    object=response["object"], name=request.name, similar=similar,
+                ),
+                strings.object_name_differs_hint,
+            ]
+            return _text_response("\n".join(lines))
 
         if kind == "variant_not_found":
             names = ", ".join(f"«{i}»" for i in response["variants"] if i)
-            return _text_response(
-                f"Варианта «{request.variant}» у элемента «{request.name}» нет. "
-                f"Доступные варианты: {names or 'вариант единственный и без имени'}."
-            )
+            return _text_response(strings.variant_not_found.format(
+                variant=request.variant, name=request.name,
+                variants=names or strings.single_variant_no_name,
+            ))
 
         if kind == "not_found":
             similar = response.get("similar") or []
-            lines = [f"Элемент с точным именем «{request.name}» в справке не найден."]
+            lines = [strings.element_not_found.format(name=request.name)]
             if similar:
-                lines.append("Похожие по имени:")
-                lines.extend(f"  {list_line(d)}" for d in similar)
+                lines.append(strings.similar_by_name)
+                lines.extend(f"  {list_line(d, strings)}" for d in similar)
             else:
-                lines.append("Похожих по имени тоже нет — проверьте написание.")
+                lines.append(strings.no_similar)
             return _text_response("\n".join(lines))
 
         # kind == "error": element_card так помечает сбой Elasticsearch,
@@ -209,7 +186,7 @@ async def handle_get_1c_element(
 
 
 async def handle_list_1c_object_members(
-    request: List1CObjectMembersRequest, es_client: ElasticsearchClient
+    request: List1CObjectMembersRequest, es_client: ElasticsearchClient, strings: UiStrings = RU_STRINGS
 ) -> MCPResponse:
     """Состав объекта."""
     logger.info(f"list_1c_object_members: {request.object!r} members={request.members.value}")
@@ -234,24 +211,20 @@ async def handle_list_1c_object_members(
                 kind = request.members.value
                 if kind == "all":
                     return _text_response(
-                        f"Объект «{request.object}» в справке есть, но ни методов, "
-                        "ни свойств, ни событий, ни конструкторов у него не найдено."
+                        strings.no_members_at_all.format(object=request.object)
                     )
-                return _text_response(
-                    f"Объект «{request.object}» в справке есть, но "
-                    f"{MEMBER_KIND_RU[kind]} у него нет. "
-                    'Попробуйте members="all", чтобы увидеть весь состав.'
-                )
+                return _text_response(strings.no_members_of_kind.format(
+                    object=request.object, kind=strings.member_names_genitive[kind],
+                ))
 
             # similar_objects вызывается здесь напрямую, вне try/except
             # element_card, поэтому сбой Elasticsearch внутри неё долетит
             # сюда как исключение — ловим его отдельно веткой ниже, а не
             # подменяем пустым списком: пустой список означал бы "похожих нет".
             similar = ", ".join(await service.similar_objects(request.object)) \
-                or "подходящих не найдено"
+                or strings.no_similar_objects
             return _text_response(
-                f"Объект «{request.object}» в справке не найден. "
-                f"Похожие объекты: {similar}."
+                strings.object_missing.format(object=request.object, similar=similar)
             )
 
         return _text_response(member_list(
@@ -262,6 +235,7 @@ async def handle_list_1c_object_members(
             result["events"],
             result["total"],
             MEMBERS_LIMIT_MAX,
+            strings,
         ))
     except Exception as e:
         logger.error(f"list_1c_object_members: {e}")
