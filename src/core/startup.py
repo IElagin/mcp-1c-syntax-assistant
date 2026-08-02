@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from typing import Optional
 
 from src.core.config import settings
 from src.core.logging import get_logger
@@ -9,6 +10,17 @@ from src.core.elasticsearch import ElasticsearchClient
 from src.infrastructure.background.indexing_manager import get_indexing_manager
 
 logger = get_logger(__name__)
+
+
+def resolve_hbk_file(hbk_directory: str, filename: str) -> Optional[Path]:
+    """Путь к книге справки, которую следует индексировать.
+
+    Возвращает None, если книги нет: подменять её первым попавшимся .hbk
+    нельзя. Сервер с чужой книгой в индексе выглядит исправным — отвечает,
+    документов много, — и расхождение обнаруживается только по языку ответов.
+    """
+    path = Path(hbk_directory) / filename
+    return path if path.exists() else None
 
 
 async def auto_index_on_startup(es_client: ElasticsearchClient):
@@ -24,11 +36,15 @@ async def auto_index_on_startup(es_client: ElasticsearchClient):
         es_client: Подключённый клиент Elasticsearch
     """
     try:
-        # Определяем путь к единственному .hbk файлу
-        hbk_file = Path(settings.data.hbk_directory) / "shcntx_ru.hbk"
-        
-        if not hbk_file.exists():
-            logger.warning(f"Файл .hbk не найден: {hbk_file}")
+        hbk_file = resolve_hbk_file(
+            settings.data.hbk_directory, settings.data.hbk_filename
+        )
+
+        if hbk_file is None:
+            logger.warning(
+                f"Книга справки {settings.data.hbk_filename} не найдена "
+                f"в {settings.data.hbk_directory}"
+            )
             return
         
         # Проверяем, нужна ли принудительная переиндексация

@@ -29,7 +29,8 @@ class DataConfig(BaseModel):
     """Конфигурация данных."""
     hbk_directory: str = "/app/data/hbk"
     logs_directory: str = "/app/logs"
-    
+    hbk_filename: str = "shcntx_ru.hbk"
+
     
 class Settings(BaseSettings):
     """Основные настройки приложения."""
@@ -56,7 +57,12 @@ class Settings(BaseSettings):
     # Пути к данным
     hbk_directory: str = "data/hbk"
     logs_directory: str = "data/logs"
-    
+
+    # Имя книги справки для индексации. В каталоге могут лежать и другие .hbk:
+    # английская shcntx_root.hbk, книги по языку запросов. Выбор должен быть
+    # явным, иначе он зависит от порядка файлов в каталоге.
+    hbk_filename: str = "shcntx_ru.hbk"
+
     # Производительность
     max_concurrent_requests: str = "8"
     index_batch_size: str = "100"
@@ -106,7 +112,8 @@ class Settings(BaseSettings):
         """Получить конфигурацию данных."""
         return DataConfig(
             hbk_directory=self.hbk_directory,
-            logs_directory=self.logs_directory
+            logs_directory=self.logs_directory,
+            hbk_filename=self.hbk_filename
         )
     
     @property

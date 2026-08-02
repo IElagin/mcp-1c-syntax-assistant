@@ -1,12 +1,11 @@
 """Index management endpoints."""
 
-from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends
 
 from src.core.config import settings
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
-from src.core.startup import index_hbk_file
+from src.core.startup import index_hbk_file, resolve_hbk_file
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 
@@ -61,23 +60,19 @@ async def rebuild_index(
                 detail="Elasticsearch недоступен"
             )
         
-        # Ищем .hbk файлы
-        hbk_dir = Path(settings.data.hbk_directory)
-        if not hbk_dir.exists():
+        # Книга выбирается по имени из настроек, а не первой попавшейся:
+        # в каталоге могут лежать и другие .hbk.
+        hbk_file = resolve_hbk_file(
+            settings.data.hbk_directory, settings.data.hbk_filename
+        )
+        if hbk_file is None:
             raise HTTPException(
                 status_code=400,
-                detail=f"Директория .hbk файлов не найдена: {hbk_dir}"
+                detail=(
+                    f"Книга справки {settings.data.hbk_filename} не найдена "
+                    f"в {settings.data.hbk_directory}"
+                )
             )
-        
-        hbk_files = list(hbk_dir.glob("*.hbk"))
-        if not hbk_files:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Файлы .hbk не найдены в {hbk_dir}"
-            )
-        
-        # Индексируем первый найденный файл
-        hbk_file = hbk_files[0]
         logger.info(f"Начинаем переиндексацию файла: {hbk_file}")
         
         success = await index_hbk_file(str(hbk_file), es_client)
