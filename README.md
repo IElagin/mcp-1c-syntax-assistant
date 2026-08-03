@@ -51,10 +51,12 @@ Real output of `get_1c_element(name="Добавить", object="Массив")`:
 >
 > The repository does carry 25 pages out of the two books — 15 Russian and 10
 > English — under `tests/fixtures/`, as samples for the parser tests.
-> The defects those tests guard against reproduce only on the real
-> markup, and requiring the books themselves — tens of megabytes, present
-> neither in CI nor in an outside reader's checkout — would leave the parser
-> untested. The books as such are still not redistributed here.
+> Synthetic markup checks a defect once it's understood; the real pages catch
+> what nobody anticipated — unclosed tags, pseudo-tags like `<Value1>`, nested
+> font wrappers, Cyrillic in attributes. Requiring the books themselves
+> instead — tens of megabytes, present neither in CI nor in an outside
+> reader's checkout — would leave those cases untested. The books as such are
+> still not redistributed here.
 
 On Windows the file lives next to the platform binaries:
 
