@@ -100,12 +100,20 @@ class Settings(BaseSettings):
 
         Сервер, поднявшийся с опечаткой в DEFAULT_HELP_LANG, отвечал бы
         русскими карточками англоязычной команде и выглядел исправным.
+
+        Регистр и обрамляющие пробелы значения не несут: DEFAULT_HELP_LANG=EN —
+        написание, которое человек выберет наравне с en, потому что остальные
+        значения в .env.example заглавные. Регистрозависимая проверка роняла бы
+        старт сервера, и сообщение уходило бы в лог контейнера, а не тому, кто
+        правил .env. Нормализация здесь — то же правило, что у соседнего
+        should_reindex_on_startup (.lower()), а не вторая конвенция в одном файле.
         """
-        if value not in ("ru", "en"):
+        normalized = value.strip().lower()
+        if normalized not in ("ru", "en"):
             raise ValueError(
                 f"DEFAULT_HELP_LANG={value!r}: допустимы только 'ru' и 'en'"
             )
-        return value
+        return normalized
 
     @property
     def elasticsearch(self) -> ElasticsearchConfig:

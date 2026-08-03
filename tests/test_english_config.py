@@ -32,3 +32,14 @@ def test_unknown_default_language_is_rejected_at_startup():
     """
     with pytest.raises(ValueError):
         Settings(default_help_lang="english")
+
+
+@pytest.mark.parametrize("written_as", ["EN", "En", " en ", "eN"])
+def test_default_language_is_case_insensitive(written_as):
+    """DEFAULT_HELP_LANG=EN обязан подниматься, а не ронять сервер.
+
+    Все прочие значения .env.example записаны заглавными, поэтому заглавный код
+    языка — не экзотика, а половина вероятных написаний. Отказ уходил бы в лог
+    контейнера, а человек, правивший .env, увидел бы только «mcp-server exited».
+    """
+    assert Settings(default_help_lang=written_as).default_help_lang == "en"
