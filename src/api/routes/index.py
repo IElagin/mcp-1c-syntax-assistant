@@ -8,6 +8,7 @@ from src.core.logging import get_logger
 from src.core.startup import index_hbk_file, resolve_hbk_file
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
+from src.parsers.name_backfill import backfill_english_names
 
 router = APIRouter(prefix="/index", tags=["index"])
 logger = get_logger(__name__)
@@ -76,9 +77,30 @@ async def rebuild_index(
         logger.info(f"Начинаем переиндексацию файла: {hbk_file}")
         
         success = await index_hbk_file(str(hbk_file), es_client)
-        
+
         if success:
             docs_count = await es_client.get_documents_count()
+
+            # Ручная переиндексация — тот же разрыв, что и старт сервера: до
+            # 707 страниц (задача 13) не несут английского имени в самой
+            # русской книге и получают его только из английского индекса.
+            # Без этого шага после ручной замены книги эти страницы остались
+            # бы недостроенными до следующего перезапуска сервера — а замену
+            # книги документация как раз и предлагает завершать этим
+            # эндпоинтом, без перезапуска. Требует ОБА индекса — если
+            # английского нет, backfill_english_names сама тихо не делает
+            # ничего (см. index_exists внутри), как и при старте. Сбой этого
+            # шага не должен превращать успешную переиндексацию в ошибку
+            # запроса — это дополнительная докрутка, а не условие успеха.
+            try:
+                updated = await backfill_english_names(
+                    es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
+                )
+                if updated:
+                    logger.info(f"Достроено английских имён после переиндексации: {updated}")
+            except Exception as e:
+                logger.error(f"Ошибка достройки английских имён после переиндексации: {e}")
+
             return {
                 "status": "success",
                 "message": "Переиндексация завершена успешно",

@@ -20,21 +20,38 @@ from src.parsers.name_backfill import _fields_to_fill, backfill_english_names
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 async def test_global_context_gets_its_english_name():
-    """У «Глобальный контекст» нет ни name_en, ни object_en в русской книге.
+    """У «Глобальный контекст» в норме нет ни name_en, ни object_en.
 
     source_file одинаков в обеих книгах символ в символ — это и есть ключ
     склейки, измеренный на всём корпусе (48 682 файла, обе книги).
+
+    Индекс персистентный: на живом индексе, где предыдущий прогон уже
+    достроил этот документ, «updated > 0» стало бы ложным без вины кода —
+    достраивать уже нечего. Тест сам откатывает документ в состояние «имени
+    не хватает» перед прогоном, поэтому проходит одинаково на свежем индексе
+    и на уже достроенном, локально и в CI, при первом запуске и при сотом.
     """
     assert await es_client.connect(), "Elasticsearch недоступен"
+    ru_index = settings.elasticsearch_index
     try:
+        found = await es_client.search(
+            {"query": {"term": {"source_file": "objects/Global context.html"}}},
+            index=ru_index,
+        )
+        doc_id = found["hits"]["hits"][0]["_id"]
+
+        await es_client._client.update(
+            index=ru_index, id=doc_id, doc={"name_en": "", "object_en": None}, refresh=True
+        )
+
         updated = await backfill_english_names(
-            es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
+            es_client, ru_index, settings.elasticsearch_index_en
         )
         assert updated > 0
 
         response = await es_client.search(
             {"query": {"term": {"source_file": "objects/Global context.html"}}},
-            index=settings.elasticsearch_index,
+            index=ru_index,
         )
         source = response["hits"]["hits"][0]["_source"]
         assert source["name_en"] == "Global context"
@@ -133,6 +150,56 @@ async def test_missing_english_index_is_silently_skipped():
 
     assert updated == 0
     mock_client.index_exists.assert_awaited_once_with(index="help1c_docs_en")
+
+
+@pytest.mark.unit
+async def test_bulk_partial_failure_is_not_reported_as_success():
+    """Счётчик обновлённых должен верить bulk, а не своим намерениям.
+
+    Elasticsearch может частично отказать в bulk-запросе (конфликт версии,
+    временная недоступность шарда) — часть операций проходит, часть нет.
+    Если считать «обновлено» по числу подготовленных операций, а не по
+    результату bulk, вызывающий получит «685 обновлено», хотя часть не
+    записалась. Здесь два документа-кандидата, у второго update в bulk
+    возвращает error — счётчик обязан посчитать только первый.
+    """
+    mock_client = AsyncMock()
+    mock_client.index_exists = AsyncMock(return_value=True)
+    mock_client.search = AsyncMock(
+        side_effect=[
+            {
+                "hits": {
+                    "hits": [
+                        {"_id": "a1", "_source": {"source_file": "a.html", "name_en": "", "object_en": None}},
+                        {"_id": "b1", "_source": {"source_file": "b.html", "name_en": "", "object_en": None}},
+                    ]
+                }
+            },
+            {
+                "hits": {
+                    "hits": [
+                        {"_source": {"source_file": "a.html", "name": "NameA", "object": "ObjA"}},
+                        {"_source": {"source_file": "b.html", "name": "NameB", "object": "ObjB"}},
+                    ]
+                }
+            },
+        ]
+    )
+    mock_client._client.bulk = AsyncMock(
+        return_value={
+            "errors": True,
+            "items": [
+                {"update": {"_id": "a1", "result": "updated"}},
+                {"update": {"_id": "b1", "error": {"type": "version_conflict_engine_exception"}}},
+            ],
+        }
+    )
+    mock_client.refresh_index = AsyncMock(return_value=True)
+
+    updated = await backfill_english_names(mock_client, "help1c_docs", "help1c_docs_en")
+
+    assert updated == 1, "успешна только первая операция — счётчик обязан отразить именно это"
+    mock_client.refresh_index.assert_awaited_once()
 
 
 @pytest.mark.unit

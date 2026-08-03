@@ -21,7 +21,7 @@
 индекса значило бы молча отменить разбор задачи 11.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
@@ -65,7 +65,18 @@ async def _candidates(es_client: ElasticsearchClient, index: str) -> List[Dict]:
         },
         index=index,
     )
-    return response.get("hits", {}).get("hits", [])
+    hits = response.get("hits", {}).get("hits", [])
+    total = response.get("hits", {}).get("total", {}).get("value", len(hits))
+    if total > len(hits):
+        # size обрезал выдачу — часть кандидатов в этом прогоне не будет
+        # даже рассмотрена, не то что достроена. Молчать нельзя: со стороны
+        # это неотличимо от «всё достроено, кандидатов больше нет».
+        logger.warning(
+            f"Кандидатов на достройку {total}, выбрано {len(hits)} "
+            f"(предел MAX_CANDIDATES={MAX_CANDIDATES}) — часть не будет "
+            f"рассмотрена в этом прогоне"
+        )
+    return hits
 
 
 async def _english_by_source_file(
@@ -164,7 +175,7 @@ async def backfill_english_names(
         return 0
 
     operations = []
-    updated = 0
+    doc_ids_in_order: List[str] = []
     for doc_id, source_file in source_file_of.items():
         en_source = english.get(source_file)
         if not en_source:
@@ -176,19 +187,30 @@ async def backfill_english_names(
 
         operations.append({"update": {"_index": ru_index, "_id": doc_id}})
         operations.append({"doc": fields})
-        updated += 1
+        doc_ids_in_order.append(doc_id)
 
     if not operations:
         return 0
 
     response = await es_client._client.bulk(body=operations)
-    if response.get("errors"):
-        for item in response.get("items", []):
-            error = item.get("update", {}).get("error")
-            if error:
-                logger.error(f"Ошибка достройки документа: {error}")
 
-    await es_client.refresh_index(index=ru_index)
+    # Число обновлённых считается по фактическому результату bulk, а не по
+    # числу подготовленных операций: при частичном отказе ES часть doc_id не
+    # запишется, и вернуть «успех» для них значило бы соврать вызывающему,
+    # который по этому числу решает, надо ли что-то ещё делать. Документы,
+    # чей update не прошёл, останутся кандидатами и будут подобраны заново
+    # следующим прогоном — это самолечение, не баг.
+    updated = 0
+    items = response.get("items", [])
+    for doc_id, item in zip(doc_ids_in_order, items):
+        error = item.get("update", {}).get("error")
+        if error:
+            logger.error(f"Ошибка достройки документа {doc_id}: {error}")
+            continue
+        updated += 1
 
-    logger.info(f"Достроено английских имён: {updated}")
+    if updated:
+        await es_client.refresh_index(index=ru_index)
+        logger.info(f"Достроено английских имён: {updated}")
+
     return updated
