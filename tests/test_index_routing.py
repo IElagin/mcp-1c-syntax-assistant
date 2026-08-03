@@ -62,3 +62,47 @@ async def test_reindex_all_deletes_and_creates_its_own_index(client):
 
     assert client._client.indices.delete.call_args.kwargs["index"] == "help1c_docs_en"
     assert client._client.indices.create.call_args.kwargs["index"] == "help1c_docs_en"
+
+
+@pytest.mark.parametrize("lang, index, dialect_name", [
+    ("ru", None, "RU_DIALECT"),
+    ("en", "help1c_docs_en", "EN_DIALECT"),
+])
+async def test_background_job_carries_lang_and_index_to_the_workers(
+    mock_parsed_hbk, tmp_path, lang, index, dialect_name
+):
+    """Аргументы очереди обязаны доезжать до разбора и до записи.
+
+    Потеря lang дала бы ~23 тысячи английских страниц, разобранных русским
+    диалектом: заголовки глав не опознаются, и от документа остаётся только то,
+    что выводится из пути. Потеря index — английскую книгу в русском индексе.
+    Ни то, ни другое не роняет ни одного вызова, поэтому без этой проверки обе
+    подмены проходили весь набор зелёными.
+    """
+    from unittest.mock import MagicMock, patch
+
+    import src.parsers.dialects as dialects
+    from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
+    from src.models.index_status import IndexingStatus
+
+    book = tmp_path / "book.hbk"
+    # Содержимое не важно: parse_file замокан, важно лишь, что файл есть —
+    # _do_indexing проверяет существование до разбора.
+    book.write_bytes(b"not a real archive")
+
+    parser_cls = MagicMock()
+    parser_cls.return_value.parse_file = MagicMock(return_value=mock_parsed_hbk)
+
+    indexer_cls = MagicMock()
+    indexer_cls.return_value.reindex_all = AsyncMock(return_value=True)
+
+    manager = BackgroundIndexingManager()
+
+    with patch("src.parsers.hbk_parser.HBKParser", parser_cls), \
+         patch("src.parsers.indexer.ElasticsearchIndexer", indexer_cls):
+        await manager._do_indexing(str(book), AsyncMock(), index=index, lang=lang)
+
+    status = (await manager.get_status()).status
+    assert status is IndexingStatus.COMPLETED, "индексация обязана дойти до конца"
+    assert parser_cls.call_args.kwargs["dialect"] is getattr(dialects, dialect_name)
+    assert indexer_cls.call_args.kwargs["index"] == index
