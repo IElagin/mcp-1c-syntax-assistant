@@ -61,17 +61,42 @@ async def test_global_context_gets_its_english_name():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
-async def test_backfill_is_idempotent():
-    """Второй прогон не должен ничего менять — иначе он затирает разбор."""
+async def test_backfill_is_exhaustive_in_one_pass_and_idempotent_after():
+    """Один вызов обязан достроить всё достижимое, второй — ничего не менять.
+
+    Прежняя версия теста звала достройку дважды на живом индексе и проверяла
+    только «второй раз ноль». На уже достроенном индексе кандидатов остаётся
+    два десятка, и все нерешаемые, поэтому ноль возвращал уже ПЕРВЫЙ вызов —
+    утверждение удовлетворяла бы и достройка, не делающая ничего вообще,
+    включая сломанную ровно так, как предупреждает докстринг
+    _english_by_source_file (terms по несуществующему под-полю).
+
+    Здесь документ сначала откатывается в состояние «имён не хватает», поэтому
+    первому вызову есть что делать, и проверяются оба свойства сразу:
+    исчерпывающесть одного прохода и отсутствие работы у следующего.
+    """
     assert await es_client.connect(), "Elasticsearch недоступен"
+    ru_index = settings.elasticsearch_index
+    en_index = settings.elasticsearch_index_en
     try:
-        await backfill_english_names(
-            es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
+        found = await es_client.search(
+            {"query": {"term": {"source_file": "objects/Global context.html"}}},
+            index=ru_index,
         )
-        second = await backfill_english_names(
-            es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
+        doc_id = found["hits"]["hits"][0]["_id"]
+
+        await es_client._client.update(
+            index=ru_index, id=doc_id, doc={"name_en": "", "object_en": None}, refresh=True
         )
-        assert second == 0
+
+        first = await backfill_english_names(es_client, ru_index, en_index)
+        assert first > 0, "первому проходу было что достроить — он обязан это сделать"
+
+        second = await backfill_english_names(es_client, ru_index, en_index)
+        assert second == 0, (
+            "всё достижимое достраивается за один вызов; второму проходу "
+            "работы не остаётся"
+        )
     finally:
         await es_client.disconnect()
 
@@ -241,3 +266,41 @@ class TestFieldsToFill:
             {"name_en": "Add", "object_en": "FormDataCollection"}, {"name": "Add", "object": "FormDataCollection"}
         )
         assert fields == {}
+
+    def test_page_identifier_is_not_a_name(self):
+        """«catalog2627» — имя файла страницы, а не английское имя элемента.
+
+        Английская страница objects/catalog2/catalog2627.html не имеет
+        заголовка, и парсер оставляет в name то, что вывел из пути. Достройка
+        записала это русскому документу «РешениеСЛУ», после чего
+        get_1c_element(name="catalog2627") отдавал его карточку, а README
+        считал документ обеспеченным английским именем.
+        """
+        fields = _fields_to_fill(
+            {"name_en": "", "object_en": "X"},
+            {"name": "catalog2627", "object": "X",
+             "source_file": "objects/catalog2/catalog2627.html"},
+        )
+
+        assert fields == {}
+
+    def test_page_identifier_is_not_an_object_name_either(self):
+        fields = _fields_to_fill(
+            {"name_en": "Add", "object_en": None},
+            {"name": "Add", "object": "catalog63",
+             "source_file": "objects/catalog63.html"},
+        )
+
+        assert fields == {}
+
+    def test_real_name_that_matches_its_file_name_is_kept(self):
+        """Совпадения с именем файла мало: у части страниц файл честно назван
+        по элементу («Array.html» → «Array»), и отвергать такое имя не за что.
+        """
+        fields = _fields_to_fill(
+            {"name_en": "", "object_en": "X"},
+            {"name": "Array", "object": "X",
+             "source_file": "objects/catalog234/Array.html"},
+        )
+
+        assert fields == {"name_en": "Array"}

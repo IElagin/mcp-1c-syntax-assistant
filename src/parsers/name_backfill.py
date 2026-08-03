@@ -21,12 +21,21 @@
 индекса значило бы молча отменить разбор задачи 11.
 """
 
-from typing import Dict, List
+import re
+from typing import Dict, List, Optional
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Служебное имя страницы книги: «catalog2627», «object464», «method6189». Такие
+# имена придумывает не автор справки, а генератор книги — их получают страницы
+# без человеческого заголовка.
+_BOOK_IDENTIFIER_RE = re.compile(
+    r"(?:catalog|object|method|prop|property|event|ctor|func|page)\d+\Z",
+    re.IGNORECASE,
+)
 
 # С запасом на порядок: реальных кандидатов 707 на момент задачи 13, но
 # константа не должна зависеть от текущего состояния книги — index.max_result
@@ -107,6 +116,38 @@ async def _english_by_source_file(
     return result
 
 
+def _page_stem(source_file: Optional[str]) -> str:
+    """«objects/catalog2/catalog2627.html» → «catalog2627»."""
+    name = (source_file or "").rsplit("/", 1)[-1]
+    return name[:-5] if name.endswith(".html") else name
+
+
+def _is_page_identifier(value: Optional[str], source_file: Optional[str]) -> bool:
+    """Значение — это имя файла страницы, а не имя элемента справки.
+
+    У страницы без заголовка (V8SH_pagetitle отсутствует или пуст) парсер
+    оставляет в name то, что вывел из пути, — имя файла. В английской книге
+    такая страница ровно одна, и достройка записала русскому документу
+    «РешениеСЛУ» английское имя «catalog2627»; после этого
+    get_1c_element(name="catalog2627") отдавал карточку РешениеСЛУ, а README
+    считал этот документ обеспеченным английским именем.
+
+    Имя, взятое со служебной страницы, хуже отсутствующего: отсутствие видно и
+    честно («в справке не указано»), а «catalog2627» выглядит как настоящее имя
+    и попадает и в карточку, и в поиск, и в статистику.
+
+    Проверяются оба признака сразу — форма служебного идентификатора и
+    совпадение с именем файла. Одной формы мало: гипотетический элемент,
+    названный как генератор книги, был бы отвергнут зря; одного совпадения с
+    именем файла — тоже: у части страниц файл честно назван по элементу
+    («Array.html» → «Array»), и такое имя отвергать не за что.
+    """
+    text = (value or "").strip()
+    if not text:
+        return False
+    return bool(_BOOK_IDENTIFIER_RE.match(text)) and text == _page_stem(source_file)
+
+
 def _fields_to_fill(ru_source: Dict, en_source: Dict) -> Dict[str, str]:
     """Какие из name_en/object_en реально можно дописать документу.
 
@@ -120,18 +161,22 @@ def _fields_to_fill(ru_source: Dict, en_source: Dict) -> Dict[str, str]:
       но пустое», и документ всё ещё числился бы кандидатом на следующем
       прогоне, но обновлять было бы уже нечего: идемпотентность держится на
       «нечего менять», а не на «поле дописано», и это ожидаемо — прогон
-      просто находит те же 21-22 нерешаемых страницы заново, без записи.
+      просто находит те же 23-24 нерешаемых страницы заново, без записи.
+
+    Третье условие — значение не должно быть служебным именем страницы книги
+    (см. _is_page_identifier).
     """
     fields: Dict[str, str] = {}
+    source_file = en_source.get("source_file")
 
     if not ru_source.get("name_en"):
         name = en_source.get("name")
-        if name:
+        if name and not _is_page_identifier(name, source_file):
             fields["name_en"] = name
 
     if ru_source.get("object_en") is None:
         obj = en_source.get("object")
-        if obj:
+        if obj and not _is_page_identifier(obj, source_file):
             fields["object_en"] = obj
 
     return fields
