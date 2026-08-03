@@ -114,17 +114,20 @@ language. It is a separate axis from the name you pass in.
 `FindRows` both find the same element, and so do `Добавить` and `Add` — the
 Russian reference book carries both names in every element page title
 (`<h1>НайтиСтроки (FindRows)</h1>`), and the indexer splits them into separate
-`name_ru`/`name_en` fields. All 20 159 element pages in the current index
-carry an English name. Object names resolve too: `list_1c_object_members(
-object="ValueTable")` and `get_1c_element(name="Add", object="Array")` both
-work, even though object pages don't print an English name in their own title
-the way element pages do — the server backfills it from the optional English
+`name_ru`/`name_en` fields. 20 157 of the 20 159 element pages in the current
+index carry an English name; the two without one are structural pages, not
+regular elements missing a translation (a section header "Прочие процедуры и
+функции" and a page whose own Russian title repeats itself in place of an
+English one). Object names resolve too: `list_1c_object_members(object=
+"ValueTable")` and `get_1c_element(name="Add", object="Array")` both work,
+even though object pages don't print an English name in their own title the
+way element pages do — the server backfills it from the optional English
 index (see below) onto the matching Russian object page after indexing. Of
-the 2 577 object pages, 2 326 (about 90%) have picked up an English name this
-way, and all 389 constructor pages did too; the remaining 251 objects answer
-only to their Russian name. Either way, the card itself — description,
-parameters, availability, example — is Russian, because that is the only
-language the Russian book carries them in.
+the 2 577 object pages, 2 555 (99%) have picked up an English name this way,
+and all 389 constructor pages did too; the remaining 22 objects answer only to
+their Russian name. Either way, the card itself — description, parameters,
+availability, example — is Russian, because that is the only language the
+Russian book carries them in.
 
 **`lang="en"` is a different thing: a genuinely English answer, end to end**,
 from the optional second book (`shcntx_root.hbk` — see

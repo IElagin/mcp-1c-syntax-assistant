@@ -30,7 +30,11 @@ async def index_status(
     """
     # Информация об Elasticsearch индексе
     es_connected = await es_client.is_connected()
-    index_exists = await es_client.index_exists() if es_connected else False
+    # bool(...) обязателен: indices.exists() возвращает не примитивный bool, а
+    # HeadApiResponse, и без обёртки FastAPI сериализует его в "{}" вместо
+    # true/false — клиент читает "{}" как отсутствие индекса даже при полном
+    # индексе (см. health.py, где та же обёртка стоит с самого начала).
+    index_exists = bool(await es_client.index_exists()) if es_connected else False
     docs_count = await es_client.get_documents_count() if index_exists else 0
     
     # Информация о фоновой индексации
