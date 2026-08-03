@@ -39,7 +39,14 @@ def _call_label(doc: Dict[str, Any], strings: UiStrings) -> str:
 
 
 def _heading(doc: Dict[str, Any], strings: UiStrings) -> str:
-    """«ТаблицаЗначений.НайтиСтроки (ValueTable.FindRows) — функция объекта»."""
+    """«ТаблицаЗначений.НайтиСтроки — функция объекта ТаблицаЗначений».
+
+    Английское имя в скобки сюда не идёт — ни в карточке метода, ни в
+    карточке объекта. path и owner берутся из полей документа, которые уже
+    на языке ответа (full_path/object_ru — при lang="en" в них лежит
+    английский текст, потому что документ пришёл из английского индекса), а
+    не собираются из двух языков сразу.
+    """
     path = doc.get("full_path") or doc.get("name_ru") or doc.get("name") or ""
     kind = doc.get("element_kind") or ""
     owner = doc.get("object_ru") or doc.get("object") or ""

@@ -79,7 +79,7 @@ background. `/health` reports its progress:
 
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
- "documents_count":23106,"indexing_status":"idle","indexing_active":false,
+ "documents_count":23125,"indexing_status":"idle","indexing_active":false,
  "index_en_exists":true,"documents_count_en":23104,"version":"2.0.0"}
 ```
 
@@ -105,22 +105,61 @@ Schemas, limits and the exact behaviour on ambiguous or missing names:
 
 ## Language support
 
-Element names are searchable in both languages. `НайтиСтроки` and `FindRows`
-both resolve to the same element, and so do `Добавить` and `Add` — the Russian
-reference book carries both names in every element page title
+Every tool takes a `lang` argument (`"ru"` or `"en"`, default from the
+`DEFAULT_HELP_LANG` environment variable) that picks which book the *answer*
+comes from — the Russian index or the English one — and therefore its
+language. It is a separate axis from the name you pass in.
+
+**Under the default `lang="ru"`, both languages resolve.** `НайтиСтроки` and
+`FindRows` both find the same element, and so do `Добавить` and `Add` — the
+Russian reference book carries both names in every element page title
 (`<h1>НайтиСтроки (FindRows)</h1>`), and the indexer splits them into separate
-`name_ru` and `name_en` fields. Of 20 134 element pages in the current index,
-19 841 carry an English name.
+`name_ru`/`name_en` fields. All 20 159 element pages in the current index
+carry an English name. Object names resolve too: `list_1c_object_members(
+object="ValueTable")` and `get_1c_element(name="Add", object="Array")` both
+work, even though object pages don't print an English name in their own title
+the way element pages do — the server backfills it from the optional English
+index (see below) onto the matching Russian object page after indexing. Of
+the 2 577 object pages, 2 326 (about 90%) have picked up an English name this
+way, and all 389 constructor pages did too; the remaining 251 objects answer
+only to their Russian name. Either way, the card itself — description,
+parameters, availability, example — is Russian, because that is the only
+language the Russian book carries them in.
 
-**Object names are Russian only.** The 2 506 object pages carry no English name
-in their titles, so `list_1c_object_members(object="ValueTable")` and
-`get_1c_element(name="Add", object="Array")` both fail to resolve. Use
-`ТаблицаЗначений` and `Массив`. The same applies to the 385 constructor pages.
+**`lang="en"` is a different thing: a genuinely English answer, end to end**,
+from the optional second book (`shcntx_root.hbk` — see
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md#английская-книга-справки)), not
+a translation of the Russian one. It requires that book to be indexed, and it
+requires an English name — passing a Russian one is refused outright rather
+than silently searched for in the Russian index under the guise of an English
+answer (see below). Real output of `get_1c_element(name="Add", object="Array",
+lang="en")` against the current English index (23 104 documents):
 
-Descriptions, parameters, examples and availability are Russian only, because
-the Russian book contains them only in Russian.
+```
+Array.Add — procedure of Array
 
-Full English reference support is planned — see [Roadmap](#roadmap).
+Call: Array.Add(<Value>)
+Parameters:
+    Value — Arbitrary, optional
+      Added value. If not specified, a value of Undefined type will be added.
+
+Returns: nothing (procedure)
+Availability: thin client, web-client, mobile client, server, thick client, external connection, mobile application (client), mobile application (server), mobile standalone server
+Available since: 8.0
+
+Description: Adds an element to the end of the array.
+Note: When an element is added, the number of elements in the array is increased by 1.
+Example:
+  Array.Add("First");
+  Array.Add("Second");
+```
+
+A call that mixes languages the wrong way — a Cyrillic name with `lang="en"`,
+or any `lang="en"` call before the English book has been indexed — gets an
+explained refusal instead of a silent empty answer. The reverse never
+happens: `lang="ru"` accepts an English name freely, because the Russian book
+carries both. Exact wording of all three refusal cases:
+[docs/MCP_TOOLS.md](docs/MCP_TOOLS.md#кросс-языковые-запросы).
 
 ## Differences from the upstream project
 
@@ -145,8 +184,6 @@ Full attribution and the complete list of changes: [NOTICE](NOTICE).
 
 ## Roadmap
 
-- English reference support from `shcntx_root.hbk`, so that descriptions,
-  parameters and examples are available in English too — not just names.
 - Reference for the 1C language, the query language and the DCS expression
   language (`shlang`, `shquery`, `shclang`). These books use a different page
   format and need a separate parser.
