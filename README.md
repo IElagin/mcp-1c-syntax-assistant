@@ -48,6 +48,13 @@ Real output of `get_1c_element(name="Добавить", object="Массив")`:
 > **The `.hbk` syntax reference file is not included.** It is proprietary and
 > ships with your licensed 1C:Enterprise installation — copy it from there.
 > Do not redistribute it.
+>
+> The repository does carry 25 pages out of the two books — 15 Russian and 10
+> English — under `tests/fixtures/`, as samples for the parser tests.
+> The defects those tests guard against reproduce only on the real
+> markup, and requiring the books themselves — tens of megabytes, present
+> neither in CI nor in an outside reader's checkout — would leave the parser
+> untested. The books as such are still not redistributed here.
 
 On Windows the file lives next to the platform binaries:
 
@@ -201,8 +208,10 @@ MIT — see [LICENSE](LICENSE). Attribution of the upstream project and the list
 of changes made here: [NOTICE](NOTICE). The upstream project is
 [Antonio1C/1c-syntax-helper-mcp](https://github.com/Antonio1C/1c-syntax-helper-mcp).
 
-The licence covers this source code only. It does not cover the 1C:Enterprise
-syntax reference file, which is proprietary and is not part of this repository.
+The licence covers this source code only. It does not cover the proprietary
+1C:Enterprise syntax reference — neither the `.hbk` files, which are not part
+of this repository, nor the 25 sample pages under `tests/fixtures/` that the
+parser tests are built on (see [NOTICE](NOTICE)).
 
 ## Documentation
 
