@@ -44,6 +44,60 @@ def nodes_until_boundary(start, boundary_classes) -> list:
     return nodes
 
 
+# Имена настоящих HTML-элементов. Список закрытый и конечный, поэтому всё, что
+# в него не входит, тегом не является — даже если записано как тег.
+_HTML_TAG_NAMES = frozenset("""
+a abbr acronym address applet area article aside audio b base basefont bdi bdo
+big blockquote body br button canvas caption center cite code col colgroup data
+datalist dd del details dfn dialog dir div dl dt em embed fieldset figcaption
+figure font footer form frame frameset h1 h2 h3 h4 h5 h6 head header hgroup hr
+html i iframe img input ins kbd label legend li link main map mark marquee menu
+meta meter nav noframes noscript object ol optgroup option output p param
+picture pre progress q rp rt ruby s samp script search section select slot small
+source span strike strong style sub summary sup table tbody td template textarea
+tfoot th thead time title tr track tt u ul var video wbr
+""".split())
+
+# Кандидат в теги: «<», необязательный слеш закрывающего тега, имя из
+# ASCII-букв и всё до «>» без вложенных угловых скобок.
+_TAG_LIKE_RE = re.compile(r'<\s*/?\s*(?P<name>[A-Za-z][^\s<>/]*)[^<>]*>')
+
+
+def escape_pseudo_tags(html_content: str) -> str:
+    """Экранирует плейсхолдеры, записанные сырыми угловыми скобками.
+
+    В книгах справки плейсхолдер внутри раздела «Синтаксис» иногда записан без
+    экранирования: «ПродолжитьВызов(&lt;<Значение1>,...,<ЗначениеN>&gt;)» —
+    внешние скобки экранированы, внутренние нет. Русская книга от этого не
+    страдает: имя тега по HTML5 обязано начинаться с ASCII-буквы, а
+    «<Значение1>» начинается с кириллицы, поэтому токенизатор оставляет его
+    текстом. Английская книга на том же самом месте пишет «<Value1>» и
+    «<size0>,...,<sizeN-1>» — токенизатор открывает НАСТОЯЩИЙ тег, который
+    никогда не закрывается и поглощает весь остаток документа. В индекс
+    попадала строка вызова длиной со страницу: у ProceedWithCall в поле Call
+    лежало 1195 знаков всего текста подряд, включая примеры и доступность.
+
+    Правка задачи 3 (_serialize_for_reparsing) закрыла тот же класс дефектов
+    только для ПОВТОРНОГО разбора уже разобранной страницы. Порча же
+    происходит в ПЕРВОМ разборе, до которого та правка не доживает: там ещё
+    нет ни NavigableString, ни дерева — есть только текст файла. Поэтому чинить
+    надо здесь, на входе, а не на выходе.
+
+    Решение принимается по имени: список HTML-элементов закрыт, и «Value1»,
+    «size0», «AddInName» в нём отсутствуют. Настоящая разметка книги
+    («<p class=…>», «<TABLE width="100%">», «</font>») проходит нетронутой —
+    её имена в списке есть, регистр не важен. Экранируются ровно «<» и «>»
+    самого совпадения: html.escape тронул бы ещё и «&», а внутри разметки
+    амперсанды уже могут быть сущностями.
+    """
+    def escape_match(match: re.Match) -> str:
+        if match.group('name').lower() in _HTML_TAG_NAMES:
+            return match.group(0)
+        return match.group(0).replace('<', '&lt;').replace('>', '&gt;')
+
+    return _TAG_LIKE_RE.sub(escape_match, html_content)
+
+
 def _serialize_for_reparsing(node) -> str:
     """Строка узла, годная к повторному разбору как HTML.
 
@@ -57,6 +111,11 @@ def _serialize_for_reparsing(node) -> str:
     и потому уцелевает случайно. Отсюда была разница между русской и английской
     книгой на одном и том же месте разметки: дело в форме плейсхолдера, а не в
     языке справки.
+
+    Это чинит только ПОВТОРНЫЙ разбор. Тот же класс дефектов на ПЕРВОМ разборе
+    страницы — сырой «<Value1>» прямо в файле книги — закрывает
+    escape_pseudo_tags выше: сюда порча первого разбора не доживает, здесь уже
+    есть дерево, а поглощённый настоящим тегом текст в него не попал.
 
     Правка не только чинит английский разбор: сверка всей русской книги до и
     после (23 125 документов) показала расхождение на 113 документах, 399
@@ -108,7 +167,11 @@ class HTMLParser:
             html_content = self._decode_content(content)
             if not html_content:
                 return None
-            
+
+            # До первого BeautifulSoup, а не после: сырой «<Value1>» открывает
+            # настоящий тег уже на этом разборе и съедает остаток страницы.
+            html_content = escape_pseudo_tags(html_content)
+
             # Парсим HTML
             soup = BeautifulSoup(html_content, 'html.parser')
             
