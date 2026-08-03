@@ -134,6 +134,52 @@ def test_extra_argument_is_not_swallowed_silently(model_cls, kwargs):
 
 
 @pytest.mark.unit
+def test_schema_declares_the_same_minimum_length_as_the_models():
+    """Схема, обещающая больше, чем принимает сервер, отправляет модель в отказ.
+
+    Модели запросов отвергают пустое имя (иначе term по пустой строке
+    совпадает со всем индексом). Схема — единственное, по чему модель судит о
+    допустимых значениях, и молчание схемы об этом ограничении означало бы, что
+    об отказе она узнаёт только на живом вызове.
+    """
+    by_name = {t["name"]: t["inputSchema"]["properties"] for t in TOOLS}
+
+    for tool, fields in (
+        ("find_1c_help", ("query", "object")),
+        ("get_1c_element", ("name", "object", "variant")),
+        ("list_1c_object_members", ("object",)),
+    ):
+        for field in fields:
+            assert by_name[tool][field].get("minLength") == 1, f"{tool}.{field}"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("model_cls, kwargs", [
+    ("Find1CHelpRequest", {"query": ""}),
+    ("Find1CHelpRequest", {"query": "х", "object": ""}),
+    ("Get1CElementRequest", {"name": ""}),
+    ("Get1CElementRequest", {"name": "х", "object": ""}),
+    ("Get1CElementRequest", {"name": "х", "variant": ""}),
+    ("List1CObjectMembersRequest", {"object": ""}),
+])
+def test_empty_name_is_rejected_instead_of_matching_everything(model_cls, kwargs):
+    """Пустая строка — не «фильтр не задан», а фильтр, совпадающий со всем.
+
+    term по name_en.keyword == "" совпадает со всеми документами английского
+    индекса: английские заголовки скобок не несут, поле пустое почти везде.
+    get_1c_element(name="", lang="en") отвечал «имя принадлежит 10 000
+    элементов» — то есть на явную ошибку вызова сервер отвечал длинным
+    правдоподобным текстом, а не отказом.
+    """
+    import src.models.mcp_models as mcp_models
+    from pydantic import ValidationError
+
+    model = getattr(mcp_models, model_cls)
+    with pytest.raises(ValidationError):
+        model(**kwargs)
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_error_kind_becomes_an_error_not_a_quiet_answer(monkeypatch):
     """element_card помечает сбой ES kind="error" — обработчик обязан

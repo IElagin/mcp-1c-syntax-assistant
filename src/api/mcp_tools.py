@@ -41,6 +41,14 @@ SEARCH_LIMIT_MAX = 200
 # укладываться в схему list_1c_object_members.
 MEMBERS_LIMIT_MAX = 1000
 
+# Пустая строка — не «параметр не задан», а фильтр, совпадающий со всем:
+# term по name_en.keyword == "" ловит весь английский индекс, потому что
+# английские заголовки скобок не несут и поле пустое почти везде. Модели
+# запросов отвергают пустые имена (src/models/mcp_models.py), и схема обязана
+# говорить то же самое: схема, обещающая больше, чем принимает сервер,
+# отправляет модель в отказ, которого та не ждала.
+MIN_NAME_LENGTH = 1
+
 TOOLS = [
     {
         "name": "find_1c_help",
@@ -58,6 +66,7 @@ TOOLS = [
             "properties": {
                 "query": {
                     "type": "string",
+                    "minLength": MIN_NAME_LENGTH,
                     "description": "Имя элемента, фрагмент имени или описание задачи",
                 },
                 "kind": {
@@ -72,6 +81,7 @@ TOOLS = [
                 },
                 "object": {
                     "type": "string",
+                    "minLength": MIN_NAME_LENGTH,
                     "description": "Искать только у этого объекта справки",
                 },
                 "limit": {
@@ -109,10 +119,12 @@ TOOLS = [
             "properties": {
                 "name": {
                     "type": "string",
+                    "minLength": MIN_NAME_LENGTH,
                     "description": "Точное имя элемента, русское или английское",
                 },
                 "object": {
                     "type": "string",
+                    "minLength": MIN_NAME_LENGTH,
                     "description": (
                         "Объект справки, которому принадлежит элемент — обязателен, "
                         "если имя неуникально"
@@ -120,6 +132,7 @@ TOOLS = [
                 },
                 "variant": {
                     "type": "string",
+                    "minLength": MIN_NAME_LENGTH,
                     "description": (
                         "Имя варианта вызова, если у элемента их несколько "
                         "(например «По индексу»)"
@@ -149,7 +162,11 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "object": {"type": "string", "description": "Имя объекта справки"},
+                "object": {
+                    "type": "string",
+                    "minLength": MIN_NAME_LENGTH,
+                    "description": "Имя объекта справки",
+                },
                 "members": {
                     "type": "string",
                     "enum": ["all", "methods", "properties", "events", "constructors"],
