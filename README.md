@@ -122,12 +122,16 @@ English one). Object names resolve too: `list_1c_object_members(object=
 "ValueTable")` and `get_1c_element(name="Add", object="Array")` both work,
 even though object pages don't print an English name in their own title the
 way element pages do — the server backfills it from the optional English
-index (see below) onto the matching Russian object page after indexing. Of
-the 2 577 object pages, 2 555 (99%) have picked up an English name this way,
-and all 389 constructor pages did too; the remaining 22 objects answer only to
-their Russian name. Either way, the card itself — description, parameters,
-availability, example — is Russian, because that is the only language the
-Russian book carries them in.
+index (see below) onto the matching Russian object page after indexing — in a
+single pass, right after both books are indexed. Of the 2 577 object pages,
+2 555 (99%) have picked up an English name this way, and all 389 constructor
+pages did too; the remaining 22 objects answer only to their Russian name, and
+there is nothing to fix on this side: 21 of those pages do not exist in the
+English book at all (it holds 23 104 pages against 23 125 in the Russian one),
+and the 22nd is titled there with the book's own internal page id rather than a
+name, which the backfill refuses to take. Either way, the card itself —
+description, parameters, availability, example — is Russian, because that is
+the only language the Russian book carries them in.
 
 **`lang="en"` is a different thing: a genuinely English answer, end to end**,
 from the optional second book (`shcntx_root.hbk` — see
