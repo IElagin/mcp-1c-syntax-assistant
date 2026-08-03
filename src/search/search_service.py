@@ -5,6 +5,7 @@ import time
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
+from src.handlers.ui_strings import RU_STRINGS, UiStrings
 from src.search.query_builder import QueryBuilder
 from src.search.ranker import SearchRanker
 from src.search.formatter import SearchFormatter
@@ -164,12 +165,17 @@ class SearchService:
         types: list,
         object_name: Optional[str] = None,
         limit: int = 10,
+        strings: UiStrings = RU_STRINGS,
     ) -> Dict[str, Any]:
         """Поиск с фильтром по видам элементов и объекту.
 
         Заменил пару find_help_by_query и search_with_context_filter: две точки
         входа с почти одинаковым смыслом заставляли агента угадывать, какая
         нужна.
+
+        strings нужен ради единственной строки — текста в error. Обработчик
+        подставляет его деталью под переведённый заголовок, и без таблицы
+        английский агент получал «Search error: Ошибка выполнения поиска».
         """
         es_query = self.query_builder.build_search_query(query, limit, "auto")
 
@@ -185,7 +191,7 @@ class SearchService:
         response = await self.es_client.search(es_query, index=self.index)
         if not response:
             return {"results": [], "total": 0, "query": query,
-                    "error": "Ошибка выполнения поиска"}
+                    "error": strings.search_failed}
 
         hits = response.get("hits", {}).get("hits", [])
         total = response.get("hits", {}).get("total", {})
@@ -223,7 +229,9 @@ class SearchService:
             totals[group_name] = total.get("value", 0) if isinstance(total, dict) else (total or 0)
         return totals
 
-    async def constructor_lines(self, object_name: str) -> List[str]:
+    async def constructor_lines(
+        self, object_name: str, strings: UiStrings = RU_STRINGS
+    ) -> List[str]:
         """Строки вызова конструкторов объекта — «Новый ТаблицаЗначений».
 
         В документе самого объекта конструкторов нет: у справки конструктор —
@@ -235,6 +243,11 @@ class SearchService:
         Имя варианта добавляется, только когда конструкторов несколько: тогда
         оно и различает страницы, и годится в аргумент variant=… у
         get_1c_element.
+
+        Обрамление имени варианта берётся из таблицы строк, а не из литерала:
+        это последняя функция сборки ответа, печатавшая пользователю русский
+        текст независимо от языка карточки — «New COMSafeArray(<Source>) —
+        вариант «From COMSafeArray»» при lang="en".
         """
         response = await self.es_client.search({
             "query": {"bool": {"filter": [
@@ -257,7 +270,9 @@ class SearchService:
             variant_name = (variant_list[0].get("variant") if variant_list else "") \
                 or doc.get("name_ru") or ""
             if len(hits) > 1 and variant_name:
-                lines.append(f"{call} — вариант «{variant_name}»")
+                lines.append(
+                    strings.constructor_variant.format(call=call, name=variant_name)
+                )
             else:
                 lines.append(call)
         return lines
@@ -540,11 +555,31 @@ class SearchService:
         состава объекта, вызывающий этот метод напрямую, получит то же
         исключение и не примет обрыв связи за "похожих нет, проверь
         написание".
+
+        Матчатся оба имени, а не одно name_ru. Задачи 11 и 12 сделали
+        английское имя объекта полноправным входом: object="ValueTable"
+        работает и в русском ответе. Но подсказка при опечатке смотрела только
+        в name_ru, и стоило ошибиться в букве — русский ответ вёл себя так,
+        будто английских имён не бывает: object="ТаблицаЗначенй" давал
+        «ТаблицаЗначений», а object="ValuTable" — «подходящих не найдено».
+        Агент читает отсутствие подсказки как «объекта в справке нет» и
+        прекращает поиск.
+
+        Возвращается по-прежнему name_ru: это ключ, который справка считает
+        каноническим и который принимают все три инструмента. В английском
+        индексе name_ru и есть английское имя, так что правило одно на оба
+        языка.
         """
         response = await self.es_client.search({
             "query": {
                 "bool": {
-                    "must": [{"match": {"name_ru": {"query": object_name, "fuzziness": "AUTO"}}}],
+                    "must": [{
+                        "multi_match": {
+                            "query": object_name,
+                            "fields": ["name_ru", "name_en"],
+                            "fuzziness": "AUTO",
+                        }
+                    }],
                     "filter": [{"term": {"type": "object"}}],
                 }
             },

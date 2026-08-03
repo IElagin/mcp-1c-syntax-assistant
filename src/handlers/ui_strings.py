@@ -73,6 +73,12 @@ class UiStrings:
     # Так рендер не должен помнить и заново не нарушить правило «render_object_card
     # зовут только для объектов» — label вычисляется одинаково во всех ветках.
     not_checked: str                # «не проверялись»
+    # Строка конструктора с именем варианта. Собирается не в карточке, а в
+    # search_service.constructor_lines — единственной функции сборки ответа,
+    # которая долго оставалась вне этой таблицы, и потому печатала русское
+    # «— вариант «…»» в английской карточке любого объекта с двумя и более
+    # конструкторами.
+    constructor_variant: str       # «{call} — вариант «{name}»»
     composition: str               # «Состав — {parts}.»
     member_names_genitive: Dict[str, str]  # ключи methods / properties / events
     listing_hint: str              # «Перечень: list_1c_object_members(object="{key}")»
@@ -150,6 +156,12 @@ class UiStrings:
     # Заголовки ошибок mcp_formatter.create_error_response. Ошибка на языке,
     # которого агент не читает, ничем не лучше ошибки без текста: он не может
     # решить следующий шаг.
+    #
+    # search_failed — деталь под этим заголовком, и она приходит из слоя поиска.
+    # Пока её там держали литералом, обработчик подставлял переведённый
+    # заголовок к непереведённой детали: «Search error: Ошибка выполнения
+    # поиска».
+    search_failed: str                 # «Ошибка выполнения поиска»
     search_error_title: str            # «Ошибка поиска»
     internal_search_error_title: str   # «Внутренняя ошибка поиска»
     card_error_title: str              # «Ошибка получения карточки»
@@ -195,6 +207,7 @@ RU_STRINGS = UiStrings(
     variant_count_short="(вариантов вызова: {count})",
     variant_description="Описание варианта: {text}",
     not_checked="не проверялись",
+    constructor_variant="{call} — вариант «{name}»",
     composition="Состав — {parts}.",
     member_names_genitive={
         "methods": "методов", "properties": "свойств", "events": "событий",
@@ -292,6 +305,7 @@ RU_STRINGS = UiStrings(
     ),
     found_count="Найдено {total} элементов по запросу «{query}».",
     full_card_hint_generic="Полная карточка: get_1c_element(name=…, object=…)",
+    search_failed="Ошибка выполнения поиска",
     search_error_title="Ошибка поиска",
     internal_search_error_title="Внутренняя ошибка поиска",
     card_error_title="Ошибка получения карточки",
@@ -341,6 +355,7 @@ EN_STRINGS = UiStrings(
     variant_count_short="(call variants: {count})",
     variant_description="Variant description: {text}",
     not_checked="not checked",
+    constructor_variant='{call} — variant "{name}"',
     composition="Members — {parts}.",
     member_names_genitive={
         "methods": "methods", "properties": "properties", "events": "events",
@@ -440,6 +455,7 @@ EN_STRINGS = UiStrings(
     ),
     found_count='Found {total} elements for the query "{query}".',
     full_card_hint_generic="Full card: get_1c_element(name=…, object=…)",
+    search_failed="The search request failed",
     search_error_title="Search error",
     internal_search_error_title="Internal search error",
     card_error_title="Error getting the card",

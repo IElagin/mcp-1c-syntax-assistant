@@ -269,6 +269,26 @@ async def test_similar_objects_searches_object_names_not_element_names():
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
+async def test_similar_objects_helps_after_a_typo_in_the_english_name():
+    """Опечатка в английском имени объекта тоже обязана давать подсказку.
+
+    Живая асимметрия до правки: object="ТаблицаЗначенй" → «ТаблицаЗначений»,
+    object="ValuTable" → «подходящих не найдено». Английское имя объекта уже
+    полноправный вход (задачи 11 и 12), и молчание подсказки агент читает как
+    «объекта в справке нет».
+    """
+    assert await es_client.connect(), "Elasticsearch недоступен"
+    try:
+        service = SearchService(es_client)
+
+        assert "ТаблицаЗначений" in await service.similar_objects("ValuTable")
+    finally:
+        await es_client.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.elasticsearch
+@pytest.mark.asyncio
 async def test_object_filter_accepts_english_name():
     """object= принимает английское имя объекта — задача 11 заполнила object_en.
 

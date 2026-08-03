@@ -167,7 +167,7 @@ async def build_object_card(
     """
     key = doc.get("full_path") or doc.get("object") or ""
     counts = await service.member_count(key)
-    constructors = await service.constructor_lines(key)
+    constructors = await service.constructor_lines(key, strings)
     return render_object_card(doc, counts, constructors, key, strings)
 
 
@@ -193,6 +193,7 @@ async def handle_find_1c_help(
             KIND_TO_TYPE[request.kind.value],
             request.object,
             request.limit,
+            strings,
         )
 
         if result.get("error"):
