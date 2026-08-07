@@ -41,6 +41,32 @@ OBJECT_MEMBER_KINDS = [
     "object_property", "object_event",
 ]
 
+# Функции, процедуры и события глобального контекста. Отдельный вид только по
+# происхождению страницы: справка держит их в objects/Global context/, и в
+# индексе они принадлежат ровно одному объекту — глобальному контексту (510
+# документов из 510, замер по всему корпусу). Для перечня состава это такие же
+# члены, как остальные, и исключение их из фильтра стоило дорого: перечень
+# глобального контекста показывал 87 свойств и ни одного метода, то есть ни
+# Сообщить, ни СтрШаблон, ни ЗначениеЗаполнено — самые вызываемые процедуры
+# языка нельзя было перечислить вообще ничем.
+GLOBAL_MEMBER_KINDS = ["global_function", "global_procedure", "global_event"]
+
+# Всё, что справка считает членом чего-то, — против страниц-описаний объектов.
+MEMBER_KINDS = OBJECT_MEMBER_KINDS + GLOBAL_MEMBER_KINDS
+
+# Виды по группам перечня. Глобальные попадают в те же группы, что и одноимённые
+# объектные: для агента «метод» — это метод, независимо от того, вызывается он
+# через объект или напрямую.
+MEMBER_KINDS_BY_GROUP = {
+    "methods": [
+        "object_function", "object_procedure", "object_constructor",
+        "global_function", "global_procedure",
+    ],
+    "properties": ["object_property"],
+    "events": ["object_event", "global_event"],
+    "constructors": ["object_constructor"],
+}
+
 
 def _object_filter(object_name: str) -> Dict[str, Any]:
     """Term-фильтр по объекту, принимающий и русское, и английское имя.
@@ -177,7 +203,11 @@ class SearchService:
         подставляет его деталью под переведённый заголовок, и без таблицы
         английский агент получал «Search error: Ошибка выполнения поиска».
         """
-        es_query = self.query_builder.build_search_query(query, limit, "auto")
+        qualified = await self._qualified_split(query)
+        if qualified:
+            es_query = self.query_builder.build_qualified_query(*qualified, limit=limit)
+        else:
+            es_query = self.query_builder.build_search_query(query, limit, "auto")
 
         filters = []
         if types:
@@ -203,7 +233,84 @@ class SearchService:
             ),
             "total": total,
             "query": query,
+            # Объект, который поиск вычитал из самого запроса. Пустая выдача при
+            # неявном фильтре по объекту иначе объясняется как «совпадений нет
+            # во всей справке», хотя фильтр был, — тот же дефект, что чинит
+            # kind="not_in_object" у карточки, только со стороны поиска.
+            "qualified_object": qualified[0] if qualified else None,
         }
+
+    async def _qualified_split(self, query: str):
+        """Разрез «Объект.Элемент», проверенный по индексу, а не угаданный.
+
+        Синтаксис здесь не решает: и «ТаблицаЗначений.Добавить», и «Как
+        добавить строку. Пример кода» — это текст с точкой, и различает их
+        только справка. Поэтому из всех разрезов запроса берётся первый, чьё
+        левое плечо действительно является объектом справки.
+
+        Что чинит: у 3 172 документов (15,7% всех точечных путей корпуса)
+        точечный путь не находил собственный документ. Все они — объекты с
+        пробелом или точкой в имени, которые прежнее синтаксическое правило
+        отвергало: «Расширение формы клиентского приложения для плана видов
+        характеристик.РежимВыбора» уходил в семантический поиск и возвращал
+        ВидДекорацииФормы, ВидПоляФормы, ВидГруппыФормы.
+
+        Один лишний запрос в Elasticsearch — и только когда в строке есть
+        точка. Проверка объединена в одну агрегацию на все разрезы сразу:
+        отдельный exists-запрос на каждую точку превратил бы поиск по длинному
+        пути в пяток round-trip'ов.
+
+        Если ни одно плечо не опознано, возвращается узкий синтаксический
+        разбор (одна точка, без пробелов) — он оставляет фильтр по объекту,
+        и «ФоновыеЗадания.Выполнить» продолжает отвечать «объекта нет», а не
+        подсовывать элементы чужих объектов.
+        """
+        points = self.query_builder.split_points(query)
+        if not points:
+            return None
+
+        known = await self._known_objects([obj for obj, _ in points])
+        for obj, member in points:
+            if obj in known:
+                return obj, member
+
+        return self.query_builder.parse_qualified_name(query)
+
+    async def _known_objects(self, names: list) -> set:
+        """Какие из имён — настоящие объекты справки (русское имя или английское).
+
+        Агрегация, а не exists по одному имени: разрезов у длинного пути
+        столько же, сколько точек, и все они проверяются одним запросом.
+        Пересечение с исходным списком обязательно — в бакеты попадают
+        значения object у документов, найденных по object_en, и без пересечения
+        «известным» оказалось бы имя, которого в запросе не было.
+        """
+        names = [i for i in names if i]
+        if not names:
+            return set()
+
+        response = await self.es_client.search({
+            "query": {"bool": {"filter": [{"bool": {
+                "should": [
+                    {"terms": {"object": names}},
+                    {"terms": {"object_en": names}},
+                ],
+                "minimum_should_match": 1,
+            }}]}},
+            "size": 0,
+            "aggs": {
+                "ru": {"terms": {"field": "object", "size": len(names)}},
+                "en": {"terms": {"field": "object_en", "size": len(names)}},
+            },
+        }, index=self.index)
+
+        aggregations = (response or {}).get("aggregations", {})
+        found = {
+            bucket["key"]
+            for key in ("ru", "en")
+            for bucket in aggregations.get(key, {}).get("buckets", [])
+        }
+        return found & set(names)
 
     async def member_count(self, object_name: str) -> Dict[str, int]:
         """Сколько у объекта методов, свойств и событий.
@@ -212,9 +319,9 @@ class SearchService:
         переносятся, поэтому считаем документы с этим object.
         """
         groups = {
-            "methods": ["object_function", "object_procedure", "object_constructor"],
-            "properties": ["object_property"],
-            "events": ["object_event"],
+            group: types
+            for group, types in MEMBER_KINDS_BY_GROUP.items()
+            if group != "constructors"
         }
         totals = {}
         for group_name, types in groups.items():
@@ -289,24 +396,15 @@ class SearchService:
             query_filters = [_object_filter(object_name)]
             
             # Добавляем фильтры по типу элементов. "all" тоже фильтруется —
-            # без ограничения по OBJECT_MEMBER_KINDS запрос ловил документ
-            # самого объекта (type="object"), у которого object тоже равен
-            # имени объекта.
+            # без ограничения по MEMBER_KINDS запрос ловил документ самого
+            # объекта (type="object"), у которого object тоже равен имени
+            # объекта.
             if member_type == "all":
-                query_filters.append({"terms": {"type": OBJECT_MEMBER_KINDS}})
-            elif member_type == "methods":
-                type_filters = [
-                    {"term": {"type": "object_function"}},
-                    {"term": {"type": "object_procedure"}},
-                    {"term": {"type": "object_constructor"}}
-                ]
-                query_filters.append({"bool": {"should": type_filters}})
-            elif member_type == "properties":
-                query_filters.append({"term": {"type": "object_property"}})
-            elif member_type == "events":
-                query_filters.append({"term": {"type": "object_event"}})
-            elif member_type == "constructors":
-                query_filters.append({"term": {"type": "object_constructor"}})
+                query_filters.append({"terms": {"type": MEMBER_KINDS}})
+            elif member_type in MEMBER_KINDS_BY_GROUP:
+                query_filters.append(
+                    {"terms": {"type": MEMBER_KINDS_BY_GROUP[member_type]}}
+                )
             
             # Строим запрос
             elasticsearch_query = {
@@ -426,6 +524,30 @@ class SearchService:
             total = total.get("value", 0) if isinstance(total, dict) else (total or 0)
 
             if not hits:
+                # object сужает поиск — отрицание обязано сужаться вместе с
+                # ним. Прежде обе ветки ниже сливались в одну: ответ заявлял
+                # «элемента нет в справке», хотя точное совпадение искалось у
+                # одного объекта, а следующей строкой печатал этот самый
+                # элемент среди похожих — _similar_members фильтра по объекту
+                # не знает. get_1c_element(name="XMLТипЗнч",
+                # object="ФабрикаXDTO") опровергал сам себя за две строки:
+                # XMLТипЗнч в справке есть, просто у СериализаторXDTO и в
+                # глобальном контексте.
+                if object_name:
+                    elsewhere = await self._matches_ignoring_object(filters[0])
+                    if elsewhere["total"]:
+                        return {
+                            "kind": "not_in_object",
+                            "name": name,
+                            "object": object_name,
+                            "candidates": elsewhere["candidates"][:CANDIDATES_IN_RESPONSE],
+                            "total": elsewhere["total"],
+                            "full_order": elsewhere["total"] <= CANDIDATES_CAP,
+                        }
+
+                # Имени нет нигде в справке — тогда отрицание и правда про всю
+                # книгу, а похожие по имени со всей книги уместны: дело в
+                # написании имени, а не в выборе объекта.
                 return {
                     "kind": "not_found",
                     "name": name,
@@ -459,6 +581,33 @@ class SearchService:
         except Exception as e:
             logger.error(f"Ошибка дизамбигуации элемента '{name}': {e}")
             return {"kind": "error", "name": name, "error": str(e)}
+
+    async def _matches_ignoring_object(self, name_filter: dict) -> Dict[str, Any]:
+        """Где ещё в справке лежит то же точное имя — без фильтра по объекту.
+
+        Считается только когда у объекта совпадений не нашлось: это не второй
+        проход по горячему пути, а разбор одного отрицательного ответа.
+        Сначала счёт (size:0), и лишь при непустом счёте — упорядоченные
+        кандидаты: у имени, которого нет во всей книге, порядок строить не по
+        чему, а лишний запрос всё равно ушёл бы.
+
+        Порядок тот же, что при омонимии (_order_candidates), и по той же
+        причине: запрос фильтрующий, оценки у всех совпадений равны, поэтому
+        «релевантность» здесь ничего не упорядочивает.
+        """
+        response = await self.es_client.search({
+            "query": {"bool": {"filter": [name_filter]}},
+            "size": 0,
+        }, index=self.index)
+        total = (response or {}).get("hits", {}).get("total", {})
+        total = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        if not total:
+            return {"total": 0, "candidates": []}
+
+        return {
+            "total": total,
+            "candidates": await self._order_candidates([name_filter], total),
+        }
 
     async def _order_candidates(self, filters: list, total: int) -> List[Dict[str, Any]]:
         """Кандидаты при омонимии в защитимом порядке.
@@ -507,7 +656,7 @@ class SearchService:
         response = await self.es_client.search({
             "query": {"bool": {"filter": [
                 {"terms": {"object": names}},
-                {"terms": {"type": OBJECT_MEMBER_KINDS}},
+                {"terms": {"type": MEMBER_KINDS}},
             ]}},
             "size": 0,
             "aggs": {"by_object": {"terms": {"field": "object", "size": len(names)}}},

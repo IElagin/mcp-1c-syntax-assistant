@@ -229,6 +229,10 @@ class HTMLParser:
                 DocumentType.OBJECT_PROPERTY, DocumentType.OBJECT_EVENT,
                 DocumentType.OBJECT_CONSTRUCTOR,
             )
+            global_types = (
+                DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE,
+                DocumentType.GLOBAL_EVENT,
+            )
             object_name_ru, object_name_en = self._extract_object_names(soup)
             if doc.type in member_types:
                 doc.object = (
@@ -236,7 +240,23 @@ class HTMLParser:
                     or self._extract_object_name_from_title(soup)
                     or doc.object
                 )
-            elif doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
+            elif doc.type in global_types:
+                # Владелец глобальных — глобальный контекст на языке книги, а
+                # не сегмент пути. Путь английский в обеих книгах
+                # (objects/Global context/methods/...), поэтому разбор пути
+                # оставлял 510 русским страницам владельца «Global context» —
+                # имени, которого русская книга не печатает нигде. Следствия
+                # были не косметические: list_1c_object_members("Глобальный
+                # контекст") отдавал 87 свойств и ни одного метода, а
+                # get_1c_element("Сообщить", "Глобальный контекст") отвечал,
+                # что такого элемента нет.
+                #
+                # Имя берётся из диалекта, а не из object_ru страницы: у 31
+                # страницы из 510 в заголовке стоит имя раздела книги
+                # («Процедуры и функции работы с XML»), и оно завело бы десяток
+                # объектов-призраков вместо одного глобального контекста.
+                doc.object = self.dialect.global_context_name
+            else:
                 doc.object = self._extract_object_name_from_title(soup)
 
             doc.element_kind = ELEMENT_KIND_BY_TYPE.get(doc.type, "")

@@ -129,6 +129,14 @@ class UiStrings:
     similar_by_name: str          # «Похожие по имени:»
     no_similar: str               # «Похожих по имени тоже нет — проверьте написание.»
 
+    # get_1c_element: у названного объекта элемента нет, но в справке он есть.
+    # Отдельно от element_not_found: то отрицание — про всю книгу, это — про
+    # один объект, и следующий шаг у них разный (проверить написание против
+    # выбрать другой объект).
+    element_not_in_object: str    # «У объекта «{object}» нет элемента «{name}»…»
+    found_elsewhere_header: str   # «В справке это имя есть у {total} элементов:»
+    drop_object_hint: str         # «Уберите object, чтобы выбрать из них: …»
+
     # list_1c_object_members: объект есть, но состав пуст
     no_members_at_all: str        # «…но ни методов, ни свойств, ни событий, ни конструкторов…»
     no_members_of_kind: str       # «…но {kind} у него нет. Попробуйте members="all"…»
@@ -278,6 +286,18 @@ RU_STRINGS = UiStrings(
     element_not_found='Элемент с точным именем «{name}» в справке не найден.',
     similar_by_name="Похожие по имени:",
     no_similar="Похожих по имени тоже нет — проверьте написание.",
+    element_not_in_object=(
+        "У объекта «{object}» нет элемента с точным именем «{name}» — "
+        "выдачу обнулил фильтр по объекту, а не отсутствие элемента в справке."
+    ),
+    found_elsewhere_header=(
+        "В справке это имя есть у {total} элементов (сначала типы языка, "
+        "внутри — объекты с бо́льшим числом элементов в справке):"
+    ),
+    drop_object_hint=(
+        'Уберите object, чтобы выбрать из них: get_1c_element(name="{name}"), '
+        'либо посмотрите весь состав объекта: list_1c_object_members(object="{object}").'
+    ),
     no_members_at_all=(
         "Объект «{object}» в справке есть, но ни методов, ни свойств, ни "
         "событий, ни конструкторов у него не найдено."
@@ -430,6 +450,19 @@ EN_STRINGS = UiStrings(
     element_not_found='No element with the exact name "{name}" was found in the reference.',
     similar_by_name="Similar by name:",
     no_similar="There is nothing similar by name either — check the spelling.",
+    element_not_in_object=(
+        'The object "{object}" has no element with the exact name "{name}" — '
+        "the object filter zeroed out the results, not an absence of the "
+        "element from the reference."
+    ),
+    found_elsewhere_header=(
+        "The reference does have this name, on {total} elements (language "
+        "types first, then objects with more elements in the reference):"
+    ),
+    drop_object_hint=(
+        'Drop object to choose among them: get_1c_element(name="{name}"), or '
+        'look at the full member list: list_1c_object_members(object="{object}").'
+    ),
     no_members_at_all=(
         'The object "{object}" is in the reference, but no methods, '
         "properties, events or constructors were found for it."

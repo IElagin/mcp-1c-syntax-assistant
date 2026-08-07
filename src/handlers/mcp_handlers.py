@@ -9,7 +9,7 @@ from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.handlers.element_card import (
     render_element_card, render_object_card, hint_about_remainder, member_list,
-    candidate_list, list_line,
+    candidate_list, elsewhere_list, list_line,
 )
 from src.handlers.mcp_formatter import mcp_formatter
 from src.handlers.ui_strings import RU_STRINGS, UiStrings, strings_for
@@ -103,7 +103,10 @@ async def _language_mismatch(
 
 
 async def _why_empty(
-    service: SearchService, request: Find1CHelpRequest, strings: UiStrings = RU_STRINGS
+    service: SearchService,
+    request: Find1CHelpRequest,
+    strings: UiStrings = RU_STRINGS,
+    qualified_object: Optional[str] = None,
 ) -> str:
     """Почему выдача пуста: нет элемента, нет объекта или его убрал фильтр.
 
@@ -127,24 +130,30 @@ async def _why_empty(
     if strings.lang == "en" and has_cyrillic(request.query):
         lines.append(strings.russian_name_in_english_book)
 
-    if request.object:
+    # Объект бывает не только в аргументе, но и в самом запросе:
+    # find_1c_help("Массив.НесуществующийМетод") сузил выдачу фильтром по
+    # Массиву, ничего не найдя. Не назвать этот фильтр — то же умолчание, за
+    # которое отвечает kind="not_in_object" у карточки: агент читает пустоту
+    # как «во всей справке нет», хотя искали у одного объекта.
+    filtered_by = request.object or qualified_object
+    if filtered_by:
         # Исключение из object_exists и similar_objects намеренно не
         # глушится: сбой Elasticsearch долетит до внешнего except обработчика и
         # станет ошибкой, а не тихим «объекта нет».
-        if await service.object_exists(request.object):
-            lines.append(strings.object_exists_but_empty.format(object=request.object))
+        if await service.object_exists(filtered_by):
+            lines.append(strings.object_exists_but_empty.format(object=filtered_by))
         else:
-            similar = ", ".join(await service.similar_objects(request.object)) \
+            similar = ", ".join(await service.similar_objects(filtered_by)) \
                 or strings.no_similar_objects
             lines.append(
-                strings.object_not_found.format(object=request.object, similar=similar)
+                strings.object_not_found.format(object=filtered_by, similar=similar)
             )
             lines.append(strings.object_name_differs_hint)
 
     if request.kind.value != "any":
         lines.append(strings.kind_filter_hint.format(kind=request.kind.value))
 
-    if not request.object and request.kind.value == "any":
+    if not filtered_by and request.kind.value == "any":
         lines.append(strings.no_filters_hint)
 
     return "\n".join(lines)
@@ -203,7 +212,9 @@ async def handle_find_1c_help(
 
         found = result.get("results", [])
         if not found:
-            return _text_response(await _why_empty(service, request, strings))
+            return _text_response(await _why_empty(
+                service, request, strings, result.get("qualified_object")
+            ))
 
         total = result.get("total", len(found))
         lines = [strings.found_count.format(total=total, query=request.query)]
@@ -259,6 +270,12 @@ async def handle_get_1c_element(
             return _text_response(candidate_list(
                 response["name"], response["candidates"], response["total"],
                 response.get("full_order", True), strings,
+            ))
+
+        if kind == "not_in_object":
+            return _text_response(elsewhere_list(
+                response["name"], response["object"], response["candidates"],
+                response["total"], response.get("full_order", True), strings,
             ))
 
         if kind == "object_not_found":

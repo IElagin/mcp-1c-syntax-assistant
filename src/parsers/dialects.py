@@ -60,6 +60,13 @@ class HelpDialect:
     optional_flag: str
     version_available_markers: Tuple[str, ...]
     version_changed_markers: Tuple[str, ...]
+    # Как книга зовёт глобальный контекст. Путь страницы этого не говорит: он
+    # английский в обеих книгах (objects/Global context/...), и разбор пути
+    # оставлял русским глобальным функциям владельца «Global context» — имя,
+    # которого в русской справке нет ни на одной странице. Из-за этого 479
+    # процедур и функций глобального контекста не находились по имени
+    # владельца, под которым книга их и печатает.
+    global_context_name: str
 
     def chapter_of(self, heading: str) -> Optional[Chapter]:
         """Раздел по тексту заголовка; None — раздел диалекту неизвестен.
@@ -135,6 +142,7 @@ RU_DIALECT = HelpDialect(
     optional_flag="необязательный",
     version_available_markers=("доступен", "начиная"),
     version_changed_markers=("изменен", "описание"),
+    global_context_name="Глобальный контекст",
 )
 
 # Значения измерены на книгах 8.3.20.1914: 3 975 парных страниц, счётчики
@@ -171,6 +179,7 @@ EN_DIALECT = HelpDialect(
     # оба соответствующих случая.
     version_available_markers=("since version",),
     version_changed_markers=("changed in version",),
+    global_context_name="Global context",
 )
 
 _DIALECTS = {d.lang: d for d in (RU_DIALECT, EN_DIALECT)}

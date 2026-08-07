@@ -353,14 +353,16 @@ class HBKParser:
         except Exception as e:
             logger.warning(f"Ошибка парсинга файла категорий {entry.path}: {e}")
     
-    def _extract_external_7z(self, file_path: Path) -> List[HBKEntry]:
-        """Извлекает список файлов из архива через внешний 7zip."""
-        entries = []
-        
-        # Ищем доступный 7zip - сначала в PATH, затем в стандартных местах
+    def _find_7zip_command(self) -> Optional[str]:
+        """Первая работающая команда 7zip — в PATH или в стандартных местах.
+
+        Отдельным методом, а не строчками внутри разбора архива: команду ищет и
+        parse_single_file_from_archive, и раньше он звал несуществующий
+        _get_7zip_command — то есть падал с AttributeError на первом же вызове.
+        """
         zip_commands = [
             '7z',           # В PATH
-            '7z.exe',       # В PATH  
+            '7z.exe',       # В PATH
             '7za',          # В PATH (standalone версия)
             '7za.exe',      # В PATH (standalone версия)
             # Стандартные пути Windows
@@ -370,24 +372,29 @@ class HBKParser:
             '7-Zip\\7z.exe',
             '7zip\\7z.exe'
         ]
-        working_7z = None
-        
+
         for cmd in zip_commands:
             try:
                 logger.debug(f"Проверяем команду: {cmd}")
                 result = safe_subprocess_run([cmd], timeout=5)
                 # 7zip возвращает код 0 при показе help или содержит информацию о версии
                 if result.returncode == 0 or 'Igor Pavlov' in result.stdout or '7-Zip' in result.stdout:
-                    working_7z = cmd
-                    break
+                    return cmd
             except SafeSubprocessError as e:
                 logger.debug(f"Команда {cmd} не найдена: {e}")
                 continue
-        
+
+        return None
+
+    def _extract_external_7z(self, file_path: Path) -> List[HBKEntry]:
+        """Извлекает список файлов из архива через внешний 7zip."""
+        entries = []
+
+        working_7z = self._find_7zip_command()
         if not working_7z:
             logger.error("7zip не найден в системе. Проверьте установку 7-Zip")
             raise HBKParserError("7zip не найден в системе. Проверьте установку 7-Zip")
-        
+
         # Получаем список файлов (без извлечения)
         try:
             result = safe_subprocess_run([working_7z, 'l', str(file_path)], timeout=60)
@@ -586,7 +593,7 @@ class HBKParser:
         
         try:
             # Определяем команду для 7zip
-            zip_cmd = self._get_7zip_command()
+            zip_cmd = self._find_7zip_command()
             if not zip_cmd:
                 result.errors.append("7zip не найден")
                 return result
@@ -608,14 +615,22 @@ class HBKParser:
             # Парсим HTML содержимое если это HTML файл
             if target_file_path.lower().endswith('.html'):
                 try:
-                    # Декодируем содержимое
-                    html_content = content.decode('utf-8', errors='ignore')
-                    
-                    # Парсим через HTML парсер
-                    parsed_doc = self.html_parser.parse_html_content(html_content, target_file_path)
-                    
+                    # Байты, а не str: parse_html_content сам подбирает кодировку
+                    # (_decode_content перебирает utf-8, windows-1251, cp1251).
+                    # Декодирование здесь отдавало ему готовую строку, разбор
+                    # кодировки на ней возвращал None, и метод отвечал «не
+                    # удалось распарсить HTML» на странице, которая при обычной
+                    # индексации разбирается без единого замечания.
+                    parsed_doc = self.html_parser.parse_html_content(content, target_file_path)
+
                     if parsed_doc:
-                        result.documents.append(parsed_doc)
+                        # documentation — то же поле, что заполняет полный
+                        # разбор архива. Прежнее result.documents не существует
+                        # в модели ParsedHBK: присваивание падало AttributeError,
+                        # его ловил внешний except, и вызывающий получал
+                        # «Ошибка извлечения» вместо разобранной страницы.
+                        parsed_doc.build_call_strings()
+                        result.documentation.append(parsed_doc)
                         result.file_info.entries_count = 1
                         logger.info(f"Документ успешно распарсен: {parsed_doc.name}")
                     else:

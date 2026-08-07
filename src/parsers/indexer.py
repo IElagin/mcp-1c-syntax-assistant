@@ -9,6 +9,7 @@ from datetime import datetime
 from src.models.doc_models import Documentation, ParsedHBK
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
+from src.core.utils import canonical_source_file
 
 logger = get_logger(__name__)
 
@@ -196,7 +197,7 @@ class ElasticsearchIndexer:
             "note": doc.note,
             "version_from": doc.version_from,
             "examples": doc.examples,
-            "source_file": doc.source_file,
+            "source_file": canonical_source_file(doc.source_file),
             "indexed_at": datetime.now().isoformat(),
         }
     

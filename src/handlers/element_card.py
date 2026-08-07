@@ -353,6 +353,38 @@ def candidate_list(
     return "\n".join(lines)
 
 
+def elsewhere_list(
+    name: str,
+    obj: str,
+    candidates: List[Dict[str, Any]],
+    total: int,
+    full_order: bool = True,
+    strings: UiStrings = RU_STRINGS,
+) -> str:
+    """Ответ, когда у названного объекта элемента нет, а в справке он есть.
+
+    Отдельная функция, а не ветка внутри candidate_list: там перечень объясняет
+    «имя принадлежит многим — выберите», здесь — «у этого объекта его нет, зато
+    есть у других». Заголовок и совет разные, и склеивать их через флаг значило
+    бы прятать два разных ответа под одним именем.
+
+    Совет отсылает к list_1c_object_members(object=…), а не только к вызову без
+    object: у агента, который назвал объект, обычно верна догадка про объект, а
+    не про имя элемента, и состав объекта отвечает ему прямо.
+    """
+    lines = [
+        strings.element_not_in_object.format(object=obj, name=name),
+        "",
+        strings.found_elsewhere_header.format(total=total),
+    ]
+    lines.extend(f"  {list_line(k, strings)}" for k in candidates)
+    if not full_order:
+        lines.append(f"  {strings.partial_order_note}")
+    lines.append("")
+    lines.append(strings.drop_object_hint.format(name=name, object=obj))
+    return "\n".join(lines)
+
+
 def member_list(
     obj: str,
     kind: str,

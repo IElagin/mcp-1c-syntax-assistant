@@ -26,6 +26,7 @@ from typing import Dict, List, Optional
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
+from src.core.utils import canonical_source_file
 
 logger = get_logger(__name__)
 
@@ -97,10 +98,27 @@ async def _english_by_source_file(
     .keyword — в отличие от name_en). terms по source_file.keyword у
     несуществующего под-поля не падает с ошибкой, а молча не находит ничего:
     достройка выглядела бы работающей и не обновляла бы ни одного документа.
+
+    Ключом словаря служит канонический путь (canonical_source_file), а в
+    terms уходят обе записи каждого пути — и со слэшем, и с обратным слэшем.
+    Индексатор канонизирует source_file при записи, но уже собранные индексы
+    он этим не переписывает, а собраны они бывают в разных местах: русский на
+    хосте под Windows, английский в контейнере под Linux. Требовать совпадения
+    записи символ в символ значит требовать, чтобы обе книги индексировались на
+    одной платформе, — на живом стенде это условие не выполнялось, и склейка
+    молча не находила ни одной из 23 104 парных страниц.
     """
     result: Dict[str, Dict] = {}
-    for start in range(0, len(source_files), LOOKUP_CHUNK):
-        chunk = source_files[start : start + LOOKUP_CHUNK]
+    lookup = sorted({
+        variant
+        for source_file in source_files
+        for variant in (
+            canonical_source_file(source_file),
+            canonical_source_file(source_file).replace("/", "\\"),
+        )
+    })
+    for start in range(0, len(lookup), LOOKUP_CHUNK):
+        chunk = lookup[start : start + LOOKUP_CHUNK]
         response = await es_client.search(
             {
                 "query": {"terms": {"source_file": chunk}},
@@ -112,13 +130,18 @@ async def _english_by_source_file(
         for hit in response.get("hits", {}).get("hits", []):
             source_file = hit["_source"].get("source_file")
             if source_file:
-                result[source_file] = hit["_source"]
+                result[canonical_source_file(source_file)] = hit["_source"]
     return result
 
 
 def _page_stem(source_file: Optional[str]) -> str:
-    """«objects/catalog2/catalog2627.html» → «catalog2627»."""
-    name = (source_file or "").rsplit("/", 1)[-1]
+    """«objects/catalog2/catalog2627.html» → «catalog2627».
+
+    Путь канонизируется перед отрезанием: разрез только по «/» на пути вида
+    «objects\\catalog2\\catalog2627.html» вернул бы всю строку целиком, и
+    проверка на служебное имя страницы никогда бы не срабатывала.
+    """
+    name = canonical_source_file(source_file).rsplit("/", 1)[-1]
     return name[:-5] if name.endswith(".html") else name
 
 
@@ -222,7 +245,9 @@ async def backfill_english_names(
     operations = []
     doc_ids_in_order: List[str] = []
     for doc_id, source_file in source_file_of.items():
-        en_source = english.get(source_file)
+        # Ключ канонический с обеих сторон: словарь собран по каноническому
+        # пути английской страницы, а здесь тем же приводится путь русской.
+        en_source = english.get(canonical_source_file(source_file))
         if not en_source:
             continue
 
