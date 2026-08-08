@@ -90,7 +90,7 @@ def test_no_package_imports_outside_its_allowed_layers():
         if package in ROOT_MODULES:
             continue
         allowed = ALLOWED_IMPORTS.get(package, set()) | {package}
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
         for imported, line in _imported_packages(path, tree):
             if imported not in allowed:
                 violations.append(

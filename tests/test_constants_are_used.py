@@ -14,7 +14,7 @@ CONSTANTS = SRC / "core" / "constants.py"
 def _declared_names() -> set[str]:
     return {
         node.targets[0].id
-        for node in ast.parse(CONSTANTS.read_text(encoding="utf-8")).body
+        for node in ast.parse(CONSTANTS.read_text(encoding="utf-8-sig")).body
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
     }
 
@@ -24,7 +24,7 @@ def _names_mentioned_elsewhere() -> set[str]:
     for path in sorted(SRC.rglob("*.py")):
         if path == CONSTANTS or "__pycache__" in path.parts:
             continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8-sig"))):
             if isinstance(node, ast.Name):
                 mentioned.add(node.id)
             elif isinstance(node, ast.alias):
