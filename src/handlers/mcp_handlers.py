@@ -1,4 +1,4 @@
-"""Обработчики трёх инструментов MCP. Причины решений — docs/DESIGN.md."""
+"""Обработчики трёх инструментов MCP. Причины решений — docs/dev/DESIGN.md."""
 
 import re
 from typing import Optional

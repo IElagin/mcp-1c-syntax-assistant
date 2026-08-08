@@ -1,4 +1,4 @@
-"""Поиск по документации 1С. Причины решений — docs/DESIGN.md."""
+"""Поиск по документации 1С. Причины решений — docs/dev/DESIGN.md."""
 
 from typing import List, Dict, Any, Optional
 import time
