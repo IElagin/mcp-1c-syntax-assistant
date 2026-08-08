@@ -299,7 +299,7 @@ Invoke-RestMethod http://localhost:8000/health
 объявлен в `docker-compose.yml`, добавлять его самостоятельно не нужно.
 Русская и английская книги индексируются при старте независимо друг от
 друга: у каждой свой каталог, свой индекс и своё решение «нужна ли
-(пере)индексация» (`src/core/startup.py`, `auto_index_on_startup`), поэтому
+(пере)индексация» (`src/infrastructure/indexing.py`, `auto_index_on_startup`), поэтому
 добавление английской книги не трогает уже готовый русский индекс. Готовность
 видна в `/health` по полям `index_en_exists`/`documents_count_en` — так же,
 как `index_exists`/`documents_count` для русской.
@@ -313,7 +313,7 @@ Invoke-RestMethod http://localhost:8000/health
 Переиндексировать одну только английскую книгу можно перезапуском: удалите
 индекс `help1c_docs_en` в самом Elasticsearch и перезапустите контейнер
 `mcp-server`. Автоиндексация при старте решает по каждой книге отдельно
-(`_needs_indexing` в `src/core/startup.py`): если индекс уже существует и не
+(`_needs_indexing` в `src/infrastructure/indexing.py`): если индекс уже существует и не
 пуст, книга пропускается — так русский индекс останется нетронутым; если
 индекса нет, книга индексируется заново.
 
