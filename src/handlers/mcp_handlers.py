@@ -1,7 +1,7 @@
 """Обработчики трёх инструментов MCP."""
 
 import re
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from src.core.config import settings
 from src.core.constants import KIND_TO_TYPE, MEMBERS_LIMIT_MAX, SEARCH_LIMIT_MAX
@@ -92,6 +92,18 @@ async def _why_empty(
     return "\n".join(lines)
 
 
+def constructor_lines(
+    calls: List[Tuple[str, str]], strings: UiStrings
+) -> List[str]:
+    """Constructor call strings; a variant name distinguishes only several calls."""
+    if len(calls) < 2:
+        return [call for call, _ in calls]
+    return [
+        strings.constructor_variant.format(call=call, name=name) if name else call
+        for call, name in calls
+    ]
+
+
 async def build_object_card(
     service: SearchService, doc: dict, strings: UiStrings = RU_STRINGS
 ) -> str:
@@ -102,7 +114,7 @@ async def build_object_card(
     """
     key = doc.get("full_path") or doc.get("object") or ""
     counts = await service.member_count(key)
-    constructors = await service.constructor_lines(key, strings)
+    constructors = constructor_lines(await service.constructor_calls(key), strings)
     return render_object_card(doc, counts, constructors, key, strings)
 
 
@@ -124,12 +136,11 @@ async def handle_find_1c_help(
             KIND_TO_TYPE[request.kind.value],
             request.object,
             request.limit,
-            strings,
         )
 
-        if result.get("error"):
+        if result.get("search_failed"):
             return mcp_formatter.create_error_response(
-                strings.search_error_title, result["error"]
+                strings.search_error_title, strings.search_failed
             )
 
         found = result.get("results", [])

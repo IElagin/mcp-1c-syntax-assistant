@@ -130,10 +130,9 @@ async def test_constructors_come_from_separate_documents():
     try:
         service = SearchService(es_client)
 
-        assert await service.constructor_lines("ТаблицаЗначений") == [
-            "Новый ТаблицаЗначений"
-        ]
-        assert await service.constructor_lines("ТаблицаЗначенийБезКонструкторов") == []
+        calls = await service.constructor_calls("ТаблицаЗначений")
+        assert [call for call, _ in calls] == ["Новый ТаблицаЗначений"]
+        assert await service.constructor_calls("ТаблицаЗначенийБезКонструкторов") == []
     finally:
         await es_client.disconnect()
 

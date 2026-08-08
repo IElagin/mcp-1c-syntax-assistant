@@ -1,11 +1,10 @@
 """Поиск по документации 1С."""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import time
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
-from src.handlers.ui_strings import RU_STRINGS, UiStrings
 from src.search.query_builder import QueryBuilder
 from src.search.ranker import SearchRanker
 from src.search.formatter import SearchFormatter
@@ -154,7 +153,6 @@ class SearchService:
         types: list,
         object_name: Optional[str] = None,
         limit: int = 10,
-        strings: UiStrings = RU_STRINGS,
     ) -> Dict[str, Any]:
         """Поиск с фильтром по видам элементов и объекту.
 
@@ -178,7 +176,7 @@ class SearchService:
         response = await self._search(es_query)
         if not response:
             return {"results": [], "total": 0, "query": query,
-                    "error": strings.search_failed}
+                    "search_failed": True}
 
         return {
             "results": self.formatter.format_search_results(
@@ -246,10 +244,8 @@ class SearchService:
             if group in counted_groups
         }
 
-    async def constructor_lines(
-        self, object_name: str, strings: UiStrings = RU_STRINGS
-    ) -> List[str]:
-        """Строки вызова конструкторов объекта — «Новый ТаблицаЗначений»."""
+    async def constructor_calls(self, object_name: str) -> List[Tuple[str, str]]:
+        """Constructor call strings of an object, each paired with its variant name."""
         constructors = sources_of(await self._search({
             "query": {"bool": {"filter": [
                 _object_filter(object_name),
@@ -260,22 +256,16 @@ class SearchService:
             "_source": ["call_primary", "name_ru", "variants.variant"],
         }))
 
-        lines = []
+        calls = []
         for doc in constructors:
             call = doc.get("call_primary") or ""
             if not call:
                 continue
             variants = doc.get("variants") or []
-            # Имя варианта различает страницы, только когда их несколько.
             variant_name = (variants[0].get("variant") if variants else "") \
                 or doc.get("name_ru") or ""
-            if len(constructors) > 1 and variant_name:
-                lines.append(
-                    strings.constructor_variant.format(call=call, name=variant_name)
-                )
-            else:
-                lines.append(call)
-        return lines
+            calls.append((call, variant_name))
+        return calls
 
     async def get_object_members_list(
         self,
