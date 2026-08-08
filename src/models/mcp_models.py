@@ -5,8 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
 from src import __version__
-from src.api.mcp_tools import SEARCH_LIMIT_MAX
 from src.core.config import settings
+from src.core.constants import (
+    MEMBERS_LIMIT_DEFAULT,
+    MEMBERS_LIMIT_MAX,
+    SEARCH_LIMIT_DEFAULT,
+    SEARCH_LIMIT_MAX,
+)
 
 
 class MCPToolType(str, Enum):
@@ -54,7 +59,10 @@ class Find1CHelpRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Поисковый запрос")
     kind: SearchKind = Field(SearchKind.ANY, description="Чем ограничить поиск")
     object: Optional[str] = Field(None, min_length=1, description="Искать только у этого объекта")
-    limit: int = Field(10, ge=1, le=SEARCH_LIMIT_MAX, description="Сколько кандидатов вернуть")
+    limit: int = Field(
+        SEARCH_LIMIT_DEFAULT, ge=1, le=SEARCH_LIMIT_MAX,
+        description="Сколько кандидатов вернуть",
+    )
     lang: Lang = Field(
         default_factory=lambda: Lang(settings.default_help_lang),
         description="Язык ответа",
@@ -80,7 +88,10 @@ class List1CObjectMembersRequest(BaseModel):
 
     object: str = Field(..., min_length=1, description="Имя объекта справки")
     members: MemberType = Field(MemberType.ALL, description="Какие элементы перечислить")
-    limit: int = Field(100, ge=1, le=1000, description="Сколько элементов вернуть")
+    limit: int = Field(
+        MEMBERS_LIMIT_DEFAULT, ge=1, le=MEMBERS_LIMIT_MAX,
+        description="Сколько элементов вернуть",
+    )
     lang: Lang = Field(
         default_factory=lambda: Lang(settings.default_help_lang),
         description="Язык ответа",

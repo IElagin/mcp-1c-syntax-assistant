@@ -27,3 +27,18 @@ EXTRACTION_TIMEOUT_SECONDS = 300
 
 DEFAULT_REQUEST_TIMEOUT = 30
 MAX_REQUEST_SIZE_MB = 10
+
+SEARCH_LIMIT_DEFAULT = 10
+SEARCH_LIMIT_MAX = 200
+MEMBERS_LIMIT_DEFAULT = 100
+MEMBERS_LIMIT_MAX = 1000
+MIN_NAME_LENGTH = 1
+
+KIND_TO_TYPE = {
+    "any": [],
+    "global": ["global_function", "global_procedure", "global_event"],
+    "method": ["object_function", "object_procedure"],
+    "property": ["object_property"],
+    "event": ["object_event"],
+    "constructor": ["object_constructor"],
+}

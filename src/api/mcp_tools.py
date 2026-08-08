@@ -11,9 +11,13 @@
 """
 
 from src.core.config import settings
-
-SEARCH_LIMIT_DEFAULT = 10
-MEMBERS_LIMIT_DEFAULT = 100
+from src.core.constants import (
+    MEMBERS_LIMIT_DEFAULT,
+    MEMBERS_LIMIT_MAX,
+    MIN_NAME_LENGTH,
+    SEARCH_LIMIT_DEFAULT,
+    SEARCH_LIMIT_MAX,
+)
 
 DEFAULT_LANG = settings.default_help_lang
 
@@ -23,12 +27,6 @@ LANG_DESCRIPTION = (
     "можно передать на любом языке. Передавайте en, если "
     "пользователь работает по-английски."
 )
-
-SEARCH_LIMIT_MAX = 200
-
-MEMBERS_LIMIT_MAX = 1000
-
-MIN_NAME_LENGTH = 1
 
 TOOLS = [
     {
@@ -173,14 +171,3 @@ TOOLS = [
         },
     },
 ]
-
-# Отображение kind в поле type индекса. Глобальные события попадают только
-# под global: в коде их пишут не как методы объекта.
-KIND_TO_TYPE = {
-    "any": [],
-    "global": ["global_function", "global_procedure", "global_event"],
-    "method": ["object_function", "object_procedure"],
-    "property": ["object_property"],
-    "event": ["object_event"],
-    "constructor": ["object_constructor"],
-}

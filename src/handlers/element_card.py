@@ -7,7 +7,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from src.api.mcp_tools import SEARCH_LIMIT_MAX
+from src.core.constants import SEARCH_LIMIT_MAX
 from src.handlers.mcp_formatter import truncate_at_sentence
 from src.handlers.ui_strings import RU_STRINGS, UiStrings
 

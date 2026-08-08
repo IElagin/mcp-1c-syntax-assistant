@@ -3,8 +3,8 @@
 import re
 from typing import Optional
 
-from src.api.mcp_tools import KIND_TO_TYPE, SEARCH_LIMIT_MAX, MEMBERS_LIMIT_MAX
 from src.core.config import settings
+from src.core.constants import KIND_TO_TYPE, MEMBERS_LIMIT_MAX, SEARCH_LIMIT_MAX
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.handlers.element_card import (
