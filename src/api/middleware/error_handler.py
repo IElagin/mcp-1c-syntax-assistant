@@ -3,7 +3,7 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from src.core.validation import ValidationError
+from src.core.errors import ValidationError
 from src.parsers.hbk_parser import HBKParserError
 from src.core.metrics import get_metrics_collector
 from src.core.logging import get_logger

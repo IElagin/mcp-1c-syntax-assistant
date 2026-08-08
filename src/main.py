@@ -1,4 +1,4 @@
-﻿"""Главное приложение MCP сервера синтаксис-помощника 1С."""
+"""Главное приложение MCP сервера синтаксис-помощника 1С."""
 
 import sys
 import argparse
@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src import __version__
 from src.core.config import settings
 from src.core.logging import get_logger
-from src.core.validation import ValidationError
+from src.core.errors import ValidationError
 from src.parsers.hbk_parser import HBKParserError
 from src.app.lifecycle import startup, shutdown
 
@@ -38,7 +38,7 @@ def parse_arguments():
         action="store_true",
         help="Принудительная переиндексация при запуске (игнорирует существующие данные)"
     )
-    
+
     args, unknown = parser.parse_known_args()
     return args
 
@@ -86,7 +86,7 @@ app.include_router(mcp_router)
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         app,  # Передаем объект напрямую, а не строку
         host=settings.server.host,
