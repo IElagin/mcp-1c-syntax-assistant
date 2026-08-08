@@ -25,10 +25,7 @@ ALLOWED_IMPORTS = {
 
 ROOT_MODULES = {"main", "__init__"}
 
-PACKAGES = {
-    entry.name for entry in SRC.iterdir()
-    if entry.is_dir() and (entry / "__init__.py").exists()
-}
+PACKAGES = set(ALLOWED_IMPORTS)
 
 
 def _relative_target(path: Path, level: int, module: str | None) -> str | None:
@@ -50,8 +47,10 @@ def _imported_packages(path: Path, tree: ast.Module) -> list[tuple[str, int]]:
         if isinstance(node, ast.ImportFrom):
             if node.level:
                 target = _relative_target(path, node.level, node.module)
-                if target in PACKAGES:
-                    imported.append((target, node.lineno))
+                targets = [target] if target else [alias.name for alias in node.names]
+                imported.extend(
+                    (name, node.lineno) for name in targets if name in PACKAGES
+                )
             elif node.module == "src":
                 imported.extend(
                     (alias.name, node.lineno)
@@ -110,3 +109,16 @@ def test_a_relative_import_resolves_to_the_package_it_lands_in():
     assert _relative_target(module, 2, "handlers") == "handlers"
     nested = SRC / "infrastructure" / "background" / "anything.py"
     assert _relative_target(nested, 2, "indexing") == "infrastructure"
+
+
+def test_every_spelling_of_a_cross_package_import_is_seen():
+    module = SRC / "search" / "anything.py"
+    for source in (
+        "from src.handlers import x",
+        "import src.handlers.x",
+        "from src import handlers",
+        "from ..handlers import x",
+        "from .. import handlers",
+    ):
+        seen = [package for package, _ in _imported_packages(module, ast.parse(source))]
+        assert seen == ["handlers"], source
