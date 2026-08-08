@@ -49,19 +49,12 @@ async def get_mcp_tools():
 async def mcp_sse_endpoint():
     """MCP Server-Sent Events endpoint для потокового соединения."""
     async def event_stream():
-        # Отправляем начальное событие подключения
         yield f"data: {json.dumps({'type': 'connection', 'status': 'connected'})}\n\n"
 
-        # Поддерживаем соединение живым
         while True:
             await asyncio.sleep(1)
             yield f"data: {json.dumps({'type': 'ping', 'timestamp': int(time.time())})}\n\n"
 
-    # Access-Control-Allow-Origin здесь не выставляется: заголовок ставит
-    # CORSMiddleware по настройке CORS_ALLOW_ORIGINS, как и для всех остальных
-    # ответов. Захардкоженная звёздочка переживала сужение списка источников —
-    # middleware для незнакомого Origin своего заголовка не добавляет и потому
-    # чужой не перетирал, — и запрещённый источник всё равно получал доступ.
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
@@ -82,7 +75,6 @@ async def mcp_jsonrpc_endpoint(
         body = await request.body()
         data = json.loads(body.decode('utf-8'))
 
-        # Проверяем JSON-RPC формат
         if data.get("jsonrpc") != "2.0":
             return JSONResponse(
                 status_code=400,
@@ -93,23 +85,13 @@ async def mcp_jsonrpc_endpoint(
         params = data.get("params", {})
         request_id = data.get("id")
 
-        # Обрабатываем initialize запрос
         if method == "initialize":
             return JSONResponse(content={
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": {
                     "protocolVersion": "2025-06-18",
-                    # Объявляем только capabilities, которые реально
-                    # реализованы. Раньше здесь стояли resources, prompts,
-                    # roots и sampling: resources/list не реализован вовсе (упал
-                    # бы -32601), prompts/list отдавал пустоту, а sampling —
-                    # вообще capability клиента, не сервера. Заявленное, но не
-                    # работающее хуже отсутствующего: клиент не проверяет
-                    # заранее, он узнаёт о расхождении на реальном вызове.
                     "capabilities": {"tools": {}},
-                    # Версия — из src/__init__.py: клиент видит ту же версию,
-                    # что объявляет пакет.
                     "serverInfo": {
                         "name": "1c-syntax-helper-mcp",
                         "version": __version__
@@ -117,7 +99,6 @@ async def mcp_jsonrpc_endpoint(
                 }
             })
 
-        # Обрабатываем tools/list запрос
         elif method == "tools/list":
             return JSONResponse(content={
                 "jsonrpc": "2.0",
@@ -125,11 +106,9 @@ async def mcp_jsonrpc_endpoint(
                 "result": {"tools": TOOLS}
             })
 
-        # Обрабатываем notifications/initialized (без ответа)
         elif method == "notifications/initialized":
             return JSONResponse(content={"status": "ok"})
 
-        # Обрабатываем tools/call запрос
         elif method == "tools/call":
             if not isinstance(params, dict):
                 return call_error(request_id, "params must be an object")
@@ -137,13 +116,6 @@ async def mcp_jsonrpc_endpoint(
             tool_name = params.get("name")
             arguments = params.get("arguments", {})
 
-            # Промах вызывающего нельзя объявлять поломкой сервера. Раньше
-            # MCPRequest бросал ValidationError на неизвестном имени или на
-            # arguments не-объектом, та долетала до общего except и уходила
-            # клиенту как -32603 Internal error с трейсом pydantic. Агент
-            # читает «internal error» как «сервер сломался» и бросает попытки,
-            # хотя чинилось это им самим — заменой имени. По MCP неизвестный
-            # инструмент и негодные аргументы — протокольная ошибка -32602.
             if tool_name not in TOOL_NAMES:
                 return call_error(
                     request_id,
@@ -157,16 +129,11 @@ async def mcp_jsonrpc_endpoint(
                     f"arguments must be an object for tool {tool_name}",
                 )
 
-            # Преобразуем в наш формат MCPRequest
             mcp_request = MCPRequest(tool=tool_name, arguments=arguments)
 
-            # Вызываем наш существующий обработчик
             result = await mcp_endpoint_handler(mcp_request, es_client)
             error = getattr(result, "error", None)
 
-            # Раньше здесь всегда стояло isError: false, а content при ошибке
-            # был пуст — агент получал «успешный пустой ответ» и не понимал,
-            # что случилось.
             content = result.content if not error else [
                 {"type": "text", "text": error}
             ]
@@ -209,14 +176,12 @@ async def mcp_endpoint_handler(request: MCPRequest, es_client: ElasticsearchClie
     logger.info(f"Получен MCP запрос: {request.tool}")
 
     try:
-        # Проверяем подключение к Elasticsearch
         if not await es_client.is_connected():
             raise HTTPException(
                 status_code=503,
                 detail="Elasticsearch недоступен"
             )
 
-        # Маршрутизируем запрос к трём инструментам контракта
         if request.tool == MCPToolType.FIND_1C_HELP:
             return await handle_find_1c_help(Find1CHelpRequest(**request.arguments), es_client)
         elif request.tool == MCPToolType.GET_1C_ELEMENT:

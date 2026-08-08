@@ -16,19 +16,15 @@ async def rate_limit_middleware(request: Request, call_next):
     rate_limiter = get_rate_limiter()
     metrics = get_metrics_collector()
     
-    # Получаем IP клиента
     client_ip = request.client.host if request.client else "unknown"
     
     try:
-        # Проверяем rate limit
         await rate_limiter.check_rate_limit(client_ip)
         
-        # Измеряем время выполнения запроса
         start_time = time.time()
         response = await call_next(request)
         response_time = time.time() - start_time
         
-        # Записываем метрики
         await metrics.record_timer("request.duration", response_time, 
                                  {"method": request.method, "path": request.url.path})
         await metrics.update_performance_stats(

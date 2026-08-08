@@ -21,165 +21,105 @@ class UiStrings:
 
     lang: str
 
-    # Виды элементов. Ключи — значения element_kind, они выводятся из типа
-    # документа и остаются русскими на обоих языках.
     element_kind_names: Dict[str, str]
 
-    # Заголовок карточки
-    heading_global: str          # «{kind} глобального контекста»
-    heading_of_object: str       # «{kind} объекта {owner}»
-    object_word: str             # «объект»
+    heading_global: str
+    heading_of_object: str
+    object_word: str
 
-    # Метки вызова. Ключи те же — значения element_kind.
-    call: str                    # «Вызов»
-    call_property: str           # «Обращение»
-    call_object: str             # «Конструкторы»
+    call: str
+    call_property: str
+    call_object: str
 
-    # Параметры
-    parameters: str              # «Параметры:»
-    no_parameters: str           # «Параметры: нет»
-    required: str                # «обязательный»
-    optional: str                # «необязательный»
-    requiredness_unknown: str    # «обязательность в справке не указана»
+    parameters: str
+    no_parameters: str
+    required: str
+    optional: str
+    requiredness_unknown: str
 
-    # Возврат, доступность, версия
-    returns: str                 # «Возвращает: {value}»
-    returns_nothing: str         # «Возвращает: нет (процедура)»
-    availability: str            # «Доступность: {items}»
-    availability_unknown: str    # «Доступность: в справке не указана»
-    available_since: str         # «Доступно с: {version}»
+    returns: str
+    returns_nothing: str
+    availability: str
+    availability_unknown: str
+    available_since: str
 
-    # Тело карточки
-    not_in_help: str             # «в справке не указано»
-    description: str             # «Описание: {text}»
-    description_missing: str     # «в справке отсутствует»
-    note: str                    # «Примечание: {text}»
-    example: str                 # «Пример:»
-    no_examples: str             # «Примеров в справке нет.»
-    value_type: str              # «Тип значения: {value}»
-    access: str                  # «Доступ: {value}»
-    variant_named: str           # «Вариант «{name}»»
-    variant_count: str           # «Вариантов вызова: {count}»
-    variant_count_short: str     # «(вариантов вызова: {count})»
+    not_in_help: str
+    description: str
+    description_missing: str
+    note: str
+    example: str
+    no_examples: str
+    value_type: str
+    access: str
+    variant_named: str
+    variant_count: str
+    variant_count_short: str
 
-    # «Описание варианта: …» — привязано к конкретному варианту вызова, а не
-    # к элементу целиком (задача 1: у метода с несколькими вариантами
-    # описания вариантов разные, и склейка в одно поле их бы стёрла).
-    variant_description: str     # «Описание варианта: {text}»
+    variant_description: str
 
-    # Карточка объекта. not_checked — фрагмент, а не готовая фраза: он всегда
-    # сочетается с меткой вызова (_call_label), как и not_in_help в соседней
-    # ветке той же функции («{label}: не проверялись» / «{label}: {not_in_help}»).
-    # Так рендер не должен помнить и заново не нарушить правило «render_object_card
-    # зовут только для объектов» — label вычисляется одинаково во всех ветках.
-    not_checked: str                # «не проверялись»
-    # Строка конструктора с именем варианта. Собирается не в карточке, а в
-    # search_service.constructor_lines — единственной функции сборки ответа,
-    # которая долго оставалась вне этой таблицы, и потому печатала русское
-    # «— вариант «…»» в английской карточке любого объекта с двумя и более
-    # конструкторами.
-    constructor_variant: str       # «{call} — вариант «{name}»»
-    composition: str               # «Состав — {parts}.»
-    member_names_genitive: Dict[str, str]  # ключи methods / properties / events
-    listing_hint: str              # «Перечень: list_1c_object_members(object="{key}")»
-    nothing_to_list: str           # «Перечень: запрашивать нечего — …»
+    not_checked: str
+    constructor_variant: str
+    composition: str
+    member_names_genitive: Dict[str, str]
+    listing_hint: str
+    nothing_to_list: str
 
-    # Списки и подсказки
-    members_header: str          # «Состав объекта {obj}.»
-    methods_word: str            # «Методы»
-    constructors_word: str       # «Конструкторы»
-    properties_word: str         # «Свойства»
-    events_word: str             # «События»
-    shown_of_total: str          # «Показано {shown} из {total}. Полный список: {call}.»
-    shown_of_total_capped: str   # «Показано {shown} из {total}. За один вызов …»
-    full_card_hint: str          # «Полная карточка: get_1c_element(name=…, object="{obj}")»
+    members_header: str
+    methods_word: str
+    constructors_word: str
+    properties_word: str
+    events_word: str
+    shown_of_total: str
+    shown_of_total_capped: str
+    full_card_hint: str
 
-    # Омонимия
-    ambiguous_header: str        # «Имя «{name}» найдено у {total} элементов — …»
-    ambiguous_hint: str          # «Уточните объект: get_1c_element(…)»
-    candidates_header: str       # «Кандидаты (сначала типы языка, …):»
-    partial_order_note: str      # «(порядок построен не по всем совпадениям …)»
-
-    # Сообщения обработчиков mcp_handlers.py: карточка отвечает "что вызывать",
-    # а эти строки — "почему карточки нет". Английский агент, получивший здесь
-    # русский текст, не может прочитать ни причину, ни совет, который из неё
-    # следует — ровно тот же дефект, что решает вся эта таблица для карточки.
-
-    # find_1c_help вернул пусто (_why_empty)
-    nothing_found: str            # «По запросу «{query}» ничего не найдено.»
-    object_exists_but_empty: str  # «Объект «{object}» в справке есть, но…»
-    object_not_found: str         # «Объект «{object}» в справке не найден — выдачу обнулил фильтр…»
-    object_name_differs_hint: str  # «Имя объекта в справке может отличаться…»
-    kind_filter_hint: str         # «Поиск был ограничен видом kind="{kind}"…»
-    no_filters_hint: str          # «Ни фильтра по объекту, ни фильтра по виду не было…»
-
-    # Фрагмент, а не готовая фраза: вставляется вместо пустого списка похожих
-    # объектов в трёх местах (_why_empty, get_1c_element, list_1c_object_members).
-    no_similar_objects: str       # «подходящих не найдено»
-
-    # get_1c_element: элемент искали у объекта, которого в справке нет
-    object_missing_for_element: str  # «Объект «{object}» в справке не найден, поэтому элемент…»
-
-    # get_1c_element: у элемента нет варианта с таким именем
-    variant_not_found: str        # «Варианта «{variant}» у элемента «{name}» нет…»
-    single_variant_no_name: str   # «вариант единственный и без имени»
-
-    # get_1c_element: точного совпадения по имени нет вообще
-    element_not_found: str        # «Элемент с точным именем «{name}» в справке не найден.»
-    similar_by_name: str          # «Похожие по имени:»
-    no_similar: str               # «Похожих по имени тоже нет — проверьте написание.»
-
-    # get_1c_element: у названного объекта элемента нет, но в справке он есть.
-    # Отдельно от element_not_found: то отрицание — про всю книгу, это — про
-    # один объект, и следующий шаг у них разный (проверить написание против
-    # выбрать другой объект).
-    element_not_in_object: str    # «У объекта «{object}» нет элемента «{name}»…»
-    found_elsewhere_header: str   # «В справке это имя есть у {total} элементов:»
-    drop_object_hint: str         # «Уберите object, чтобы выбрать из них: …»
-
-    # list_1c_object_members: объект есть, но состав пуст
-    no_members_at_all: str        # «…но ни методов, ни свойств, ни событий, ни конструкторов…»
-    no_members_of_kind: str       # «…но {kind} у него нет. Попробуйте members="all"…»
-
-    # list_1c_object_members: объекта в справке нет вовсе
-    object_missing: str           # «Объект «{object}» в справке не найден. Похожие объекты: {similar}.»
-
-    # find_1c_help: выдача непуста — шапка и хвост-совет успешного ответа.
-    # Оставить их русскими значило бы напечатать half-английскую карточку:
-    # список между ними уже переведён (list_line получает strings), а шапка и
-    # совет — нет.
-    found_count: str               # «Найдено {total} элементов по запросу «{query}».»
-    full_card_hint_generic: str    # «Полная карточка: get_1c_element(name=…, object=…)»
-
-    # Кросс-языковые запросы (mcp_handlers._language_mismatch). Молчаливое
-    # «ничего не найдено» здесь — не честный отрицательный ответ, а введение
-    # в заблуждение: элемент существует, просто не в этой книге и не под этим
-    # именем. Обе строки печатаются только при lang="en" — при lang="ru" эта
-    # проверка не срабатывает вовсе (русская книга несёт оба имени), так что
-    # в RU_STRINGS они не нужны по смыслу, но живут в общей таблице как единый
-    # контракт полей.
-    english_index_missing: str        # «English reference is not indexed: …»
-    russian_name_in_english_book: str  # «The English reference book contains no Russian names…»
-
-    # Заголовки ошибок mcp_formatter.create_error_response. Ошибка на языке,
-    # которого агент не читает, ничем не лучше ошибки без текста: он не может
-    # решить следующий шаг.
-    #
-    # search_failed — деталь под этим заголовком, и она приходит из слоя поиска.
-    # Пока её там держали литералом, обработчик подставлял переведённый
-    # заголовок к непереведённой детали: «Search error: Ошибка выполнения
-    # поиска».
-    search_failed: str                 # «Ошибка выполнения поиска»
-    search_error_title: str            # «Ошибка поиска»
-    internal_search_error_title: str   # «Внутренняя ошибка поиска»
-    card_error_title: str              # «Ошибка получения карточки»
-    generic_error_title: str           # «Ошибка»
-    members_internal_error_title: str  # «Ошибка получения состава»
+    ambiguous_header: str
+    ambiguous_hint: str
+    candidates_header: str
+    partial_order_note: str
 
 
-# Значения списаны дословно из src/handlers/element_card.py — вплоть до
-# кавычек-ёлочек, тире и пробелов. Существующие тесты карточки проверяют эти
-# формулировки как есть, и любое расхождение здесь их сломает.
+    nothing_found: str
+    object_exists_but_empty: str
+    object_not_found: str
+    object_name_differs_hint: str
+    kind_filter_hint: str
+    no_filters_hint: str
+
+    no_similar_objects: str
+
+    object_missing_for_element: str
+
+    variant_not_found: str
+    single_variant_no_name: str
+
+    element_not_found: str
+    similar_by_name: str
+    no_similar: str
+
+    element_not_in_object: str
+    found_elsewhere_header: str
+    drop_object_hint: str
+
+    no_members_at_all: str
+    no_members_of_kind: str
+
+    object_missing: str
+
+    found_count: str
+    full_card_hint_generic: str
+
+    english_index_missing: str
+    russian_name_in_english_book: str
+
+    search_failed: str
+    search_error_title: str
+    internal_search_error_title: str
+    card_error_title: str
+    generic_error_title: str
+    members_internal_error_title: str
+
+
 RU_STRINGS = UiStrings(
     lang="ru",
     element_kind_names={
@@ -307,11 +247,6 @@ RU_STRINGS = UiStrings(
         'members="all", чтобы увидеть весь состав.'
     ),
     object_missing="Объект «{object}» в справке не найден. Похожие объекты: {similar}.",
-    # На практике не печатаются: _language_mismatch срабатывает только при
-    # lang="en" (задача 6 — русская книга несёт оба имени, кросс-языковой
-    # проблемы у неё нет). Значения — не заглушки, а полноценный русский
-    # перевод: таблица строк не оставляет полей без перевода ни при каких
-    # условиях, даже недостижимых сегодняшней логикой обработчиков.
     english_index_missing=(
         "Английская справка не проиндексирована: книга shcntx_root.hbk "
         "отсутствует в data/hbk-en. Скопируйте её из каталога bin установленной "
@@ -333,9 +268,6 @@ RU_STRINGS = UiStrings(
     members_internal_error_title="Ошибка получения состава",
 )
 
-# Английские формулировки отсутствия данных переведены по смыслу, а не
-# буквально: «not stated in the reference» несёт ту же мысль, что «в справке
-# не указано» — данных нет в источнике, а не в ответе.
 EN_STRINGS = UiStrings(
     lang="en",
     element_kind_names={
@@ -346,10 +278,6 @@ EN_STRINGS = UiStrings(
     heading_of_object="{kind} of {owner}",
     object_word="object",
     call="Call",
-    # Не "Access" — это слово занято полем access ниже («Access: read only»),
-    # и карточка свойства печатала бы «Access:» дважды с разным смыслом:
-    # как к свойству обратиться в коде — и можно ли в него писать. Reference
-    # называет первое, не пересекаясь со вторым.
     call_property="Reference",
     call_object="Constructors",
     parameters="Parameters:",
@@ -418,10 +346,6 @@ EN_STRINGS = UiStrings(
         "filter zeroed out the results, not an absence of a matching element. "
         "Similar objects: {similar}."
     ),
-    # Пример сохранён по смыслу, а не сокращён до метки: агент, столкнувшийся
-    # с этим же расхождением на английской книге, должен понять сам приём —
-    # что справочное имя объекта и код-идентификатор не обязаны совпадать, —
-    # а не только увидеть перевод русского примера.
     object_name_differs_hint=(
         "The object name in the reference may differ from the identifier used "
         "in code: for example, the manager of background jobs is called "

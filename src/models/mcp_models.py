@@ -49,28 +49,11 @@ class MCPRequest(BaseModel):
 
 class Find1CHelpRequest(BaseModel):
     """Запрос поиска по справке."""
-    # extra="forbid" — схема обещает additionalProperties: false; без этого
-    # pydantic по умолчанию молча отбрасывает лишние поля вместо ошибки, и
-    # опечатка вроде старого object_name (упразднённое имя параметра) тихо
-    # превращалась в поиск без фильтра по объекту — агент получал не тот
-    # ответ, о котором просил, и не узнавал об этом.
     model_config = ConfigDict(extra="forbid")
 
-    # min_length=1 у всех имён и запросов — не косметика контракта. Пустая
-    # строка не «ничего не задано», а полноценный фильтр: term по
-    # name_en.keyword == "" совпадает со всеми 23 104 документами английского
-    # индекса (английские заголовки скобок не несут, поле пустое почти везде), а
-    # term по object == "" — с документами без объекта-владельца. Агент,
-    # приславший пустое имя по ошибке, получал в ответ «имя принадлежит 10 000
-    # элементов» вместо отказа, то есть узнавал о своей ошибке не от сервера.
-    # Отказ валидации доезжает до клиента как isError с текстом pydantic.
     query: str = Field(..., min_length=1, description="Поисковый запрос")
     kind: SearchKind = Field(SearchKind.ANY, description="Чем ограничить поиск")
     object: Optional[str] = Field(None, min_length=1, description="Искать только у этого объекта")
-    # le=SEARCH_LIMIT_MAX, а не число: тот же потолок используют клемпы советов
-    # в mcp_handlers и element_card. Рассинхронизация трёх хардкодов 200
-    # приводила к тому, что карточка советовала вызов, отвергаемый тем же
-    # лимитом.
     limit: int = Field(10, ge=1, le=SEARCH_LIMIT_MAX, description="Сколько кандидатов вернуть")
     lang: Lang = Field(
         default_factory=lambda: Lang(settings.default_help_lang),
@@ -118,10 +101,6 @@ class HealthResponse(BaseModel):
     documents_count: Optional[int] = None
     indexing_status: Optional[str] = None
     indexing_active: Optional[bool] = None
-    # Отсутствие английского индекса — не болезнь сервера: книга необязательна.
-    # Поле присутствует всегда, чтобы клиент отличал «нет индекса» от «сервер
-    # не умеет английский».
     index_en_exists: Optional[bool] = None
     documents_count_en: Optional[int] = None
-    # Версия — из src/__init__.py, единственного источника истины.
     version: str = __version__

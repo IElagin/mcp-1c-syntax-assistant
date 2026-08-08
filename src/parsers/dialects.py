@@ -60,12 +60,6 @@ class HelpDialect:
     optional_flag: str
     version_available_markers: Tuple[str, ...]
     version_changed_markers: Tuple[str, ...]
-    # Как книга зовёт глобальный контекст. Путь страницы этого не говорит: он
-    # английский в обеих книгах (objects/Global context/...), и разбор пути
-    # оставлял русским глобальным функциям владельца «Global context» — имя,
-    # которого в русской справке нет ни на одной странице. Из-за этого 479
-    # процедур и функций глобального контекста не находились по имени
-    # владельца, под которым книга их и печатает.
     global_context_name: str
 
     def chapter_of(self, heading: str) -> Optional[Chapter]:

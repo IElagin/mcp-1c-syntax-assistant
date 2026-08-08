@@ -25,10 +25,8 @@ async def startup(app: FastAPI):
     metrics = get_metrics_collector()
     monitor = get_system_monitor()
     
-    # Настройка dependency injection
     setup_dependencies()
     
-    # Инициализация менеджера фоновой индексации
     indexing_manager = setup_indexing_manager(
         shutdown_timeout=30,
         progress_log_interval=500
@@ -36,10 +34,8 @@ async def startup(app: FastAPI):
     app.state.indexing_manager = indexing_manager
     logger.info("Менеджер фоновой индексации инициализирован")
     
-    # Запуск мониторинга системы
     await monitor.start_monitoring(interval=60)
     
-    # Создаём и подключаемся к Elasticsearch
     es_client = ElasticsearchClient()
     connected = await es_client.connect()
     
@@ -50,10 +46,8 @@ async def startup(app: FastAPI):
         logger.info("Успешно подключились к Elasticsearch")
         await metrics.increment("startup.elasticsearch.connection_success")
         
-        # Сохраняем клиента в app.state
         app.state.es_client = es_client
         
-        # Проверяем наличие .hbk файла и запускаем фоновую автоиндексацию
         await auto_index_on_startup(es_client)
     
     await metrics.increment("startup.completed")
@@ -73,17 +67,14 @@ async def shutdown(app: FastAPI):
     metrics = get_metrics_collector()
     monitor = get_system_monitor()
     
-    # Graceful shutdown для фоновой индексации
     if hasattr(app.state, 'indexing_manager'):
         manager = get_indexing_manager()
         if manager.is_indexing():
             logger.info("Обнаружена активная индексация, ожидание завершения...")
             await manager.graceful_shutdown(timeout=30)
     
-    # Останавливаем мониторинг
     await monitor.stop_monitoring()
     
-    # Отключаемся от Elasticsearch
     if hasattr(app.state, 'es_client'):
         await app.state.es_client.disconnect()
     

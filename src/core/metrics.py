@@ -53,10 +53,8 @@ class MetricsCollector:
         self._gauges: Dict[str, float] = defaultdict(float)
         self._timers: Dict[str, List[float]] = defaultdict(list)
         
-        # Статистика производительности
         self.performance_stats = PerformanceStats()
         
-        # Блокировка для thread safety
         self._lock = asyncio.Lock()
     
     async def increment(self, name: str, value: float = 1.0, labels: Optional[Dict[str, str]] = None):
@@ -222,14 +220,12 @@ class MetricsCollector:
             else:
                 self.performance_stats.failed_requests += 1
             
-            # Обновляем статистику времени ответа
             if response_time > self.performance_stats.max_response_time:
                 self.performance_stats.max_response_time = response_time
             
             if response_time < self.performance_stats.min_response_time:
                 self.performance_stats.min_response_time = response_time
             
-            # Вычисляем среднее время ответа
             total_time = (self.performance_stats.avg_response_time * 
                          (self.performance_stats.total_requests - 1) + response_time)
             self.performance_stats.avg_response_time = total_time / self.performance_stats.total_requests
@@ -286,23 +282,19 @@ class SystemMonitor:
     async def _collect_system_metrics(self):
         """Сбор системных метрик."""
         try:
-            # CPU
             cpu_percent = psutil.cpu_percent()
             await self.metrics.set_gauge('system.cpu.usage_percent', cpu_percent)
             
-            # Memory
             memory = psutil.virtual_memory()
             await self.metrics.set_gauge('system.memory.usage_percent', memory.percent)
             await self.metrics.set_gauge('system.memory.used_mb', memory.used / 1024 / 1024)
             await self.metrics.set_gauge('system.memory.available_mb', memory.available / 1024 / 1024)
             
-            # Disk
             disk = psutil.disk_usage('/')
             await self.metrics.set_gauge('system.disk.usage_percent', 
                                        (disk.used / disk.total) * 100)
             await self.metrics.set_gauge('system.disk.free_gb', disk.free / 1024 / 1024 / 1024)
             
-            # Network (if available)
             try:
                 network = psutil.net_io_counters()
                 await self.metrics.set_gauge('system.network.bytes_sent', network.bytes_sent)
@@ -314,7 +306,6 @@ class SystemMonitor:
             logger.error(f"Error collecting system metrics: {e}")
 
 
-# Глобальный экземпляр сборщика метрик
 _global_metrics: Optional[MetricsCollector] = None
 _global_monitor: Optional[SystemMonitor] = None
 

@@ -125,7 +125,6 @@ class BackgroundIndexingManager:
             lang: Язык книги — выбирает диалект разбора
         """
         try:
-            # Устанавливаем статус IN_PROGRESS
             async with self._lock:
                 self._progress_info = IndexProgressInfo(
                     status=IndexingStatus.IN_PROGRESS,
@@ -135,15 +134,12 @@ class BackgroundIndexingManager:
             
             logger.info(f"Начата фоновая индексация файла: {file_path}")
             
-            # Проверяем существование файла
             if not Path(file_path).exists():
                 raise FileNotFoundError(f"Файл не найден: {file_path}")
             
-            # Парсим .hbk файл в отдельном потоке (не блокируем event loop)
             from src.parsers.hbk_parser import HBKParser
             parser = HBKParser(dialect=dialect_for(lang))
 
-            # Запускаем синхронный парсинг в executor
             loop = asyncio.get_event_loop()
             parsed_hbk = await loop.run_in_executor(
                 None,  # Использует default ThreadPoolExecutor
@@ -157,11 +153,9 @@ class BackgroundIndexingManager:
             total = len(parsed_hbk.documentation)
             logger.info(f"Найдено {total} документов для индексации")
             
-            # Обновляем total_documents
             async with self._lock:
                 self._progress_info.total_documents = total
             
-            # Индексируем с прогрессом
             from src.parsers.indexer import ElasticsearchIndexer
             indexer = ElasticsearchIndexer(es_client, index=index)
 
@@ -173,7 +167,6 @@ class BackgroundIndexingManager:
             if not success:
                 raise RuntimeError("Индексация вернула False")
             
-            # Успех - устанавливаем статус COMPLETED
             async with self._lock:
                 self._progress_info.status = IndexingStatus.COMPLETED
                 self._progress_info.end_time = datetime.now()
@@ -185,7 +178,6 @@ class BackgroundIndexingManager:
             )
                 
         except asyncio.CancelledError:
-            # Задача отменена (shutdown)
             logger.warning("Индексация отменена (shutdown)")
             async with self._lock:
                 self._progress_info.status = IndexingStatus.FAILED
@@ -194,7 +186,6 @@ class BackgroundIndexingManager:
             raise
             
         except Exception as e:
-            # Ошибка индексации - логируем и сохраняем в статус
             error_msg = f"Ошибка индексации: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
@@ -216,11 +207,9 @@ class BackgroundIndexingManager:
             indexed: Количество проиндексированных документов
             total: Общее количество документов
         """
-        # Обновляем прогресс (синхронно, т.к. вызывается из sync кода)
         self._progress_info.indexed_documents = indexed
         self._progress_info.total_documents = total
         
-        # Логируем только каждые N документов или в конце
         if indexed % self._progress_log_interval == 0 or indexed == total:
             progress_pct = (indexed / total * 100) if total > 0 else 0
             logger.info(f"Прогресс индексации: {indexed}/{total} ({progress_pct:.1f}%)")
@@ -245,13 +234,11 @@ class BackgroundIndexingManager:
         self._should_stop = True
         
         try:
-            # Ждём завершения с таймаутом
             await asyncio.wait_for(self._current_task, timeout=timeout)
             logger.info("✅ Индексация успешно завершена перед shutdown")
             return True
             
         except asyncio.TimeoutError:
-            # Прерываем по таймауту
             logger.warning(
                 f"⚠️ Индексация не завершилась за {timeout} сек. "
                 f"Принудительное прерывание. Проиндексировано: "
@@ -276,7 +263,6 @@ class BackgroundIndexingManager:
             Информация о прогрессе индексации
         """
         async with self._lock:
-            # Возвращаем копию, чтобы избежать race conditions
             return IndexProgressInfo(
                 status=self._progress_info.status,
                 total_documents=self._progress_info.total_documents,
@@ -300,7 +286,6 @@ class BackgroundIndexingManager:
         )
 
 
-# Singleton instance (будет инициализирован в lifecycle)
 _indexing_manager: Optional[BackgroundIndexingManager] = None
 
 

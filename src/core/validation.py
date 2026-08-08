@@ -35,7 +35,6 @@ class SearchRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("Поисковый запрос не может быть пустым")
         
-        # Проверка на подозрительные символы
         dangerous_chars = ['<', '>', '{', '}', '\\', ';', '&', '|']
         if any(char in v for char in dangerous_chars):
             raise ValueError("Поисковый запрос содержит недопустимые символы")
@@ -69,11 +68,9 @@ class IndexRequest(BaseModel):
         if v is not None:
             path = Path(v)
             
-            # Проверка на path traversal
             if '..' in str(path) or path.is_absolute() == False:
                 raise ValueError("Недопустимый путь к файлу")
             
-            # Проверка расширения
             allowed_extensions = ['.hbk', '.zip', '.7z']
             if path.suffix.lower() not in allowed_extensions:
                 raise ValueError(f"Недопустимое расширение файла. Разрешены: {allowed_extensions}")
@@ -108,12 +105,10 @@ def validate_elasticsearch_config(config: Dict[str, Any]) -> Dict[str, Any]:
         if field not in config:
             raise ValidationError(f"Отсутствует обязательное поле: {field}")
     
-    # Валидация хоста
     host = config['host']
     if not isinstance(host, str) or not host.strip():
         raise ValidationError("Host должен быть непустой строкой")
     
-    # Простая валидация хоста (домен или IP)
     host_pattern = re.compile(
         r'^(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?|'
         r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|'
@@ -123,17 +118,14 @@ def validate_elasticsearch_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if not host_pattern.match(host):
         raise ValidationError("Недопустимый формат хоста")
     
-    # Валидация порта
     port = config['port']
     if not isinstance(port, int) or not (1 <= port <= 65535):
         raise ValidationError("Порт должен быть числом от 1 до 65535")
     
-    # Валидация имени индекса
     index_name = config['index_name']
     if not isinstance(index_name, str) or not index_name.strip():
         raise ValidationError("Имя индекса должно быть непустой строкой")
     
-    # Имя индекса должно соответствовать правилам Elasticsearch
     index_pattern = re.compile(r'^[a-z0-9][a-z0-9_-]*$')
     if not index_pattern.match(index_name.lower()):
         raise ValidationError("Недопустимое имя индекса Elasticsearch")
@@ -195,7 +187,6 @@ def validate_json_payload(payload: Any, max_size_mb: int = 1) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValidationError("Payload должен быть объектом")
     
-    # Приблизительная оценка размера
     import json
     payload_size = len(json.dumps(payload, ensure_ascii=False))
     max_size_bytes = max_size_mb * 1024 * 1024
@@ -223,10 +214,8 @@ def sanitize_string(value: str, max_length: int = 1000) -> str:
     if not isinstance(value, str):
         value = str(value)
     
-    # Удаляем управляющие символы
     value = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', value)
     
-    # Ограничиваем длину
     if len(value) > max_length:
         value = value[:max_length]
     

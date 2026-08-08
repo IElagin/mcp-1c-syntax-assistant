@@ -45,5 +45,4 @@ class MCPResponseFormatter:
         return MCPResponse(content=content)
 
 
-# Глобальный экземпляр форматтера
 mcp_formatter = MCPResponseFormatter()

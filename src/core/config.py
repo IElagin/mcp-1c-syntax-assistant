@@ -37,7 +37,6 @@ class DataConfig(BaseModel):
 class Settings(BaseSettings):
     """Основные настройки приложения."""
     
-    # Elasticsearch настройки
     elasticsearch_host: str = "localhost"
     elasticsearch_port: str = "9200"
     elasticsearch_url: str = "http://localhost:9200"
@@ -48,7 +47,6 @@ class Settings(BaseSettings):
     elasticsearch_retry_max_wait: str = "30"
     elasticsearch_retry_multiplier: str = "1"
     
-    # Сервер настройки
     server_host: str = "0.0.0.0"
     server_port: int = 8000
     log_level: str = "INFO"
@@ -56,35 +54,22 @@ class Settings(BaseSettings):
     # CORS: список источников через запятую. "*" — разрешить все.
     cors_allow_origins: str = "*"
 
-    # Пути к данным
     hbk_directory: str = "data/hbk"
     logs_directory: str = "data/logs"
 
-    # Имя книги справки для индексации. В каталоге могут лежать и другие .hbk:
-    # английская shcntx_root.hbk, книги по языку запросов. Выбор должен быть
-    # явным, иначе он зависит от порядка файлов в каталоге.
     hbk_filename: str = "shcntx_ru.hbk"
 
-    # Английская книга справки. Отдельный каталог, а не второй файл в data/hbk:
-    # выбор книги для индексации задан именем, и две книги в одном каталоге
-    # ничего не сломают, но раздельные каталоги делают состав очевидным.
     hbk_directory_en: str = "data/hbk-en"
     hbk_filename_en: str = "shcntx_root.hbk"
 
-    # Английский индекс. Второй индекс, а не общие документы: в английской
-    # книге нет русских имён, склеивать нечего.
     elasticsearch_index_en: str = "help1c_docs_en"
 
-    # Язык ответа, когда инструмент вызван без lang.
     default_help_lang: str = "ru"
 
-    # Индексация
     reindex_on_startup: str = "false"
 
-    # Режим разработки
     debug: bool = False
     
-    # Runtime параметры (устанавливаются программно)
     force_reindex: bool = False
     
     model_config = ConfigDict(
@@ -118,7 +103,6 @@ class Settings(BaseSettings):
     @property
     def elasticsearch(self) -> ElasticsearchConfig:
         """Получить конфигурацию Elasticsearch."""
-        # Формируем URL из host и port
         es_url = f"http://{self.elasticsearch_host}:{self.elasticsearch_port}"
         
         return ElasticsearchConfig(
@@ -154,7 +138,6 @@ class Settings(BaseSettings):
     @property
     def should_reindex_on_startup(self) -> bool:
         """Проверить, нужна ли переиндексация при запуске."""
-        # Приоритет: force_reindex > reindex_on_startup
         if self.force_reindex:
             return True
         return self.reindex_on_startup.lower() in ("true", "1", "yes")
@@ -169,5 +152,4 @@ class Settings(BaseSettings):
         ]
 
 
-# Глобальный экземпляр настроек
 settings = Settings()

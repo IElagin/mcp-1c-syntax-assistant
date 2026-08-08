@@ -36,11 +36,9 @@ class RateLimiter:
     def __init__(self, config: Optional[RateLimitConfig] = None):
         self.config = config or RateLimitConfig()
         
-        # Хранение временных меток запросов по IP
         self._requests: Dict[str, deque] = defaultdict(deque)
         self._last_cleanup = time.time()
         
-        # Блокировка для thread safety
         self._lock = asyncio.Lock()
     
     async def check_rate_limit(self, client_id: str) -> bool:
@@ -59,12 +57,10 @@ class RateLimiter:
         async with self._lock:
             current_time = time.time()
             
-            # Очистка старых записей
             await self._cleanup_old_requests(current_time)
             
             client_requests = self._requests[client_id]
             
-            # Проверка лимита за минуту
             minute_ago = current_time - 60
             minute_requests = sum(1 for req_time in client_requests if req_time > minute_ago)
             
@@ -83,7 +79,6 @@ class RateLimiter:
                 
                 return False
             
-            # Проверка лимита за час
             hour_ago = current_time - 3600
             hour_requests = sum(1 for req_time in client_requests if req_time > hour_ago)
             
@@ -102,7 +97,6 @@ class RateLimiter:
                 
                 return False
             
-            # Записываем текущий запрос
             client_requests.append(current_time)
             
             logger.debug(f"Rate limit check passed for {client_id}: {minute_requests+1}/{self.config.requests_per_minute} per minute")
@@ -117,11 +111,9 @@ class RateLimiter:
         clients_to_remove = []
         
         for client_id, requests in self._requests.items():
-            # Удаляем запросы старше часа
             while requests and requests[0] < hour_ago:
                 requests.popleft()
             
-            # Удаляем клиентов без активных запросов
             if not requests:
                 clients_to_remove.append(client_id)
         
@@ -174,7 +166,6 @@ class RateLimiter:
         }
 
 
-# Глобальный экземпляр rate limiter
 _global_rate_limiter: Optional[RateLimiter] = None
 
 

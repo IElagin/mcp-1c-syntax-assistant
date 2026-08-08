@@ -77,12 +77,10 @@ class ElasticsearchIndexer:
             return False
         
         try:
-            # Проверяем/создаем индекс
             if not await self.es_client.index_exists(self.index):
                 logger.info("Создаем индекс Elasticsearch")
                 await self.es_client.create_index(self.index)
             
-            # Индексируем документы батчами с отчётом о прогрессе
             total_docs = len(parsed_hbk.documentation)
             indexed_count = 0
             
@@ -93,13 +91,11 @@ class ElasticsearchIndexer:
                 if success:
                     indexed_count += len(batch)
                     
-                    # Вызываем callback для отчёта о прогрессе
                     if progress_callback:
                         progress_callback(indexed_count, total_docs)
                 else:
                     logger.error(f"Ошибка индексации батча {i}-{i+len(batch)}")
             
-            # Принудительно обновляем индекс для немедленного отражения изменений
             await self.es_client.refresh_index(self.index)
             
             return indexed_count == total_docs
@@ -114,11 +110,9 @@ class ElasticsearchIndexer:
             return True
         
         try:
-            # Подготавливаем bulk запрос
             bulk_body = []
             
             for doc in documents:
-                # Добавляем действие индексации
                 bulk_body.append({
                     "index": {
                         # bulk-запрос идёт мимо ElasticsearchClient.search и
@@ -128,14 +122,11 @@ class ElasticsearchIndexer:
                     }
                 })
                 
-                # Добавляем сам документ
                 bulk_body.append(self._prepare_document(doc))
             
-            # Выполняем bulk запрос
             if self.es_client._client:
                 response = await self.es_client._client.bulk(body=bulk_body)
                 
-                # Проверяем ошибки
                 if response.get("errors"):
                     logger.warning("Есть ошибки в bulk запросе")
                     for item in response.get("items", []):
@@ -221,10 +212,8 @@ class ElasticsearchIndexer:
             # английской книги не должна стереть русский индекс и наоборот.
             await self.es_client.delete_index(self.index)
 
-            # Создаем новый индекс
             await self.es_client.create_index(self.index)
             
-            # Индексируем документы с прогрессом
             return await self.index_documentation(parsed_hbk, progress_callback)
             
         except Exception as e:
