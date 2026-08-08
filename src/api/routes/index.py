@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from src.core.config import settings
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
-from src.core.startup import index_hbk_file, resolve_hbk_file
+from src.infrastructure.indexing import index_hbk_file, resolve_hbk_file
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 from src.parsers.name_backfill import backfill_english_names

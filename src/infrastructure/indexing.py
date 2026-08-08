@@ -1,4 +1,4 @@
-"""Startup logic для приложения."""
+"""Индексация книг справки: разовая, по запросу и фоновая при запуске."""
 
 import asyncio
 from pathlib import Path

@@ -6,8 +6,8 @@ from fastapi import FastAPI
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector, get_system_monitor
-from src.core.dependency_injection import setup_dependencies
-from src.core.startup import auto_index_on_startup
+from src.app.dependency_injection import setup_dependencies
+from src.infrastructure.indexing import auto_index_on_startup
 from src.infrastructure.background.indexing_manager import setup_indexing_manager, get_indexing_manager
 
 logger = get_logger(__name__)

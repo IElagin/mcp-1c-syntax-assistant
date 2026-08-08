@@ -11,7 +11,7 @@ from src.core.config import settings
 from src.core.logging import get_logger
 from src.core.validation import ValidationError
 from src.parsers.hbk_parser import HBKParserError
-from src.core.lifecycle import startup, shutdown
+from src.app.lifecycle import startup, shutdown
 
 from src.api.routes.health import router as health_router
 from src.api.routes.index import router as index_router

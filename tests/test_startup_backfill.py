@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.core.config import settings
-from src.core.startup import _run_queue_then_backfill
+from src.infrastructure.indexing import _run_queue_then_backfill
 
 
 pytestmark = pytest.mark.unit
@@ -38,9 +38,9 @@ async def test_backfill_runs_only_after_queue_is_idle():
         call_order.append(("backfill",))
         return 5
 
-    with patch("src.core.startup.get_indexing_manager", return_value=manager), \
-         patch("src.core.startup.backfill_english_names", side_effect=fake_backfill) as fake_backfill_mock, \
-         patch("src.core.startup.asyncio.sleep", new=AsyncMock()):
+    with patch("src.infrastructure.indexing.get_indexing_manager", return_value=manager), \
+         patch("src.infrastructure.indexing.backfill_english_names", side_effect=fake_backfill) as fake_backfill_mock, \
+         patch("src.infrastructure.indexing.asyncio.sleep", new=AsyncMock()):
         await _run_queue_then_backfill(es_client, ru_file="ru.hbk", en_file="en.hbk")
 
     assert call_order == [
@@ -72,8 +72,8 @@ async def test_backfill_runs_even_when_english_book_is_absent():
         call_order.append("backfill")
         return 0
 
-    with patch("src.core.startup.get_indexing_manager", return_value=manager), \
-         patch("src.core.startup.backfill_english_names", side_effect=fake_backfill):
+    with patch("src.infrastructure.indexing.get_indexing_manager", return_value=manager), \
+         patch("src.infrastructure.indexing.backfill_english_names", side_effect=fake_backfill):
         await _run_queue_then_backfill(es_client, ru_file="ru.hbk", en_file=None)
 
     assert call_order == ["ru", "backfill"]
@@ -90,8 +90,8 @@ async def test_indexing_failure_does_not_block_startup():
     manager.start_indexing = AsyncMock(side_effect=RuntimeError("boom"))
     manager.is_indexing = MagicMock(return_value=False)
 
-    with patch("src.core.startup.get_indexing_manager", return_value=manager), \
-         patch("src.core.startup.backfill_english_names", new=AsyncMock()) as fake_backfill_mock:
+    with patch("src.infrastructure.indexing.get_indexing_manager", return_value=manager), \
+         patch("src.infrastructure.indexing.backfill_english_names", new=AsyncMock()) as fake_backfill_mock:
         await _run_queue_then_backfill(es_client, ru_file="ru.hbk", en_file="en.hbk")
 
     fake_backfill_mock.assert_not_awaited()
@@ -119,8 +119,8 @@ async def test_each_book_goes_to_its_own_index():
 
     manager.start_indexing = AsyncMock(side_effect=fake_start_indexing)
 
-    with patch("src.core.startup.get_indexing_manager", return_value=manager), \
-         patch("src.core.startup.backfill_english_names", new=AsyncMock()):
+    with patch("src.infrastructure.indexing.get_indexing_manager", return_value=manager), \
+         patch("src.infrastructure.indexing.backfill_english_names", new=AsyncMock()):
         await _run_queue_then_backfill(es_client, ru_file="ru.hbk", en_file="en.hbk")
 
     assert calls == [
@@ -149,8 +149,8 @@ async def test_english_book_never_goes_to_the_russian_index():
 
     manager.start_indexing = AsyncMock(side_effect=fake_start_indexing)
 
-    with patch("src.core.startup.get_indexing_manager", return_value=manager), \
-         patch("src.core.startup.backfill_english_names", new=AsyncMock()):
+    with patch("src.infrastructure.indexing.get_indexing_manager", return_value=manager), \
+         patch("src.infrastructure.indexing.backfill_english_names", new=AsyncMock()):
         await _run_queue_then_backfill(es_client, ru_file="ru.hbk", en_file="en.hbk")
 
     english_index = by_lang["en"] or settings.elasticsearch_index

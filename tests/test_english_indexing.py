@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.core.startup import auto_index_on_startup
+from src.infrastructure.indexing import auto_index_on_startup
 
 
 pytestmark = pytest.mark.integration
@@ -25,8 +25,8 @@ async def test_missing_english_book_does_not_break_startup(tmp_path):
     es_client.index_exists = AsyncMock(return_value=True)
     es_client.get_documents_count = AsyncMock(return_value=23025)
 
-    with patch("src.core.startup.settings") as fake_settings, \
-         patch("src.core.startup.asyncio.create_task") as fake_create_task:
+    with patch("src.infrastructure.indexing.settings") as fake_settings, \
+         patch("src.infrastructure.indexing.asyncio.create_task") as fake_create_task:
         fake_settings.data.hbk_directory = str(tmp_path)
         fake_settings.data.hbk_filename = "shcntx_ru.hbk"
         fake_settings.data.hbk_directory_en = str(tmp_path / "nope")

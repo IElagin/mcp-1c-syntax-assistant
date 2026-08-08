@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.handlers.ui_strings import EN_STRINGS, RU_STRINGS
 from src.search.search_service import SearchService
 
 

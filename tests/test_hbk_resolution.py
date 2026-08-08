@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.startup import resolve_hbk_file
+from src.infrastructure.indexing import resolve_hbk_file
 from src.parsers.dialects import RU_DIALECT
 from src.parsers.hbk_parser import HBKParser
 
