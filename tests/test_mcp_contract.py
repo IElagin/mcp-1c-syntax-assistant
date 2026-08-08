@@ -92,6 +92,22 @@ def test_schema_and_model_share_one_members_limit_ceiling():
     ), accepted
 
 
+@pytest.mark.unit
+def test_schema_and_model_share_one_search_limit_ceiling():
+    """A literal 200 in the model would drift from the schema silently."""
+    from src.core.constants import SEARCH_LIMIT_MAX
+    from src.models.mcp_models import Find1CHelpRequest
+
+    schema = next(t for t in TOOLS if t["name"] == "find_1c_help")
+    declared = schema["inputSchema"]["properties"]["limit"]["maximum"]
+    accepted = Find1CHelpRequest.model_fields["limit"].metadata
+
+    assert declared == SEARCH_LIMIT_MAX
+    assert any(
+        getattr(rule, "le", None) == SEARCH_LIMIT_MAX for rule in accepted
+    ), accepted
+
+
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio
