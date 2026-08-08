@@ -25,17 +25,39 @@ ALLOWED_IMPORTS = {
 
 ROOT_MODULES = {"main", "__init__"}
 
+PACKAGES = {
+    entry.name for entry in SRC.iterdir()
+    if entry.is_dir() and (entry / "__init__.py").exists()
+}
+
+
+def _relative_target(path: Path, level: int, module: str | None) -> str | None:
+    base = path.parent.relative_to(SRC).parts
+    trimmed = base[: max(0, len(base) - (level - 1))]
+    if trimmed:
+        return trimmed[0]
+    return module.split(".")[0] if module else None
+
 
 def _package_of(path: Path) -> str:
     relative = path.relative_to(SRC)
     return relative.parts[0] if len(relative.parts) > 1 else relative.stem
 
 
-def _imported_packages(tree: ast.Module) -> list[tuple[str, int]]:
+def _imported_packages(path: Path, tree: ast.Module) -> list[tuple[str, int]]:
     imported = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            if node.level == 0 and node.module and node.module.startswith("src."):
+            if node.level:
+                target = _relative_target(path, node.level, node.module)
+                if target in PACKAGES:
+                    imported.append((target, node.lineno))
+            elif node.module == "src":
+                imported.extend(
+                    (alias.name, node.lineno)
+                    for alias in node.names if alias.name in PACKAGES
+                )
+            elif node.module and node.module.startswith("src."):
                 imported.append((node.module.split(".")[1], node.lineno))
         elif isinstance(node, ast.Import):
             for alias in node.names:
@@ -70,7 +92,7 @@ def test_no_package_imports_outside_its_allowed_layers():
             continue
         allowed = ALLOWED_IMPORTS.get(package, set()) | {package}
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        for imported, line in _imported_packages(tree):
+        for imported, line in _imported_packages(path, tree):
             if imported not in allowed:
                 violations.append(
                     f"{path.relative_to(SRC.parent).as_posix()}:{line}: "
@@ -80,3 +102,11 @@ def test_no_package_imports_outside_its_allowed_layers():
         "forbidden cross-package imports (see docs/dev/ARCHITECTURE.md):\n"
         + "\n".join(violations)
     )
+
+
+def test_a_relative_import_resolves_to_the_package_it_lands_in():
+    module = SRC / "search" / "anything.py"
+    assert _relative_target(module, 1, "helpers") == "search"
+    assert _relative_target(module, 2, "handlers") == "handlers"
+    nested = SRC / "infrastructure" / "background" / "anything.py"
+    assert _relative_target(nested, 2, "indexing") == "infrastructure"
