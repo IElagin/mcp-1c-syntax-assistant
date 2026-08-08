@@ -1,4 +1,4 @@
-"""Тела запросов Elasticsearch. Причины решений — docs/dev/DESIGN.md."""
+"""Тела запросов Elasticsearch."""
 
 from typing import Dict, Any, List, Optional, Tuple
 
