@@ -1,9 +1,12 @@
 """Constructor lines are worded by handlers, in the answer's language."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from src.handlers.mcp_handlers import constructor_lines
 from src.handlers.ui_strings import EN_STRINGS, RU_STRINGS
+from src.search.search_service import SearchService
 
 pytestmark = pytest.mark.unit
 
@@ -48,3 +51,26 @@ def test_call_without_a_variant_name_prints_bare():
         "New Array",
         'New Array(<Count>) — variant "From count"',
     ]
+
+
+async def test_one_printed_call_among_two_documents_prints_bare():
+    """The variant label distinguished the only printed line from nothing."""
+    client = AsyncMock()
+    client.search = AsyncMock(return_value={
+        "hits": {"hits": [
+            {"_source": {
+                "call_primary": "",
+                "name_ru": "Unparsed variant",
+                "variants": [{"variant": "Unparsed variant"}],
+            }},
+            {"_source": {
+                "call_primary": "New COMSafeArray(<Source>)",
+                "name_ru": "From COMSafeArray",
+                "variants": [{"variant": "From COMSafeArray"}],
+            }},
+        ]}
+    })
+
+    calls = await SearchService(client).constructor_calls("COMSafeArray")
+
+    assert constructor_lines(calls, EN_STRINGS) == ["New COMSafeArray(<Source>)"]
