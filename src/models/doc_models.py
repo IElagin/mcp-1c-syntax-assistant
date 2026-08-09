@@ -175,6 +175,10 @@ class Documentation(BaseModel):
         self.id = f"{self.object}_{self.name}_{self.type.value}" if self.object \
             else f"{self.name}_{self.type.value}"
 
+    def disambiguate_id(self, suffix: int) -> None:
+        """Добавляет к id различитель «#n» при столкновении с другим документом."""
+        self.id = f"{self.id}#{suffix}"
+
 
 class HBKFile(BaseModel):
     """Информация о .hbk файле."""

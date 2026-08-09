@@ -72,7 +72,7 @@ def deduplicate_by_id(documents: List[Documentation]) -> List[Documentation]:
         # по нему делает распределение "#2"/"#3" стабильным между запусками.
         ordered = sorted(survivors, key=lambda d: d.source_file or "")
         for n, doc in enumerate(ordered[1:], start=2):
-            doc.id = f"{doc_id}#{n}"
+            doc.disambiguate_id(n)
 
     return [d for d in documents if id(d) not in dropped_object_ids]
 
