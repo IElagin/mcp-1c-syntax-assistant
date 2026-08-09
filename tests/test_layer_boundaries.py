@@ -25,7 +25,7 @@ ALLOWED_IMPORTS = {
 
 ROOT_MODULES = {"main", "__init__"}
 
-PACKAGES = set(ALLOWED_IMPORTS)
+NAMES_THE_RULE_SPEAKS_ABOUT = set(ALLOWED_IMPORTS) | {"main"}
 
 
 def _relative_target(path: Path, level: int, module: str | None) -> str | None:
@@ -49,12 +49,14 @@ def _imported_packages(path: Path, tree: ast.Module) -> list[tuple[str, int]]:
                 target = _relative_target(path, node.level, node.module)
                 targets = [target] if target else [alias.name for alias in node.names]
                 imported.extend(
-                    (name, node.lineno) for name in targets if name in PACKAGES
+                    (name, node.lineno)
+                    for name in targets if name in NAMES_THE_RULE_SPEAKS_ABOUT
                 )
             elif node.module == "src":
                 imported.extend(
                     (alias.name, node.lineno)
-                    for alias in node.names if alias.name in PACKAGES
+                    for alias in node.names
+                    if alias.name in NAMES_THE_RULE_SPEAKS_ABOUT
                 )
             elif node.module and node.module.startswith("src."):
                 imported.append((node.module.split(".")[1], node.lineno))
@@ -122,3 +124,10 @@ def test_every_spelling_of_a_cross_package_import_is_seen():
     ):
         seen = [package for package, _ in _imported_packages(module, ast.parse(source))]
         assert seen == ["handlers"], source
+
+
+def test_every_spelling_of_an_import_of_the_root_module_is_seen():
+    module = SRC / "core" / "anything.py"
+    for source in ("import src.main", "from src import main"):
+        seen = [package for package, _ in _imported_packages(module, ast.parse(source))]
+        assert seen == ["main"], source
