@@ -299,8 +299,8 @@ class SystemMonitor:
                 network = psutil.net_io_counters()
                 await self.metrics.set_gauge('system.network.bytes_sent', network.bytes_sent)
                 await self.metrics.set_gauge('system.network.bytes_recv', network.bytes_recv)
-            except Exception:
-                pass  # Network stats might not be available
+            except Exception as e:
+                logger.debug(f"Network stats unavailable: {e}")
             
         except Exception as e:
             logger.error(f"Error collecting system metrics: {e}")
