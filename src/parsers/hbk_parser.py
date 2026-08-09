@@ -80,12 +80,7 @@ def deduplicate_by_id(documents: List[Documentation]) -> List[Documentation]:
 class HBKParser:
     """Парсер .hbk архивов с документацией 1С."""
     
-    def __init__(
-        self,
-        max_files_per_type: Optional[int] = None,
-        max_total_files: Optional[int] = None,
-        dialect: HelpDialect = RU_DIALECT,
-    ):
+    def __init__(self, dialect: HelpDialect = RU_DIALECT):
         self.supported_extensions = ['.hbk', '.zip', '.7z']
         self._zip_command = None
         self._archive_path = None
@@ -95,10 +90,7 @@ class HBKParser:
         # отличается от русской только текстом заголовков разделов, а не
         # структурой кода, поэтому HBKParser не ветвится по языку сам.
         self.html_parser = HTMLParser(dialect=dialect)
-        
-        self.max_files_per_type = max_files_per_type  # None = без ограничений
-        self.max_total_files = max_total_files        # None = парсить все файлы
-    
+
     def parse_file(self, file_path: str) -> Optional[ParsedHBK]:
         """Парсит .hbk файл и извлекает содержимое."""
         file_path = Path(file_path)

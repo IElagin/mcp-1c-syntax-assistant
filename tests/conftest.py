@@ -263,36 +263,6 @@ def mock_parsed_hbk():
 
 
 @pytest.fixture
-def mock_hbk_parser():
-    """Mock HBKParser для unit тестов."""
-    from unittest.mock import Mock
-    
-    parser = Mock()
-    parser.max_files_per_type = 10
-    parser.max_total_files = 50
-    
-    # Метод parse_file возвращает mock_parsed_hbk
-    def parse_file_side_effect(file_path):
-        # Возвращаем простой mock результат
-        from src.models.doc_models import ParsedHBK, HBKFile
-        return ParsedHBK(
-            file_info=HBKFile(
-                path=file_path,
-                size=1024,
-                modified=1234567890.0,
-                entries_count=5
-            ),
-            documentation=[],
-            categories={},
-            stats={},
-            errors=[]
-        )
-    
-    parser.parse_file.side_effect = parse_file_side_effect
-    return parser
-
-
-@pytest.fixture
 async def mock_elasticsearch_indexer():
     """Mock ElasticsearchIndexer для unit тестов."""
     from unittest.mock import AsyncMock, Mock

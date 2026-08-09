@@ -224,3 +224,17 @@ def test_get_content_after_chapter_does_not_match_by_substring():
     HTMLParser()._extract_object_methods(soup, doc)
 
     assert [m.name for m in doc.methods] == ["Настоящий"], doc.methods
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_parser_takes_no_argument_it_does_not_honour():
+    """Ручка, которую никто не читает, обещает работу, которой не будет."""
+    import inspect
+
+    from src.parsers.hbk_parser import HBKParser
+
+    accepted = set(inspect.signature(HBKParser.__init__).parameters)
+
+    assert "max_files_per_type" not in accepted, accepted
+    assert "max_total_files" not in accepted, accepted
