@@ -76,6 +76,38 @@ def test_element_tool_accepts_object_and_variant():
     assert set(element["properties"]) == {"name", "object", "variant", "lang"}
 
 
+@pytest.mark.unit
+def test_schema_and_model_share_one_members_limit_ceiling():
+    """A literal 1000 in the model would drift from the schema silently."""
+    from src.core.constants import MEMBERS_LIMIT_MAX
+    from src.models.mcp_models import List1CObjectMembersRequest
+
+    schema = next(t for t in TOOLS if t["name"] == "list_1c_object_members")
+    declared = schema["inputSchema"]["properties"]["limit"]["maximum"]
+    accepted = List1CObjectMembersRequest.model_fields["limit"].metadata
+
+    assert declared == MEMBERS_LIMIT_MAX
+    assert any(
+        getattr(rule, "le", None) == MEMBERS_LIMIT_MAX for rule in accepted
+    ), accepted
+
+
+@pytest.mark.unit
+def test_schema_and_model_share_one_search_limit_ceiling():
+    """A literal 200 in the model would drift from the schema silently."""
+    from src.core.constants import SEARCH_LIMIT_MAX
+    from src.models.mcp_models import Find1CHelpRequest
+
+    schema = next(t for t in TOOLS if t["name"] == "find_1c_help")
+    declared = schema["inputSchema"]["properties"]["limit"]["maximum"]
+    accepted = Find1CHelpRequest.model_fields["limit"].metadata
+
+    assert declared == SEARCH_LIMIT_MAX
+    assert any(
+        getattr(rule, "le", None) == SEARCH_LIMIT_MAX for rule in accepted
+    ), accepted
+
+
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 @pytest.mark.asyncio

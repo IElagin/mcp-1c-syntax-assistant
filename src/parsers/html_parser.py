@@ -1,4 +1,4 @@
-"""Парсер HTML документации 1С."""
+"""Разбор страницы справки 1С."""
 
 import html
 import re
@@ -10,6 +10,7 @@ from src.models.doc_models import (
     ObjectMethod, ObjectProperty, ObjectEvent,
 )
 from src.core.logging import get_logger
+from src.core.utils import canonical_source_file
 from src.parsers.dialects import Chapter, HelpDialect, RU_DIALECT
 from src.parsers.indexer import split_name_ru_en
 from src.parsers.text_utils import (
@@ -20,16 +21,9 @@ logger = get_logger(__name__)
 
 
 def nodes_until_boundary(start, boundary_classes) -> list:
-    """Соседние узлы после start — до первой границы.
+    """Соседние узлы после start — до узла из boundary_classes или до <hr>.
 
-    Границей считается узел одного из классов boundary_classes или <HR>: этим
-    тегом справка отделяет подвал страницы («Методическая информация») от
-    содержимого, и без него сбор последней главы дотягивался до конца
-    документа.
-
-    Обход соседей был скопирован в четыре места файла, и границу по <HR>
-    приходилось добавлять в каждую копию отдельно — в двух она так и не
-    появилась. Поэтому обход живёт здесь один.
+    <hr> отделяет подвал страницы («Методическая информация») от содержимого.
     """
     nodes = []
     elem = getattr(start, "next_sibling", None)
@@ -44,8 +38,6 @@ def nodes_until_boundary(start, boundary_classes) -> list:
     return nodes
 
 
-# Имена настоящих HTML-элементов. Список закрытый и конечный, поэтому всё, что
-# в него не входит, тегом не является — даже если записано как тег.
 _HTML_TAG_NAMES = frozenset("""
 a abbr acronym address applet area article aside audio b base basefont bdi bdo
 big blockquote body br button canvas caption center cite code col colgroup data
@@ -58,37 +50,17 @@ source span strike strong style sub summary sup table tbody td template textarea
 tfoot th thead time title tr track tt u ul var video wbr
 """.split())
 
-# Кандидат в теги: «<», необязательный слеш закрывающего тега, имя из
-# ASCII-букв и всё до «>» без вложенных угловых скобок.
+# «<», необязательный слеш закрывающего тега, имя из ASCII-букв, всё до «>».
 _TAG_LIKE_RE = re.compile(r'<\s*/?\s*(?P<name>[A-Za-z][^\s<>/]*)[^<>]*>')
 
 
 def escape_pseudo_tags(html_content: str) -> str:
-    """Экранирует плейсхолдеры, записанные сырыми угловыми скобками.
+    """Экранирует плейсхолдеры справки, записанные сырыми угловыми скобками.
 
-    В книгах справки плейсхолдер внутри раздела «Синтаксис» иногда записан без
-    экранирования: «ПродолжитьВызов(&lt;<Значение1>,...,<ЗначениеN>&gt;)» —
-    внешние скобки экранированы, внутренние нет. Русская книга от этого не
-    страдает: имя тега по HTML5 обязано начинаться с ASCII-буквы, а
-    «<Значение1>» начинается с кириллицы, поэтому токенизатор оставляет его
-    текстом. Английская книга на том же самом месте пишет «<Value1>» и
-    «<size0>,...,<sizeN-1>» — токенизатор открывает НАСТОЯЩИЙ тег, который
-    никогда не закрывается и поглощает весь остаток документа. В индекс
-    попадала строка вызова длиной со страницу: у ProceedWithCall в поле Call
-    лежало 1195 знаков всего текста подряд, включая примеры и доступность.
-
-    Правка задачи 3 (_serialize_for_reparsing) закрыла тот же класс дефектов
-    только для ПОВТОРНОГО разбора уже разобранной страницы. Порча же
-    происходит в ПЕРВОМ разборе, до которого та правка не доживает: там ещё
-    нет ни NavigableString, ни дерева — есть только текст файла. Поэтому чинить
-    надо здесь, на входе, а не на выходе.
-
-    Решение принимается по имени: список HTML-элементов закрыт, и «Value1»,
-    «size0», «AddInName» в нём отсутствуют. Настоящая разметка книги
-    («<p class=…>», «<TABLE width="100%">», «</font>») проходит нетронутой —
-    её имена в списке есть, регистр не важен. Экранируются ровно «<» и «>»
-    самого совпадения: html.escape тронул бы ещё и «&», а внутри разметки
-    амперсанды уже могут быть сущностями.
+    Настоящая разметка книги проходит нетронутой: её имена есть в закрытом
+    списке HTML-элементов, а «Value1», «size0», «AddInName» — нет. Экранируются
+    ровно «<» и «>» самого совпадения: html.escape тронул бы ещё и «&», а
+    внутри разметки амперсанды уже бывают сущностями.
     """
     def escape_match(match: re.Match) -> str:
         if match.group('name').lower() in _HTML_TAG_NAMES:
@@ -101,38 +73,32 @@ def escape_pseudo_tags(html_content: str) -> str:
 def _serialize_for_reparsing(node) -> str:
     """Строка узла, годная к повторному разбору как HTML.
 
-    Tag.__str__ сам экранирует текст своих потомков — обычный self-round-trip
-    BeautifulSoup. А NavigableString — подкласс str, и str() на ней возвращает
-    уже раскодированный текст как есть, без обратного экранирования. Плейсхолдер
-    «<Value>» (после декодирования &lt;Value&gt; при исходном разборе страницы)
-    в таком виде неотличим от настоящего тега: при повторном разборе html.parser
-    молча вырезает его как неизвестный тег, и текст пропадает. Кириллическое имя
-    («<ПараметрыОтбора>») тегом не распознаётся — в имени тега нет ASCII-букв —
-    и потому уцелевает случайно. Отсюда была разница между русской и английской
-    книгой на одном и том же месте разметки: дело в форме плейсхолдера, а не в
-    языке справки.
-
-    Это чинит только ПОВТОРНЫЙ разбор. Тот же класс дефектов на ПЕРВОМ разборе
-    страницы — сырой «<Value1>» прямо в файле книги — закрывает
-    escape_pseudo_tags выше: сюда порча первого разбора не доживает, здесь уже
-    есть дерево, а поглощённый настоящим тегом текст в него не попал.
-
-    Правка не только чинит английский разбор: сверка всей русской книги до и
-    после (23 125 документов) показала расхождение на 113 документах, 399
-    полях — везде это ранее пропадавший параметр вроде «<AddInName>»,
-    «<ComClassName>», «<URI...>»: латинское имя внутри в остальном
-    кириллической страницы (см. tests/test_parser_element_card.py ::
-    test_latin_placeholder_survives_reparsing_in_russian_page). Это не
-    регресс, а восстановление данных, которые молча терялись и на русской
-    книге — ровно то, против чего построен проект: карточка не должна
-    недосчитываться параметра просто потому, что его имя выглядит как тег.
+    Tag.__str__ экранирует потомков сам, а NavigableString — подкласс str и
+    возвращает раскодированный текст как есть, из-за чего плейсхолдер
+    «<Value>» становится неотличим от тега и пропадает при повторном разборе.
     """
     if isinstance(node, NavigableString):
         return html.escape(str(node), quote=False)
     return str(node)
 
 
-# Вид элемента по-русски: агент читает карточку, а не enum индекса.
+MEMBER_TYPES = (
+    DocumentType.OBJECT_FUNCTION, DocumentType.OBJECT_PROCEDURE,
+    DocumentType.OBJECT_PROPERTY, DocumentType.OBJECT_EVENT,
+    DocumentType.OBJECT_CONSTRUCTOR,
+)
+GLOBAL_TYPES = (
+    DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE,
+    DocumentType.GLOBAL_EVENT,
+)
+
+GLOBAL_CONTEXT_PATH_SEGMENT = "Global context"
+
+PROCEDURE_BY_FUNCTION = {
+    DocumentType.GLOBAL_FUNCTION: DocumentType.GLOBAL_PROCEDURE,
+    DocumentType.OBJECT_FUNCTION: DocumentType.OBJECT_PROCEDURE,
+}
+
 ELEMENT_KIND_BY_TYPE = {
     DocumentType.GLOBAL_FUNCTION: "функция",
     DocumentType.GLOBAL_PROCEDURE: "процедура",
@@ -151,9 +117,8 @@ class HTMLParser:
 
     def __init__(self, dialect: HelpDialect = RU_DIALECT):
         self.dialect = dialect
-        # Флаги обязательности параметра — часть текста справки на языке
-        # диалекта, поэтому регэксп собирается из него, а не фиксируется на
-        # русских словах: на другом языке справка пишет флаг иначе.
+        # Флаг обязательности справка пишет на своём языке, поэтому регэксп
+        # собирается из диалекта.
         self._parameter_heading_re = re.compile(
             r'<\s*(?P<name>[^<>]*)\s*>\s*(?:\((?P<flag>'
             + '|'.join((dialect.required_flag, dialect.optional_flag))
@@ -161,84 +126,31 @@ class HTMLParser:
         )
 
     def parse_html_content(self, content: bytes, file_path: str) -> Optional[Documentation]:
-        """Парсит HTML содержимое и извлекает документацию."""
+        """Разбирает страницу справки в документ индекса."""
         try:
-            # Декодируем содержимое
             html_content = self._decode_content(content)
             if not html_content:
                 return None
 
-            # До первого BeautifulSoup, а не после: сырой «<Value1>» открывает
-            # настоящий тег уже на этом разборе и съедает остаток страницы.
-            html_content = escape_pseudo_tags(html_content)
+            # До первого BeautifulSoup: сырой «<Value1>» открывает настоящий
+            # тег уже на этом разборе и съедает остаток страницы.
+            soup = BeautifulSoup(escape_pseudo_tags(html_content), 'html.parser')
 
-            # Парсим HTML
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
-            # Определяем тип документации из пути файла
             doc_type, object_name, item_name = self._parse_file_path(file_path)
-            
-            # Для методов определяем точный тип (функция/процедура) по содержимому
-            if doc_type in [DocumentType.GLOBAL_FUNCTION, DocumentType.OBJECT_FUNCTION]:
-                is_function = self._is_function_not_procedure(soup)
-                if not is_function:
-                    if doc_type == DocumentType.GLOBAL_FUNCTION:
-                        doc_type = DocumentType.GLOBAL_PROCEDURE
-                    else:
-                        doc_type = DocumentType.OBJECT_PROCEDURE
-            
-            # Создаем базовый объект документации
+            doc_type = self._narrow_callable_type(doc_type, soup)
+
             doc = Documentation(
-                id="",  # Будет заполнен в build_call_strings
+                id="",
                 type=doc_type,
                 name=item_name,
                 object=object_name,
-                source_file=file_path
+                source_file=file_path,
             )
-            
-            # Извлекаем основную информацию
-            self._extract_title_and_description(soup, doc)
-            
-            # Члены объекта (метод/свойство/событие/конструктор) берут object
-            # из V8SH_title — он несёт имя объекта-владельца всегда, даже
-            # когда собственный заголовок страницы (V8SH_pagetitle) его не
-            # повторяет. У методов длинных «объектов-расширений» (например,
-            # «Расширение формы клиентского приложения для записи таблицы
-            # внешнего источника данных») заголовок страницы — просто
-            # «Прочитать (Read)», без имени объекта; расщепление такого
-            # заголовка по точке (_extract_object_name_from_title) не находит
-            # точки и по хвостовой ветке отдаёт его целиком, то есть в object
-            # попадает имя самого метода. У другого объекта-расширения того же
-            # семейства тоже есть метод «Прочитать», и оба документа получают
-            # общий id, стирая друг друга при индексации (см.
-            # tests/test_parser_element_card.py ::
-            # test_member_object_name_falls_back_to_v8sh_title).
-            #
-            # Страницы самого объекта (type == OBJECT) в этот приоритет
-            # намеренно не входят: у части объектов имя составное и с точками
-            # внутри («ВнешнийИсточникДанныхКубЗапись.<Имя внешнего
-            # источника>.<Имя куба>»), и то, что для них V8SH_title вообще-то
-            # тоже надёжен, — уже другая, более крупная правка (перекрытие
-            # object/name у таких объектов — известный, отдельно
-            # протестированный случай, см. Documentation._object_path и
-            # tests/test_disambiguation.py ::
-            # test_object_card_hint_with_overlapping_path_is_executable);
-            # трогать её в задаче об английской книге — не по адресу.
-            member_types = (
-                DocumentType.OBJECT_FUNCTION, DocumentType.OBJECT_PROCEDURE,
-                DocumentType.OBJECT_PROPERTY, DocumentType.OBJECT_EVENT,
-                DocumentType.OBJECT_CONSTRUCTOR,
-            )
-            object_name_ru, object_name_en = self._extract_object_names(soup)
-            if doc.type in member_types:
-                doc.object = (
-                    object_name_ru
-                    or self._extract_object_name_from_title(soup)
-                    or doc.object
-                )
-            elif doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
-                doc.object = self._extract_object_name_from_title(soup)
 
+            self._extract_title_and_description(soup, doc)
+
+            object_name_ru, object_name_en = self._extract_object_names(soup)
+            doc.object = self._owner_of(doc, soup, object_name_ru)
             doc.element_kind = ELEMENT_KIND_BY_TYPE.get(doc.type, "")
             doc.object_ru = object_name_ru or doc.object
             doc.object_en = object_name_en
@@ -247,28 +159,54 @@ class HTMLParser:
             if doc.type == DocumentType.OBJECT_PROPERTY:
                 self._extract_property_type(soup, doc)
 
-            # Для объектов извлекаем методы, свойства и события
             if doc.type == DocumentType.OBJECT:
                 self._extract_object_methods(soup, doc)
                 self._extract_object_properties(soup, doc)
                 self._extract_object_events(soup, doc)
             else:
-                # Для функций/методов/событий извлекаем варианты вызова и примеры
                 self._extract_variants(soup, doc)
                 self._extract_examples(soup, doc)
-            
+
             self._extract_version(soup, doc)
-            
-            # Автоматически заполняем служебные поля
             doc.build_call_strings()
-            
+
             logger.debug(f"Обработан HTML файл: {file_path} -> {doc.name}")
             return doc
-            
+
         except Exception as e:
             logger.error(f"Ошибка парсинга HTML файла {file_path}: {e}")
             return None
     
+    def _narrow_callable_type(
+        self, doc_type: DocumentType, soup: BeautifulSoup
+    ) -> DocumentType:
+        """Функция или процедура — видно по наличию раздела о результате."""
+        if doc_type not in PROCEDURE_BY_FUNCTION:
+            return doc_type
+        if self._is_function_not_procedure(soup):
+            return doc_type
+        return PROCEDURE_BY_FUNCTION[doc_type]
+
+    def _owner_of(
+        self, doc: Documentation, soup: BeautifulSoup, object_name_ru: Optional[str]
+    ) -> Optional[str]:
+        """Имя объекта-владельца страницы.
+
+        Член объекта берёт его из V8SH_title: собственный заголовок страницы
+        имя владельца не обязан повторять. Глобальные берут имя из диалекта —
+        путь страницы английский в обеих книгах. Страница самого объекта
+        разбирает свой заголовок.
+        """
+        if doc.type in MEMBER_TYPES:
+            return (
+                object_name_ru
+                or self._extract_object_name_from_title(soup)
+                or doc.object
+            )
+        if doc.type in GLOBAL_TYPES:
+            return self.dialect.global_context_name
+        return self._extract_object_name_from_title(soup)
+
     def _decode_content(self, content: bytes) -> Optional[str]:
         """Декодирует содержимое файла в строку."""
         encodings = ['utf-8', 'windows-1251', 'cp1251', 'iso-8859-1']
@@ -283,166 +221,129 @@ class HTMLParser:
         return None
     
     def _parse_file_path(self, file_path: str) -> tuple[DocumentType, Optional[str], str]:
-        """Определяет тип документации из пути файла."""
-        # Нормализуем путь
-        path_str = file_path.replace('\\', '/')
-        path_parts = path_str.split('/')
-        
-        # Убираем расширение из имени файла
-        file_name = path_parts[-1]
+        """Вид элемента, имя владельца и имя страницы — по пути внутри книги.
+
+        Глобальных свойств в 1С нет, поэтому у папки properties владелец всегда
+        объектный. Владелец «Global context» переводит метод и событие в
+        глобальный вид.
+        """
+        path = canonical_source_file(file_path)
+        file_name = path.rsplit('/', 1)[-1]
         if file_name.endswith('.html'):
             file_name = file_name[:-5]
-        
-        # Ищем ключевые слова в пути
-        path_lower = path_str.lower()
-        
-        if '/methods/' in path_lower:
-            # Это метод (функция/процедура) - определяем тип по содержимому
-            object_name = self._extract_object_name(path_str, 'methods')
-            if object_name and object_name.lower() == 'global context':
-                return DocumentType.GLOBAL_FUNCTION, object_name, file_name
-            else:
-                return DocumentType.OBJECT_FUNCTION, object_name, file_name
-            
-        elif '/properties/' in path_lower:
-            # Это свойство объекта (глобальных свойств в 1С нет)
-            object_name = self._extract_object_name(path_str, 'properties')
-            return DocumentType.OBJECT_PROPERTY, object_name, file_name
-            
-        elif '/events/' in path_lower:
-            # Это событие - может быть глобальным или объектным
-            object_name = self._extract_object_name(path_str, 'events')
-            if object_name and object_name.lower() == 'global context':
-                return DocumentType.GLOBAL_EVENT, object_name, file_name
-            else:
-                return DocumentType.OBJECT_EVENT, object_name, file_name
-            
-        elif '/ctors/' in path_lower or '/ctor/' in path_lower:
-            # Это конструктор объекта
-            object_name = self._extract_object_name(path_str, 'ctors')
-            if not object_name:
-                object_name = self._extract_object_name(path_str, 'ctor')
-            return DocumentType.OBJECT_CONSTRUCTOR, object_name, file_name
-            
-        elif 'globalfunctions/' in path_lower or '/functions/' in path_lower:
-            # Глобальная функция
-            return DocumentType.GLOBAL_FUNCTION, None, file_name
-            
-        elif '/objects/' in path_lower or path_lower.startswith('objects/'):
-            # Это объект
-            object_name = self._extract_main_object_name(path_str)
-            return DocumentType.OBJECT, object_name, file_name
-        
-        # По умолчанию считаем объектом
-        return DocumentType.OBJECT, None, file_name
-        
-    def _extract_object_name(self, path_str: str, member_type: str) -> Optional[str]:
-        """Извлекает имя объекта из пути для методов/свойств/событий."""
-        parts = path_str.split('/')
-        
-        # Ищем индекс папки с типом (methods/properties/events)
-        member_idx = None
-        for i, part in enumerate(parts):
-            if part.lower() == member_type:
-                member_idx = i
-                break
-                
-        if member_idx is None:
-            return None
-            
-        # Объект находится перед папкой типа
-        if member_idx > 0:
-            object_part = parts[member_idx - 1]
-            
-            # Если это специальные объекты как "Global context"
-            if object_part == "Global context":
-                return "Global context"
-            
-            # Если это каталожная структура catalog123, извлекаем имя
-            if object_part.startswith('catalog'):
-                # Попробуем найти более читаемое имя объекта
-                # Ищем в предыдущих частях пути
-                for j in range(member_idx - 1, -1, -1):
-                    if not parts[j].startswith('catalog') and parts[j] != 'objects':
-                        return parts[j]
-                        
-            return object_part
-            
-        return None
-        
-    def _extract_main_object_name(self, path_str: str) -> Optional[str]:
-        """Извлекает имя основного объекта из пути."""
-        parts = path_str.split('/')
-        
-        # Ищем индекс папки objects
-        objects_idx = None
-        for i, part in enumerate(parts):
-            if part.lower() == 'objects':
-                objects_idx = i
-                break
-                
-        if objects_idx is None:
-            return None
-            
-        # Для пути objects/catalog125/catalog462/object464.html
-        # нужно взять последний каталог перед HTML файлом
-        if objects_idx + 1 < len(parts):
-            # Ищем последний каталог перед HTML файлом
-            for i in range(len(parts) - 2, objects_idx, -1):  # Идем от конца к началу
-                part = parts[i]
-                if not part.endswith('.html') and part.startswith('catalog'):
-                    return part
-            
-            # Если не найден каталог, берем первый элемент после objects
-            object_part = parts[objects_idx + 1]
-            if not object_part.endswith('.html'):
-                return object_part
-                
-        return None
-    
-    def _is_function_not_procedure(self, soup: BeautifulSoup) -> bool:
-        """Определяет, является ли метод функцией (возвращает значение) или процедурой."""
-        # Ищем заголовок "Возвращаемое значение" в V8SH_chapter
-        chapter_headers = soup.find_all('p', class_='V8SH_chapter')
-        for header in chapter_headers:
-            if self.dialect.chapter_of(header.get_text(strip=True)) is Chapter.RETURN_VALUE:
-                return True
+        lowered = path.lower()
 
-        # По умолчанию считаем процедурой
-        return False
-    
+        if '/methods/' in lowered:
+            owner = self._extract_object_name(path, 'methods')
+            return self._global_or_object(
+                owner, DocumentType.GLOBAL_FUNCTION, DocumentType.OBJECT_FUNCTION
+            ), owner, file_name
+
+        if '/properties/' in lowered:
+            owner = self._extract_object_name(path, 'properties')
+            return DocumentType.OBJECT_PROPERTY, owner, file_name
+
+        if '/events/' in lowered:
+            owner = self._extract_object_name(path, 'events')
+            return self._global_or_object(
+                owner, DocumentType.GLOBAL_EVENT, DocumentType.OBJECT_EVENT
+            ), owner, file_name
+
+        if '/ctors/' in lowered or '/ctor/' in lowered:
+            owner = self._extract_object_name(path, 'ctors') \
+                or self._extract_object_name(path, 'ctor')
+            return DocumentType.OBJECT_CONSTRUCTOR, owner, file_name
+
+        if 'globalfunctions/' in lowered or '/functions/' in lowered:
+            return DocumentType.GLOBAL_FUNCTION, None, file_name
+
+        if '/objects/' in lowered or lowered.startswith('objects/'):
+            return DocumentType.OBJECT, self._extract_main_object_name(path), file_name
+
+        return DocumentType.OBJECT, None, file_name
+
+    @staticmethod
+    def _global_or_object(
+        owner: Optional[str], global_type: DocumentType, object_type: DocumentType
+    ) -> DocumentType:
+        is_global = bool(owner) and owner.lower() == GLOBAL_CONTEXT_PATH_SEGMENT.lower()
+        return global_type if is_global else object_type
+
+    @staticmethod
+    def _index_of_segment(parts: list, segment: str) -> Optional[int]:
+        for position, part in enumerate(parts):
+            if part.lower() == segment:
+                return position
+        return None
+
+    def _extract_object_name(self, path_str: str, member_type: str) -> Optional[str]:
+        """Имя владельца — сегмент пути перед папкой methods/properties/events.
+
+        Служебный сегмент вида «catalog123» именем не является: за настоящим
+        именем поднимаемся вверх по пути.
+        """
+        parts = path_str.split('/')
+        member_idx = self._index_of_segment(parts, member_type)
+        if not member_idx:
+            return None
+
+        owner = parts[member_idx - 1]
+        if owner == GLOBAL_CONTEXT_PATH_SEGMENT:
+            return GLOBAL_CONTEXT_PATH_SEGMENT
+
+        if owner.startswith('catalog'):
+            for position in range(member_idx - 1, -1, -1):
+                part = parts[position]
+                if not part.startswith('catalog') and part != 'objects':
+                    return part
+
+        return owner
+
+    def _extract_main_object_name(self, path_str: str) -> Optional[str]:
+        """Имя объекта из пути его собственной страницы.
+
+        «objects/catalog125/catalog462/object464.html» → «catalog462»:
+        последний каталог перед файлом, иначе первый сегмент после objects.
+        """
+        parts = path_str.split('/')
+        objects_idx = self._index_of_segment(parts, 'objects')
+        if objects_idx is None or objects_idx + 1 >= len(parts):
+            return None
+
+        for position in range(len(parts) - 2, objects_idx, -1):
+            part = parts[position]
+            if not part.endswith('.html') and part.startswith('catalog'):
+                return part
+
+        first_after_objects = parts[objects_idx + 1]
+        return None if first_after_objects.endswith('.html') else first_after_objects
+
+    def _is_function_not_procedure(self, soup: BeautifulSoup) -> bool:
+        """У функции есть раздел о возвращаемом значении, у процедуры — нет."""
+        return any(
+            self.dialect.chapter_of(header.get_text(strip=True)) is Chapter.RETURN_VALUE
+            for header in soup.find_all('p', class_='V8SH_chapter')
+        )
+
     def _extract_object_name_from_title(self, soup: BeautifulSoup) -> Optional[str]:
-        """Извлекает имя объекта из заголовка для объектов."""
-        # Ищем заголовок в V8SH_pagetitle или V8SH_heading
-        title_tag = soup.find('h1', class_='V8SH_pagetitle') or soup.find('p', class_='V8SH_heading')
+        """Имя объекта из заголовка страницы — всё, кроме последнего сегмента.
+
+        «РегистрБухгалтерииМенеджер.<Имя регистра>» → «РегистрБухгалтерииМенеджер»,
+        «КритерийОтбораМенеджер.<Имя критерия>.ОбработкаПолученияФормы» →
+        «КритерийОтбораМенеджер.<Имя критерия>».
+        """
+        title_tag = soup.find('h1', class_='V8SH_pagetitle') \
+            or soup.find('p', class_='V8SH_heading')
         if not title_tag:
             return None
-            
+
         title_text = title_tag.get_text(strip=True)
         if not title_text:
             return None
-            
-        # Убираем английскую часть в скобках
-        if ' (' in title_text:
-            title_text = title_text.split(' (')[0]
-        
-        # Для объектов: "РегистрБухгалтерииМенеджер.<Имя регистра бухгалтерии>"
-        # Для событий: "КритерийОтбораМенеджер.<Имя критерия>.ОбработкаПолученияФормы"
-        
-        if '.' in title_text:
-            parts = title_text.split('.')
-            if len(parts) == 2:
-                # Обычный объект: "РегистрБухгалтерииМенеджер.<Имя регистра бухгалтерии>"
-                return parts[0].strip()
-            elif len(parts) > 2:
-                # Событие/метод: "КритерийОтбораМенеджер.<Имя критерия>.ОбработкаПолученияФормы"
-                # Объектом является все кроме последней части
-                return '.'.join(parts[:-1]).strip()
-            else:
-                return parts[0].strip()
-            
-        return title_text.strip()
-    
+
+        russian_part = title_text.split(' (')[0]
+        return russian_part.rsplit('.', 1)[0].strip()
+
     def _get_content_after_chapter(self, soup: BeautifulSoup, chapter: Chapter) -> str:
         """
         Универсальный метод для получения HTML контента после заголовка V8SH_chapter.
@@ -483,51 +384,44 @@ class HTMLParser:
         
         return ""
     
+    @staticmethod
+    def _object_name_from_title(title_text: str) -> str:
+        """Имя объекта из заголовка страницы объекта.
+
+        Английская часть остаётся в имени: индексатор разложит её в name_en, а
+        name_ru() отрежет для путей. Точка ищется в русской части — у
+        «СправочникМенеджер.<Имя справочника> (CatalogManager.<Catalog name>)»
+        она есть в обеих половинах, и разрез по первой точке всей строки
+        оставляет английский хвост целым.
+        """
+        if '.' in title_text.split(' (')[0]:
+            return title_text.split('.', 1)[1].strip()
+        return title_text
+
+    @staticmethod
+    def _element_name_from_title(title_text: str) -> str:
+        """Имя элемента из заголовка: последний сегмент каждой половины."""
+        if '.' not in title_text:
+            return title_text
+
+        russian_part, _, english_part = title_text.partition(' (')
+        russian_name = russian_part.split('.')[-1]
+        if not english_part:
+            return russian_name
+
+        english_name = english_part.replace(')', '').split('.')[-1]
+        return f"{russian_name} ({english_name})"
+
     def _extract_title_and_description(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает заголовок и описание."""
-        # Ищем заголовок в V8SH_pagetitle или V8SH_heading
-        title_tag = soup.find('h1', class_='V8SH_pagetitle') or soup.find('p', class_='V8SH_heading')
+        title_tag = soup.find('h1', class_='V8SH_pagetitle') \
+            or soup.find('p', class_='V8SH_heading')
         if title_tag:
             title_text = title_tag.get_text(strip=True)
             if title_text:
-                if doc.type == DocumentType.OBJECT:
-                    # Английская часть остаётся в имени: split_name_ru_en
-                    # разложит её в name_en, а name_ru() отрежет для путей.
-                    # Раньше она отрезалась здесь, и поиск по ValueTable не
-                    # находил объект, хотя имя стоит в заголовке справки у
-                    # 2 905 страниц объектов из 3 063.
-                    #
-                    # Наличие точки проверяем по русской части (до " ("): у
-                    # «СправочникМенеджер.<Имя справочника> (CatalogManager.
-                    # <Catalog name>)» точка есть в обеих половинах, но
-                    # русская идёт первой — split по первой точке всей строки
-                    # попадает туда же, куда попал бы split по точке в одной
-                    # только русской части, и хвост с английской частью
-                    # остаётся целым.
-                    if '.' in title_text.split(' (')[0]:
-                        doc.name = title_text.split('.', 1)[1].strip()
-                    else:
-                        doc.name = title_text
-                else:
-                    # Для функций/методов/событий
-                    if '.' in title_text:
-                        # Разделяем русскую и английскую части
-                        russian_part = title_text.split(' (')[0] if ' (' in title_text else title_text
-                        english_part = title_text.split(' (')[1] if ' (' in title_text else ''
-                        
-                        # Берем последнюю часть русского названия
-                        russian_parts = russian_part.split('.')
-                        russian_name = russian_parts[-1] if len(russian_parts) > 1 else russian_part
-                        
-                        # Берем последнюю часть английского названия
-                        if english_part:
-                            english_parts = english_part.replace(')', '').split('.')
-                            english_name = english_parts[-1] if len(english_parts) > 1 else english_part.replace(')', '')
-                            doc.name = f"{russian_name} ({english_name})"
-                        else:
-                            doc.name = russian_name
-                    else:
-                        doc.name = title_text
+                doc.name = self._object_name_from_title(title_text) \
+                    if doc.type == DocumentType.OBJECT \
+                    else self._element_name_from_title(title_text)
 
         # Ищем описание в разделе "Описание:"
         desc_headers = soup.find_all('p', class_='V8SH_chapter')

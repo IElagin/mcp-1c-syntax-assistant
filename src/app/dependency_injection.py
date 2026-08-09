@@ -75,15 +75,12 @@ class DIContainer:
         """
         service_name = name or interface.__name__
         
-        # Проверяем singleton
         if service_name in self._singletons:
             return self._singletons[service_name]
         
-        # Проверяем обычные экземпляры
         if service_name in self._services:
             return self._services[service_name]
         
-        # Создаем через фабрику
         if service_name in self._factories:
             instance = self._factories[service_name]()
             return instance
@@ -101,7 +98,6 @@ class DIContainer:
             Экземпляр класса с внедренными зависимостями
         """
         try:
-            # Получаем сигнатуру конструктора
             sig = inspect.signature(cls.__init__)
             params = {}
             
@@ -109,12 +105,10 @@ class DIContainer:
                 if param_name == 'self':
                     continue
                 
-                # Пытаемся найти зависимость по типу
                 if param.annotation and param.annotation != inspect.Parameter.empty:
                     try:
                         params[param_name] = self.get(param.annotation)
                     except DIError:
-                        # Если зависимость не найдена и есть значение по умолчанию
                         if param.default != inspect.Parameter.empty:
                             params[param_name] = param.default
                         else:
@@ -131,7 +125,6 @@ class DIError(Exception):
     pass
 
 
-# Интерфейсы для основных сервисов
 class IElasticsearchClient(ABC):
     """Интерфейс клиента Elasticsearch."""
     
@@ -173,7 +166,6 @@ class IIndexer(ABC):
         pass
 
 
-# Глобальный контейнер
 _global_container: Optional[DIContainer] = None
 
 
@@ -196,7 +188,6 @@ def setup_dependencies():
     """Настройка зависимостей приложения."""
     container = get_container()
     
-    # Регистрация основных сервисов будет происходить при инициализации приложения
     logger.info("DI container initialized")
 
 

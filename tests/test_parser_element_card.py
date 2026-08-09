@@ -504,3 +504,33 @@ def test_member_object_name_falls_back_to_v8sh_title():
     ), doc.object
     assert doc.object != "Прочитать (Read)"
     assert doc.object_ru == doc.object
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_global_context_owner_is_named_as_the_book_names_it():
+    """Владелец глобальной функции — «Глобальный контекст», а не сегмент пути.
+
+    Путь страницы английский в обеих книгах — objects/Global context/methods/…
+    — и разбор пути оставлял 510 русским страницам владельца «Global context»:
+    имя, которого русская справка не печатает нигде, тогда как её собственная
+    страница объекта зовётся «Глобальный контекст». Свойства глобального
+    контекста при этом разбирались как обычные члены и получали правильное имя
+    владельца, так что один и тот же объект существовал в индексе под двумя
+    именами сразу — 510 документов под английским и 88 под русским.
+
+    Цена была не косметическая: list_1c_object_members("Глобальный контекст")
+    отдавал 87 свойств и ни одного метода, а get_1c_element("Сообщить",
+    object="Глобальный контекст") отвечал, что такого элемента нет, — про
+    процедуру, которую справка печатает именно у этого объекта.
+    """
+    for fixture in ("global_valueisfilled.html", "global_findbyref.html",
+                    "global_notifychanged.html"):
+        doc = parse_fixture(fixture)
+        assert doc.object == "Глобальный контекст", (fixture, doc.object)
+
+    # full_path глобальных остаётся именем без владельца: вызываются они
+    # напрямую, и «Глобальный контекст.ЗначениеЗаполнено» было бы не кодом.
+    doc = parse_fixture("global_valueisfilled.html")
+    doc.build_call_strings()
+    assert doc.full_path == "ЗначениеЗаполнено", doc.full_path

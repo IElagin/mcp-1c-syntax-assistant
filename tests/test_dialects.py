@@ -170,3 +170,17 @@ def test_every_chapter_of_the_english_book_is_known_to_the_dialect():
                     unknown.add(heading.strip())
 
     assert not unknown, f"диалект не знает разделов: {sorted(unknown)}"
+
+
+@pytest.mark.unit
+def test_every_dialect_names_the_global_context():
+    """Имя глобального контекста — часть диалекта, а не константа парсера.
+
+    Путь страницы английский в обеих книгах, поэтому владельца глобальных
+    функций может назвать только язык книги. Пустое значение вернуло бы разбор
+    к сегменту пути — тому самому «Global context» в русском индексе.
+    """
+    assert RU_DIALECT.global_context_name == "Глобальный контекст"
+    assert EN_DIALECT.global_context_name == "Global context"
+    for dialect in (RU_DIALECT, EN_DIALECT):
+        assert dialect.global_context_name.strip()

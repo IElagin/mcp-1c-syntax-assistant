@@ -61,7 +61,6 @@ class ElasticsearchClient:
             retry_on_timeout=False
         )
         
-        # Проверяем подключение
         await self._client.info()
         logger.info("Successfully connected to Elasticsearch")
         return True
@@ -101,7 +100,6 @@ class ElasticsearchClient:
         if not self._client:
             raise ConnectionFailedError("No connection to Elasticsearch")
         
-        # Упрощенная схема индекса
         index_config = {
             "settings": {
                 "number_of_shards": 1,
@@ -124,9 +122,6 @@ class ElasticsearchClient:
                     "id": {"type": "keyword"},
                     "type": {"type": "keyword"}, 
                     "name": {"type": "text", "analyzer": "russian", "fields": {"keyword": {"type": "keyword"}}},
-                    # Справка хранит имя слитно: "Добавить (Add)". Слитное имя
-                    # непригодно для точного совпадения, поэтому раскладываем его
-                    # на русскую и английскую части с keyword-подполями.
                     "name_ru": {"type": "text", "analyzer": "russian", "fields": {"keyword": {"type": "keyword"}}},
                     "name_en": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
                     "object": {"type": "keyword"},
@@ -135,10 +130,6 @@ class ElasticsearchClient:
                     "object_en": {"type": "keyword"},
                     "call_primary": {"type": "keyword"},
                     "syntax_all": {"type": "text"},
-                    # object, а не nested: запросов по параметрам нет — прежние
-                    # бусты по parameters.* не работали в принципе, плоский
-                    # match по nested-полю не находит ничего. Рендер берёт
-                    # структуру из _source, где она сохраняется точно.
                     "variants": {
                         "type": "object",
                         "properties": {
@@ -227,12 +218,9 @@ class ElasticsearchClient:
         return response
 
 
-# Factory function для создания клиента (для обратной совместимости)
 def create_elasticsearch_client() -> ElasticsearchClient:
     """Создаёт новый экземпляр ElasticsearchClient."""
     return ElasticsearchClient()
 
 
-# Глобальный экземпляр для обратной совместимости с кодом, обращающимся к
-# клиенту напрямую, в обход DI.
 es_client = ElasticsearchClient()

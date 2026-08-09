@@ -1,4 +1,4 @@
-﻿"""Главное приложение MCP сервера синтаксис-помощника 1С."""
+"""Главное приложение MCP сервера синтаксис-помощника 1С."""
 
 import sys
 import argparse
@@ -9,17 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from src import __version__
 from src.core.config import settings
 from src.core.logging import get_logger
-from src.core.validation import ValidationError
+from src.core.errors import ValidationError
 from src.parsers.hbk_parser import HBKParserError
-from src.core.lifecycle import startup, shutdown
+from src.app.lifecycle import startup, shutdown
 
-# Import routers
 from src.api.routes.health import router as health_router
 from src.api.routes.index import router as index_router
 from src.api.routes.metrics import router as metrics_router
 from src.api.routes.mcp import router as mcp_router
 
-# Import middleware and exception handlers
 from src.api.middleware.rate_limit import rate_limit_middleware
 from src.api.middleware.error_handler import (
     validation_exception_handler,
@@ -40,16 +38,14 @@ def parse_arguments():
         action="store_true",
         help="Принудительная переиндексация при запуске (игнорирует существующие данные)"
     )
-    
-    # Парсим только известные аргументы, чтобы не конфликтовать с uvicorn
+
     args, unknown = parser.parse_known_args()
     return args
 
 
-# Обрабатываем аргументы командной строки
 args = parse_arguments()
 if args.reindex:
-    settings.force_reindex = True
+    settings.enable_force_reindex()
     logger.info("Включена принудительная переиндексация (--reindex)")
 
 
@@ -61,7 +57,6 @@ async def lifespan(app: FastAPI):
     await shutdown(app)
 
 
-# Создаем приложение FastAPI
 app = FastAPI(
     title="1C Syntax Helper MCP Server",
     description="MCP сервер для поиска по синтаксису 1С",
@@ -69,10 +64,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Добавляем CORS middleware
-# allow_credentials=True вместе с allow_origins=["*"] — невалидная пара по
-# спецификации CORS: браузер отвергает такой ответ. Учётные данные серверу не
-# нужны — аутентификации у него нет, — поэтому выключены явно.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -81,15 +72,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Добавляем rate limiting middleware
 app.middleware("http")(rate_limit_middleware)
 
-# Регистрируем обработчики исключений
 app.add_exception_handler(ValidationError, validation_exception_handler)
 app.add_exception_handler(HBKParserError, parser_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
-# Подключаем роутеры
 app.include_router(health_router)
 app.include_router(index_router)
 app.include_router(metrics_router)
@@ -98,7 +86,7 @@ app.include_router(mcp_router)
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         app,  # Передаем объект напрямую, а не строку
         host=settings.server.host,

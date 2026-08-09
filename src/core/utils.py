@@ -20,6 +20,15 @@ class SafeSubprocessError(Exception):
     pass
 
 
+def canonical_source_file(source_file: Optional[str]) -> str:
+    """Внутрикнижный путь страницы через прямой слэш.
+
+    Разделитель приходит из вывода 7zip и зависит от платформы сборки, а путь
+    служит ключом склейки русской и английской книг.
+    """
+    return (source_file or "").replace("\\", "/")
+
+
 def safe_subprocess_run(
     command: List[str], 
     cwd: Optional[Path] = None,

@@ -14,7 +14,22 @@ import pytest
 
 from src.core.config import settings
 from src.core.elasticsearch import es_client
+from src.core.utils import canonical_source_file
 from src.parsers.name_backfill import _fields_to_fill, backfill_english_names
+
+
+def _page_query(source_file: str) -> dict:
+    """Запрос страницы по пути в обеих записях — со слэшем и с обратным.
+
+    Тест не вправе требовать одной записи там, где её не требует код:
+    индексатор пишет source_file канонически (через «/»), но уже собранные
+    индексы этим не переписываются, а собраны они бывают на разных платформах
+    — 7-Zip под Windows печатает пути через «\\», p7zip под Linux через «/».
+    Прежний term по одной записи падал IndexError'ом на индексе, собранном на
+    хосте, — и это было не «страницы нет», а «тест смотрит не туда».
+    """
+    canonical = canonical_source_file(source_file)
+    return {"terms": {"source_file": [canonical, canonical.replace("/", "\\")]}}
 
 
 @pytest.mark.integration
@@ -22,8 +37,11 @@ from src.parsers.name_backfill import _fields_to_fill, backfill_english_names
 async def test_global_context_gets_its_english_name():
     """У «Глобальный контекст» в норме нет ни name_en, ни object_en.
 
-    source_file одинаков в обеих книгах символ в символ — это и есть ключ
-    склейки, измеренный на всём корпусе (48 682 файла, обе книги).
+    Ключ склейки — внутрикнижный путь страницы: он одинаков в обеих книгах,
+    измерено на всём корпусе (48 682 файла). Одинаков сам путь, но не его
+    запись: разделитель зависит от платформы, на которой собирали индекс, —
+    поэтому и код, и этот тест приводят путь к канонической форме, а не
+    сравнивают строки как есть.
 
     Индекс персистентный: на живом индексе, где предыдущий прогон уже
     достроил этот документ, «updated > 0» стало бы ложным без вины кода —
@@ -35,7 +53,7 @@ async def test_global_context_gets_its_english_name():
     ru_index = settings.elasticsearch_index
     try:
         found = await es_client.search(
-            {"query": {"term": {"source_file": "objects/Global context.html"}}},
+            {"query": _page_query("objects/Global context.html")},
             index=ru_index,
         )
         doc_id = found["hits"]["hits"][0]["_id"]
@@ -50,7 +68,7 @@ async def test_global_context_gets_its_english_name():
         assert updated > 0
 
         response = await es_client.search(
-            {"query": {"term": {"source_file": "objects/Global context.html"}}},
+            {"query": _page_query("objects/Global context.html")},
             index=ru_index,
         )
         source = response["hits"]["hits"][0]["_source"]
@@ -80,7 +98,7 @@ async def test_backfill_is_exhaustive_in_one_pass_and_idempotent_after():
     en_index = settings.elasticsearch_index_en
     try:
         found = await es_client.search(
-            {"query": {"term": {"source_file": "objects/Global context.html"}}},
+            {"query": _page_query("objects/Global context.html")},
             index=ru_index,
         )
         doc_id = found["hits"]["hits"][0]["_id"]
@@ -158,6 +176,59 @@ async def test_already_parsed_name_en_is_not_overwritten():
             except NotFoundError:
                 pass
         await es_client.disconnect()
+
+
+@pytest.mark.unit
+def test_source_file_is_canonicalised_to_one_separator():
+    assert canonical_source_file("objects\\Global context.html") == "objects/Global context.html"
+    assert canonical_source_file("objects/Global context.html") == "objects/Global context.html"
+    assert canonical_source_file(None) == ""
+
+
+@pytest.mark.unit
+async def test_join_survives_books_indexed_on_different_platforms():
+    """Русская книга собрана под Windows, английская — в контейнере.
+
+    Ровно это и было на живом стенде: 23 125 русских путей записаны через
+    «\\», 23 104 английских — через «/». Склейка шла term'ом по строке как
+    есть, совпадений давала ноль из 23 104 возможных, и 653 документа
+    оставались без английского имени при живой парной странице у каждого.
+    Хуже отказа была его форма: достройка возвращала 0 и выглядела
+    работающей — «кандидатов нет» и «ключ не сходится» с её стороны
+    неотличимы, поэтому регрессию сюда обязан ловить тест, а не следующий
+    аудит корпуса.
+    """
+    mock_client = AsyncMock()
+    mock_client.index_exists = AsyncMock(return_value=True)
+    mock_client.search = AsyncMock(
+        side_effect=[
+            {"hits": {"hits": [{
+                "_id": "ru1",
+                "_source": {"source_file": "objects\\Array\\methods\\Add.html",
+                            "name_en": "", "object_en": None},
+            }]}},
+            {"hits": {"hits": [{
+                "_source": {"source_file": "objects/Array/methods/Add.html",
+                            "name": "Add", "object": "Array"},
+            }]}},
+        ]
+    )
+    mock_client._client.bulk = AsyncMock(
+        return_value={"errors": False, "items": [{"update": {"_id": "ru1", "result": "updated"}}]}
+    )
+    mock_client.refresh_index = AsyncMock(return_value=True)
+
+    updated = await backfill_english_names(mock_client, "help1c_docs", "help1c_docs_en")
+
+    assert updated == 1, "пути одной и той же страницы обязаны сойтись"
+    written = mock_client._client.bulk.await_args.kwargs["body"][1]["doc"]
+    assert written == {"name_en": "Add", "object_en": "Array"}
+
+    # В terms уходят обе записи пути: индекс мог быть собран любой из платформ,
+    # и требовать от него одной — то же условие, из-за которого склейка молчала.
+    lookup = mock_client.search.await_args_list[1].args[0]["query"]["terms"]["source_file"]
+    assert "objects/Array/methods/Add.html" in lookup
+    assert "objects\\Array\\methods\\Add.html" in lookup
 
 
 @pytest.mark.integration

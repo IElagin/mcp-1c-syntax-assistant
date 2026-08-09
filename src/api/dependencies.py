@@ -12,9 +12,6 @@ from src.infrastructure.background.indexing_manager import get_indexing_manager 
 logger = get_logger(__name__)
 
 
-# ============================================================================
-# Elasticsearch Client Dependency
-# ============================================================================
 
 async def get_elasticsearch_client() -> AsyncGenerator[ElasticsearchClient, None]:
     """
@@ -29,7 +26,6 @@ async def get_elasticsearch_client() -> AsyncGenerator[ElasticsearchClient, None
     client = ElasticsearchClient()
     
     try:
-        # Подключаемся к Elasticsearch
         connected = await client.connect()
         if not connected:
             logger.warning("Failed to connect to Elasticsearch in dependency")
@@ -37,13 +33,9 @@ async def get_elasticsearch_client() -> AsyncGenerator[ElasticsearchClient, None
         yield client
         
     finally:
-        # Закрываем соединение после завершения запроса
         await client.disconnect()
 
 
-# ============================================================================
-# Legacy dependencies (для постепенной миграции)
-# ============================================================================
 
 def get_es_client():
     """
@@ -64,9 +56,6 @@ def get_limiter():
     return get_rate_limiter()
 
 
-# ============================================================================
-# Background Indexing Manager Dependency
-# ============================================================================
 
 def get_indexing_manager() -> BackgroundIndexingManager:
     """

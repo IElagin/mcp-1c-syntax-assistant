@@ -1,202 +1,140 @@
-"""Система ранжирования результатов поиска."""
+"""Ранжирование результатов поиска поверх оценки Elasticsearch."""
 
 from typing import List, Dict, Any
-import re
+
+FACTOR_WEIGHTS = {
+    "exact_name_match": 0.4,
+    "doc_type_priority": 0.2,
+    "description_quality": 0.15,
+    "completeness": 0.15,
+    "syntax_match": 0.1,
+}
+DEFAULT_FACTOR_WEIGHT = 0.1
+
+TYPE_PRIORITIES = {
+    "global_function": 2.0,
+    "function": 1.8,
+    "method": 1.6,
+    "property": 1.2,
+    "event": 1.1,
+    "constant": 1.0,
+}
+
+NEUTRAL = 1.0
+DESCRIPTION_WELL_SIZED = (50, 500)
+DESCRIPTION_SHORT = (20, 50)
 
 
 class SearchRanker:
-    """Система ранжирования результатов поиска по документации 1С."""
-    
-    def rank_results(self, hits: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
-        """
-        Ранжирует результаты поиска.
-        
-        Args:
-            hits: Результаты поиска из Elasticsearch
-            query: Исходный поисковый запрос
-        
-        Returns:
-            Отранжированный список результатов
-        """
-        if not hits:
-            return []
-        
-        # Извлекаем документы и добавляем дополнительные оценки
-        ranked_results = []
-        
+    """Досчитывает оценку документа по признакам, которых не видит Elasticsearch."""
+
+    def rank_results(
+        self, hits: List[Dict[str, Any]], query: str
+    ) -> List[Dict[str, Any]]:
+        """Документы с досчитанной оценкой, по убыванию."""
+        ranked = []
         for hit in hits:
             doc = hit["_source"]
-            base_score = hit["_score"]
-            
-            # Вычисляем дополнительные факторы ранжирования
-            ranking_factors = self._calculate_ranking_factors(doc, query)
-            
-            # Применяем факторы к базовой оценке
-            final_score = self._apply_ranking_factors(base_score, ranking_factors)
-            
-            ranked_results.append({
+            factors = self._ranking_factors(doc, query)
+            ranked.append({
                 "document": doc,
-                "score": final_score,
-                "base_score": base_score,
-                "ranking_factors": ranking_factors
+                "score": self._apply_factors(hit["_score"], factors),
+                "base_score": hit["_score"],
+                "ranking_factors": factors,
             })
-        
-        # Сортируем по финальной оценке
-        ranked_results.sort(key=lambda x: x["score"], reverse=True)
-        
-        return ranked_results
-    
-    def _calculate_ranking_factors(self, doc: Dict[str, Any], query: str) -> Dict[str, float]:
-        """Вычисляет дополнительные факторы ранжирования."""
-        factors = {}
-        
-        # Фактор точного совпадения имени
-        factors["exact_name_match"] = self._exact_name_match_factor(doc, query)
-        
-        # Фактор типа документа (функции важнее свойств)
-        factors["doc_type_priority"] = self._doc_type_priority_factor(doc)
-        
-        # Фактор популярности (на основе длины описания)
-        factors["description_quality"] = self._description_quality_factor(doc)
-        
-        # Фактор полноты информации
-        factors["completeness"] = self._completeness_factor(doc)
-        
-        # Фактор соответствия по синтаксису
-        factors["syntax_match"] = self._syntax_match_factor(doc, query)
-        
-        return factors
-    
-    def _exact_name_match_factor(self, doc: Dict[str, Any], query: str) -> float:
-        """Фактор точного совпадения имени."""
+
+        ranked.sort(key=lambda result: result["score"], reverse=True)
+        return ranked
+
+    def _ranking_factors(self, doc: Dict[str, Any], query: str) -> Dict[str, float]:
+        return {
+            "exact_name_match": self._exact_name_match_factor(doc, query),
+            "doc_type_priority": self._doc_type_priority_factor(doc),
+            "description_quality": self._description_quality_factor(doc),
+            "completeness": self._completeness_factor(doc),
+            "syntax_match": self._syntax_match_factor(doc, query),
+        }
+
+    @staticmethod
+    def _exact_name_match_factor(doc: Dict[str, Any], query: str) -> float:
         name = doc.get("name", "").lower()
         full_path = doc.get("full_path", "").lower()
-        query_lower = query.lower()
-        
-        # Полное совпадение имени - максимальный бонус
-        if name == query_lower or full_path == query_lower:
+        wanted = query.lower()
+
+        if wanted in (name, full_path):
             return 3.0
-        
-        # Начинается с запроса
-        if name.startswith(query_lower) or full_path.startswith(query_lower):
+        if name.startswith(wanted) or full_path.startswith(wanted):
             return 2.0
-        
-        # Содержит запрос
-        if query_lower in name or query_lower in full_path:
+        if wanted in name or wanted in full_path:
             return 1.5
-        
-        return 1.0
-    
-    def _doc_type_priority_factor(self, doc: Dict[str, Any]) -> float:
-        """Фактор приоритета типа документа."""
+        return NEUTRAL
+
+    @staticmethod
+    def _doc_type_priority_factor(doc: Dict[str, Any]) -> float:
         doc_type = doc.get("type", "").lower()
-        
-        # Приоритеты типов документов
-        type_priorities = {
-            "global_function": 2.0,    # Глобальные функции - высший приоритет
-            "function": 1.8,           # Обычные функции
-            "method": 1.6,             # Методы объектов
-            "property": 1.2,           # Свойства объектов
-            "event": 1.1,              # События
-            "constant": 1.0,           # Константы
-        }
-        
-        for type_key, priority in type_priorities.items():
+        for type_key, priority in TYPE_PRIORITIES.items():
             if type_key in doc_type:
                 return priority
-        
-        return 1.0  # По умолчанию
-    
-    def _description_quality_factor(self, doc: Dict[str, Any]) -> float:
-        """Фактор качества описания."""
+        return NEUTRAL
+
+    @staticmethod
+    def _description_quality_factor(doc: Dict[str, Any]) -> float:
         description = doc.get("description", "")
-        
         if not description:
-            return 0.8  # Штраф за отсутствие описания
-        
-        desc_length = len(description)
-        
-        # Оптимальная длина описания - от 50 до 500 символов
-        if 50 <= desc_length <= 500:
+            return 0.8
+
+        length = len(description)
+        if DESCRIPTION_WELL_SIZED[0] <= length <= DESCRIPTION_WELL_SIZED[1]:
             return 1.3
-        elif 20 <= desc_length < 50:
+        if DESCRIPTION_SHORT[0] <= length < DESCRIPTION_SHORT[1]:
             return 1.1
-        elif desc_length > 500:
+        if length > DESCRIPTION_WELL_SIZED[1]:
             return 1.2
-        else:
-            return 0.9
-    
-    def _completeness_factor(self, doc: Dict[str, Any]) -> float:
-        """Фактор полноты информации."""
-        completeness_score = 1.0
+        return 0.9
 
-        variant_list = doc.get("variants") or []
+    @staticmethod
+    def _completeness_factor(doc: Dict[str, Any]) -> float:
+        """Насколько документ полон: синтаксис, параметры, примеры, тип результата.
 
-        # Бонус за наличие синтаксиса. syntax_ru/syntax_en ушли вместе со
-        # старой моделью — call_primary (готовая строка вызова) и syntax_all
-        # (полный синтаксис по всем вариантам) теперь несут этот сигнал.
+        Параметры и тип результата лежат внутри вариантов вызова, а не
+        плоскими полями документа; у свойств тип — в value_type.
+        """
+        variants = doc.get("variants") or []
+        parameters = [p for v in variants for p in (v.get("parameters") or [])]
+        described = sum(1 for p in parameters if p.get("description"))
+
+        score = NEUTRAL
         if doc.get("syntax_all") or doc.get("call_primary"):
-            completeness_score += 0.3
-
-        # Бонус за наличие параметров. Параметры лежат внутри вариантов
-        # вызова, а не плоским списком в документе.
-        params = [p for v in variant_list for p in (v.get("parameters") or [])]
-        if params:
-            completeness_score += 0.2
-            # Дополнительный бонус за описания параметров
-            with_description = sum(1 for p in params if p.get("description"))
-            if with_description:
-                completeness_score += 0.1 * (with_description / len(params))
-
-        # Бонус за примеры
+            score += 0.3
+        if parameters:
+            score += 0.2
+            score += 0.1 * (described / len(parameters))
         if doc.get("examples"):
-            completeness_score += 0.2
+            score += 0.2
+        if any(v.get("return_type") for v in variants) or doc.get("value_type"):
+            score += 0.1
+        return score
 
-        # Бонус за тип возвращаемого значения: у методов он лежит в варианте
-        # вызова (return_type), у свойств — в value_type документа.
-        if any(v.get("return_type") for v in variant_list) or doc.get("value_type"):
-            completeness_score += 0.1
-
-        return completeness_score
-
-    def _syntax_match_factor(self, doc: Dict[str, Any], query: str) -> float:
-        """Фактор соответствия по синтаксису."""
+    @staticmethod
+    def _syntax_match_factor(doc: Dict[str, Any], query: str) -> float:
         syntax = (doc.get("syntax_all") or "").lower()
-        query_lower = query.lower()
+        wanted = query.lower()
 
-        # Проверяем вхождение запроса в синтаксис
-        if query_lower in syntax:
+        if wanted in syntax:
             return 1.4
 
-        # Проверяем частичное совпадение
-        query_parts = query_lower.split()
-        if len(query_parts) > 1:
-            matches = sum(1 for part in query_parts if part in syntax)
-            if matches:
-                return 1.0 + (matches / len(query_parts)) * 0.3
+        words = wanted.split()
+        if len(words) > 1:
+            matched = sum(1 for word in words if word in syntax)
+            if matched:
+                return NEUTRAL + (matched / len(words)) * 0.3
 
-        return 1.0
-    
-    def _apply_ranking_factors(
-        self,
-        base_score: float,
-        factors: Dict[str, float]
-    ) -> float:
-        """Применяет факторы ранжирования к базовой оценке."""
-        final_score = base_score
-        
-        # Веса факторов
-        factor_weights = {
-            "exact_name_match": 0.4,
-            "doc_type_priority": 0.2,
-            "description_quality": 0.15,
-            "completeness": 0.15,
-            "syntax_match": 0.1
-        }
-        
-        # Применяем взвешенные факторы
-        for factor_name, factor_value in factors.items():
-            weight = factor_weights.get(factor_name, 0.1)
-            final_score *= (1.0 + (factor_value - 1.0) * weight)
-        
-        return final_score
+        return NEUTRAL
+
+    @staticmethod
+    def _apply_factors(base_score: float, factors: Dict[str, float]) -> float:
+        score = base_score
+        for name, value in factors.items():
+            weight = FACTOR_WEIGHTS.get(name, DEFAULT_FACTOR_WEIGHT)
+            score *= NEUTRAL + (value - NEUTRAL) * weight
+        return score

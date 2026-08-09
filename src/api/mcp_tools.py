@@ -11,43 +11,22 @@
 """
 
 from src.core.config import settings
+from src.core.constants import (
+    MEMBERS_LIMIT_DEFAULT,
+    MEMBERS_LIMIT_MAX,
+    MIN_NAME_LENGTH,
+    SEARCH_LIMIT_DEFAULT,
+    SEARCH_LIMIT_MAX,
+)
 
-SEARCH_LIMIT_DEFAULT = 10
-MEMBERS_LIMIT_DEFAULT = 100
-
-# Язык ответа по умолчанию, когда инструмент вызван без lang. Читается из
-# настройки, а не захардкожен: DEFAULT_HELP_LANG из окружения (задача 4)
-# должен влиять и на схему, которую видит модель, и на то, что делает сервер,
-# — иначе объявленное умолчание и реальное поведение могли бы разойтись.
 DEFAULT_LANG = settings.default_help_lang
 
-# Описание параметра lang — общее для всех трёх инструментов: language of the
-# response значит именно это в любой из трёх схем.
 LANG_DESCRIPTION = (
     "Язык ответа: ru — русская справка, en — английская. "
     "Это язык карточки, а не язык запроса: имя элемента "
     "можно передать на любом языке. Передавайте en, если "
     "пользователь работает по-английски."
 )
-
-# Потолок limit для find_1c_help. Вынесен в константу, чтобы совет "вызовите
-# ещё раз с limit=N" (в mcp_handlers и в candidate_list) физически не мог
-# предложить число больше того, что схема готова принять: раньше карточка
-# советовала limit=total без оглядки на потолок, и для омонимов вроде
-# «Количество» (275 совпадений) совет упирался в validation error схемы же.
-SEARCH_LIMIT_MAX = 200
-
-# Тот же потолок для состава объекта: совет «повторите с limit=N» обязан
-# укладываться в схему list_1c_object_members.
-MEMBERS_LIMIT_MAX = 1000
-
-# Пустая строка — не «параметр не задан», а фильтр, совпадающий со всем:
-# term по name_en.keyword == "" ловит весь английский индекс, потому что
-# английские заголовки скобок не несут и поле пустое почти везде. Модели
-# запросов отвергают пустые имена (src/models/mcp_models.py), и схема обязана
-# говорить то же самое: схема, обещающая больше, чем принимает сервер,
-# отправляет модель в отказ, которого та не ждала.
-MIN_NAME_LENGTH = 1
 
 TOOLS = [
     {
@@ -192,14 +171,3 @@ TOOLS = [
         },
     },
 ]
-
-# Отображение kind в поле type индекса. Глобальные события попадают только
-# под global: в коде их пишут не как методы объекта.
-KIND_TO_TYPE = {
-    "any": [],
-    "global": ["global_function", "global_procedure", "global_event"],
-    "method": ["object_function", "object_procedure"],
-    "property": ["object_property"],
-    "event": ["object_event"],
-    "constructor": ["object_constructor"],
-}

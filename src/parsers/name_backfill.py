@@ -1,62 +1,39 @@
-"""Достройка английских имён по английскому индексу.
+"""Достройка name_en/object_en в русском индексе из английского.
 
-У части страниц объектов английского имени или объекта-владельца в русской
-книге нет вовсе — «Глобальный контекст», расширения форм, заглушки вида
-«<Имя измерения>» и подобные. На момент задачи 13 это 707 документов: 674 с
-пустым name_en, 304 без object_en (271 из них — оба сразу). Плановая цифра
-брифа (158) устарела: индекс менялся трижды с задачи 11.
-
-Их значения берутся из английской книги по пути страницы (source_file):
-внутренние пути совпадают в обеих книгах символ в символ — это измерено на
-всём корпусе (48 682 файла, списки путей идентичны построчно) и служит ключом
-склейки. Склейка идёт по индексам, а не по архивам: source_file уже
-проиндексирован в обеих книгах, и второй разбор 32-мегабайтной книги ради
-нескольких сотен страниц не нужен.
-
-Достройка правит СТРОГО те поля, которых не хватает конкретному документу, и
-никогда не трогает уже заполненные: у 33 из 707 документов name_en уже
-разобран задачей 11 и лексически отличается от заголовка английской книги
-(«Массив (Array)» в русской книге против «Array» в английской, у составных
-имён форм расхождение сильнее) — переписать его значением из английского
-индекса значило бы молча отменить разбор задачи 11.
+Ключ склейки — путь страницы. Правятся строго недостающие поля; уже
+заполненные не трогаются.
 """
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
+from src.core.utils import canonical_source_file
 
 logger = get_logger(__name__)
 
-# Служебное имя страницы книги: «catalog2627», «object464», «method6189». Такие
-# имена придумывает не автор справки, а генератор книги — их получают страницы
-# без человеческого заголовка.
+# «catalog2627», «object464», «method6189» — имена, которые придумывает
+# генератор книги, а не автор справки.
 _BOOK_IDENTIFIER_RE = re.compile(
     r"(?:catalog|object|method|prop|property|event|ctor|func|page)\d+\Z",
     re.IGNORECASE,
 )
 
-# С запасом на порядок: реальных кандидатов 707 на момент задачи 13, но
-# константа не должна зависеть от текущего состояния книги — index.max_result
-# _window по умолчанию 10 000, и обе книги исторически только росли.
 MAX_CANDIDATES = 5000
-
-# terms-запрос по source_file чанкуется, а не уходит одним списком: список
-# кандидатов может вырасти, а элементы terms не обязаны укладываться в один
-# запрос без разумного предела.
 LOOKUP_CHUNK = 500
+
+
+def _both_separators(source_file: str) -> Tuple[str, str]:
+    canonical = canonical_source_file(source_file)
+    return canonical, canonical.replace("/", "\\")
 
 
 async def _candidates(es_client: ElasticsearchClient, index: str) -> List[Dict]:
     """Документы, которым не хватает name_en или object_en.
 
-    Это два разных случая по форме хранения, не один. Индексатор
-    (src/parsers/indexer.py) пишет name_en пустой строкой при неудачном
-    расщеплении заголовка — поле всегда присутствует, must_not/exists его не
-    поймает, только term по пустой строке. object_en, наоборот, в документ
-    просто не попадает, когда у страницы нет объекта-владельца, — здесь
-    работает exists. Проверяем оба случая одним bool-запросом.
+    Формы хранения разные: пустое name_en ловится term'ом по пустой строке
+    (поле присутствует всегда), отсутствующее object_en — через exists.
     """
     response = await es_client.search(
         {
@@ -77,9 +54,6 @@ async def _candidates(es_client: ElasticsearchClient, index: str) -> List[Dict]:
     hits = response.get("hits", {}).get("hits", [])
     total = response.get("hits", {}).get("total", {}).get("value", len(hits))
     if total > len(hits):
-        # size обрезал выдачу — часть кандидатов в этом прогоне не будет
-        # даже рассмотрена, не то что достроена. Молчать нельзя: со стороны
-        # это неотличимо от «всё достроено, кандидатов больше нет».
         logger.warning(
             f"Кандидатов на достройку {total}, выбрано {len(hits)} "
             f"(предел MAX_CANDIDATES={MAX_CANDIDATES}) — часть не будет "
@@ -91,16 +65,20 @@ async def _candidates(es_client: ElasticsearchClient, index: str) -> List[Dict]:
 async def _english_by_source_file(
     es_client: ElasticsearchClient, index: str, source_files: List[str]
 ) -> Dict[str, Dict]:
-    """Английские страницы, сматченные по source_file.
+    """Английские страницы по пути, ключ словаря — канонический путь.
 
-    source_file в обеих книгах — поле типа keyword целиком (без под-поля
-    .keyword — в отличие от name_en). terms по source_file.keyword у
-    несуществующего под-поля не падает с ошибкой, а молча не находит ничего:
-    достройка выглядела бы работающей и не обновляла бы ни одного документа.
+    В terms уходят обе записи каждого пути: индексы могли быть собраны на
+    разных платформах, а разделитель приходит из вывода 7zip.
     """
-    result: Dict[str, Dict] = {}
-    for start in range(0, len(source_files), LOOKUP_CHUNK):
-        chunk = source_files[start : start + LOOKUP_CHUNK]
+    lookup = sorted({
+        variant
+        for source_file in source_files
+        for variant in _both_separators(source_file)
+    })
+
+    found: Dict[str, Dict] = {}
+    for start in range(0, len(lookup), LOOKUP_CHUNK):
+        chunk = lookup[start:start + LOOKUP_CHUNK]
         response = await es_client.search(
             {
                 "query": {"terms": {"source_file": chunk}},
@@ -112,35 +90,22 @@ async def _english_by_source_file(
         for hit in response.get("hits", {}).get("hits", []):
             source_file = hit["_source"].get("source_file")
             if source_file:
-                result[source_file] = hit["_source"]
-    return result
+                found[canonical_source_file(source_file)] = hit["_source"]
+    return found
 
 
 def _page_stem(source_file: Optional[str]) -> str:
     """«objects/catalog2/catalog2627.html» → «catalog2627»."""
-    name = (source_file or "").rsplit("/", 1)[-1]
+    name = canonical_source_file(source_file).rsplit("/", 1)[-1]
     return name[:-5] if name.endswith(".html") else name
 
 
 def _is_page_identifier(value: Optional[str], source_file: Optional[str]) -> bool:
-    """Значение — это имя файла страницы, а не имя элемента справки.
+    """Значение — имя файла страницы, а не имя элемента справки.
 
-    У страницы без заголовка (V8SH_pagetitle отсутствует или пуст) парсер
-    оставляет в name то, что вывел из пути, — имя файла. В английской книге
-    такая страница ровно одна, и достройка записала русскому документу
-    «РешениеСЛУ» английское имя «catalog2627»; после этого
-    get_1c_element(name="catalog2627") отдавал карточку РешениеСЛУ, а README
-    считал этот документ обеспеченным английским именем.
-
-    Имя, взятое со служебной страницы, хуже отсутствующего: отсутствие видно и
-    честно («в справке не указано»), а «catalog2627» выглядит как настоящее имя
-    и попадает и в карточку, и в поиск, и в статистику.
-
-    Проверяются оба признака сразу — форма служебного идентификатора и
-    совпадение с именем файла. Одной формы мало: гипотетический элемент,
-    названный как генератор книги, был бы отвергнут зря; одного совпадения с
-    именем файла — тоже: у части страниц файл честно назван по элементу
-    («Array.html» → «Array»), и такое имя отвергать не за что.
+    Проверяются оба признака сразу: одной формы служебного идентификатора мало,
+    одного совпадения с именем файла — тоже («Array.html» → «Array» честно
+    назван по элементу).
     """
     text = (value or "").strip()
     if not text:
@@ -149,25 +114,13 @@ def _is_page_identifier(value: Optional[str], source_file: Optional[str]) -> boo
 
 
 def _fields_to_fill(ru_source: Dict, en_source: Dict) -> Dict[str, str]:
-    """Какие из name_en/object_en реально можно дописать документу.
+    """Какие из name_en/object_en можно дописать документу.
 
-    Только недостающие поля, и только когда английская книга сама даёт
-    непустое значение. Оба условия обязательны:
-
-    - непустое name_en/object_en в ru_source остаётся как есть — иначе
-      достройка отменяла бы разбор задачи 11 (см. докстринг модуля);
-    - пустое или отсутствующее значение на английской стороне не пишется —
-      иначе пустая заглушка страницы заменила бы «поля нет» на «поле есть,
-      но пустое», и документ всё ещё числился бы кандидатом на следующем
-      прогоне, но обновлять было бы уже нечего: идемпотентность держится на
-      «нечего менять», а не на «поле дописано», и это ожидаемо — прогон
-      просто находит те же 23-24 нерешаемых страницы заново, без записи.
-
-    Третье условие — значение не должно быть служебным именем страницы книги
-    (см. _is_page_identifier).
+    Только недостающие поля, только с непустым значением на английской стороне
+    и только если это значение не служебное имя страницы книги.
     """
-    fields: Dict[str, str] = {}
     source_file = en_source.get("source_file")
+    fields: Dict[str, str] = {}
 
     if not ru_source.get("name_en"):
         name = en_source.get("name")
@@ -185,77 +138,81 @@ def _fields_to_fill(ru_source: Dict, en_source: Dict) -> Dict[str, str]:
 async def backfill_english_names(
     es_client: ElasticsearchClient, ru_index: str, en_index: str
 ) -> int:
-    """Достраивает name_en/object_en в ru_index из en_index по source_file.
+    """Достраивает name_en/object_en в ru_index из en_index.
 
     Возвращает число документов, у которых реально изменилось хотя бы одно
-    поле — не число найденных кандидатов. Кандидат может остаться кандидатом
-    и после успешного прогона: если английская книга сама не даёт значения
-    (пустая заглушка) или страница не нашлась в английском индексе вовсе,
-    обновлять нечего, и это не ошибка (см. докстринг модуля).
+    поле, — не число найденных кандидатов. Кандидат остаётся кандидатом, когда
+    английская книга сама не даёт значения; это не ошибка.
     """
     if not await es_client.index_exists(index=en_index):
         logger.info(f"Индекса {en_index} нет — достройка имён пропущена")
         return 0
 
     candidates = await _candidates(es_client, ru_index)
-    if not candidates:
-        return 0
-
-    ru_by_id: Dict[str, Dict] = {}
-    source_file_of: Dict[str, str] = {}
-    for hit in candidates:
-        source_file = hit["_source"].get("source_file")
-        if not source_file:
-            continue
-        ru_by_id[hit["_id"]] = hit["_source"]
-        source_file_of[hit["_id"]] = source_file
-
-    if not source_file_of:
+    russian = {
+        hit["_id"]: hit["_source"]
+        for hit in candidates
+        if hit["_source"].get("source_file")
+    }
+    if not russian:
         return 0
 
     english = await _english_by_source_file(
-        es_client, en_index, sorted(set(source_file_of.values()))
+        es_client, en_index,
+        sorted({doc["source_file"] for doc in russian.values()}),
     )
     if not english:
         return 0
 
-    operations = []
-    doc_ids_in_order: List[str] = []
-    for doc_id, source_file in source_file_of.items():
-        en_source = english.get(source_file)
+    updates = _plan_updates(russian, english, ru_index)
+    if not updates:
+        return 0
+
+    doc_ids, operations = updates
+    response = await es_client._client.bulk(body=operations)
+    updated = _count_written(doc_ids, response.get("items", []))
+
+    if updated:
+        await es_client.refresh_index(index=ru_index)
+        logger.info(f"Достроено английских имён: {updated}")
+    return updated
+
+
+def _plan_updates(
+    russian: Dict[str, Dict], english: Dict[str, Dict], ru_index: str
+) -> Optional[Tuple[List[str], List[Dict]]]:
+    doc_ids: List[str] = []
+    operations: List[Dict] = []
+
+    for doc_id, ru_source in russian.items():
+        en_source = english.get(canonical_source_file(ru_source["source_file"]))
         if not en_source:
             continue
 
-        fields = _fields_to_fill(ru_by_id[doc_id], en_source)
+        fields = _fields_to_fill(ru_source, en_source)
         if not fields:
             continue
 
         operations.append({"update": {"_index": ru_index, "_id": doc_id}})
         operations.append({"doc": fields})
-        doc_ids_in_order.append(doc_id)
+        doc_ids.append(doc_id)
 
-    if not operations:
-        return 0
+    return (doc_ids, operations) if operations else None
 
-    response = await es_client._client.bulk(body=operations)
 
-    # Число обновлённых считается по фактическому результату bulk, а не по
-    # числу подготовленных операций: при частичном отказе ES часть doc_id не
-    # запишется, и вернуть «успех» для них значило бы соврать вызывающему,
-    # который по этому числу решает, надо ли что-то ещё делать. Документы,
-    # чей update не прошёл, останутся кандидатами и будут подобраны заново
-    # следующим прогоном — это самолечение, не баг.
-    updated = 0
-    items = response.get("items", [])
-    for doc_id, item in zip(doc_ids_in_order, items):
+def _count_written(doc_ids: List[str], items: List[Dict]) -> int:
+    """Сколько операций bulk действительно записались.
+
+    Считаем по результату, а не по числу подготовленных операций: при
+    частичном отказе Elasticsearch вернуть «успех» значило бы соврать
+    вызывающему. Незаписанные документы останутся кандидатами и будут
+    подобраны следующим прогоном.
+    """
+    written = 0
+    for doc_id, item in zip(doc_ids, items):
         error = item.get("update", {}).get("error")
         if error:
             logger.error(f"Ошибка достройки документа {doc_id}: {error}")
             continue
-        updated += 1
-
-    if updated:
-        await es_client.refresh_index(index=ru_index)
-        logger.info(f"Достроено английских имён: {updated}")
-
-    return updated
+        written += 1
+    return written

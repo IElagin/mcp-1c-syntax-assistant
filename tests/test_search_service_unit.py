@@ -1,17 +1,14 @@
-"""Слой поиска: язык ответа и форма запросов — без Elasticsearch.
+"""Слой поиска: форма запросов и форма результата — без Elasticsearch.
 
-Оба дефекта, ради которых написан файл, ветка пропустила по одной причине:
-search_service.py не считался «слоем, который печатает пользователю», хотя
-собирает и строки ответа (constructor_lines), и текст ошибки. Тесты здесь
-проверяют именно это — что видимая строка приходит из таблицы языка, а фильтр
-подсказки знает про оба имени объекта.
+Слой поиска не собирает текст для человека: он отдаёт данные и признаки
+исхода, а слова подбирает handlers. Тесты здесь проверяют форму того, что
+отдаётся, — и что фильтр подсказки знает оба имени объекта.
 """
 
 from unittest.mock import AsyncMock
 
 import pytest
 
-from src.handlers.ui_strings import EN_STRINGS, RU_STRINGS
 from src.search.search_service import SearchService
 
 
@@ -19,7 +16,7 @@ pytestmark = pytest.mark.unit
 
 
 def _two_constructors() -> dict:
-    """Ответ ES для объекта с двумя конструкторами — COMSafeArray из ревью."""
+    """ES response for an object with two constructors — COMSafeArray."""
     return {
         "hits": {
             "hits": [
@@ -42,71 +39,40 @@ def _two_constructors() -> dict:
     }
 
 
-async def test_constructor_variant_label_speaks_the_answer_language():
-    """Английская карточка не должна печатать русское «— вариант «…»».
-
-    get_1c_element(name="COMSafeArray", lang="en") отдавал
-    'New COMSafeArray(<Source>) — вариант «From COMSafeArray»': русское слово и
-    русские кавычки в карточке, целиком заявленной английской. Строка
-    собиралась в search_service — единственной функции сборки ответа, которую
-    не протянули через таблицу строк.
-    """
+async def test_constructor_calls_carry_no_worded_text():
     client = AsyncMock()
     client.search = AsyncMock(return_value=_two_constructors())
 
-    lines = await SearchService(client).constructor_lines("COMSafeArray", EN_STRINGS)
+    calls = await SearchService(client).constructor_calls("COMSafeArray")
 
-    assert lines == [
-        'New COMSafeArray(<Source>) — variant "From COMSafeArray"',
-        'New COMSafeArray(<Array>, <ElementType>) — variant "From array 2"',
-    ]
-    # Проверка на кириллицу, а не только на точные строки: она поймает любую
-    # новую захардкоженную русскую метку, а не одну известную.
-    assert not any(
-        "Ѐ" <= char <= "ӿ" for line in lines for char in line
-    ), lines
-
-
-async def test_constructor_variant_label_is_unchanged_in_russian():
-    """Русский ответ обязан остаться прежним — формулировка списана дословно."""
-    client = AsyncMock()
-    client.search = AsyncMock(return_value=_two_constructors())
-
-    lines = await SearchService(client).constructor_lines("COMSafeArray", RU_STRINGS)
-
-    assert lines == [
-        "New COMSafeArray(<Source>) — вариант «From COMSafeArray»",
-        "New COMSafeArray(<Array>, <ElementType>) — вариант «From array 2»",
+    assert calls == [
+        ("New COMSafeArray(<Source>)", "From COMSafeArray"),
+        ("New COMSafeArray(<Array>, <ElementType>)", "From array 2"),
     ]
 
 
-async def test_single_constructor_has_no_variant_suffix():
-    """У единственного конструктора имя варианта не различает ничего."""
+async def test_pages_without_a_call_string_are_dropped():
     client = AsyncMock()
     client.search = AsyncMock(return_value={
-        "hits": {"hits": [{"_source": {
-            "call_primary": "New ValueTable",
-            "name_ru": "ValueTable",
-            "variants": [{"variant": "ValueTable"}],
-        }}]}
+        "hits": {"hits": [
+            {"_source": {"call_primary": "", "name_ru": "Empty page"}},
+            {"_source": {"call_primary": "New ValueTable", "name_ru": "ValueTable"}},
+        ]}
     })
 
-    assert await SearchService(client).constructor_lines("ValueTable", EN_STRINGS) == [
-        "New ValueTable"
+    assert await SearchService(client).constructor_calls("ValueTable") == [
+        ("New ValueTable", "ValueTable")
     ]
 
 
-async def test_search_failure_detail_speaks_the_answer_language():
-    """Заголовок ошибки переведён, деталь приходит отсюда — переведём и её."""
+async def test_failed_search_is_marked_not_worded():
     client = AsyncMock()
     client.search = AsyncMock(return_value=None)
 
-    result = await SearchService(client).find_help_filtered(
-        "Add", [], None, 10, EN_STRINGS
-    )
+    result = await SearchService(client).find_help_filtered("Add", [], None, 10)
 
-    assert result["error"] == EN_STRINGS.search_failed
-    assert result["error"] != RU_STRINGS.search_failed
+    assert result["search_failed"] is True
+    assert "error" not in result
 
 
 async def test_similar_objects_matches_english_name_too():

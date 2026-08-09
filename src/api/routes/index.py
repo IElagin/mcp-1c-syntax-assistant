@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from src.core.config import settings
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
-from src.core.startup import index_hbk_file, resolve_hbk_file
+from src.infrastructure.indexing import index_hbk_file, resolve_hbk_file
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 from src.parsers.name_backfill import backfill_english_names
@@ -28,16 +28,10 @@ async def index_status(
     - Количество документов в индексе
     - Статус фоновой индексации (если активна)
     """
-    # Информация об Elasticsearch индексе
     es_connected = await es_client.is_connected()
-    # bool(...) обязателен: indices.exists() возвращает не примитивный bool, а
-    # HeadApiResponse, и без обёртки FastAPI сериализует его в "{}" вместо
-    # true/false — клиент читает "{}" как отсутствие индекса даже при полном
-    # индексе (см. health.py, где та же обёртка стоит с самого начала).
     index_exists = bool(await es_client.index_exists()) if es_connected else False
     docs_count = await es_client.get_documents_count() if index_exists else 0
     
-    # Информация о фоновой индексации
     progress = await indexing_manager.get_status()
     
     return {
@@ -58,15 +52,6 @@ async def rebuild_index(
 ):
     """Переиндексация документации из .hbk файла."""
     try:
-        # Проверяем подключение к Elasticsearch
-        if not await es_client.is_connected():
-            raise HTTPException(
-                status_code=503,
-                detail="Elasticsearch недоступен"
-            )
-        
-        # Книга выбирается по имени из настроек, а не первой попавшейся:
-        # в каталоге могут лежать и другие .hbk.
         hbk_file = resolve_hbk_file(
             settings.data.hbk_directory, settings.data.hbk_filename
         )
@@ -78,6 +63,13 @@ async def rebuild_index(
                     f"в {settings.data.hbk_directory}"
                 )
             )
+
+        if not await es_client.is_connected():
+            raise HTTPException(
+                status_code=503,
+                detail="Elasticsearch недоступен"
+            )
+
         logger.info(f"Начинаем переиндексацию файла: {hbk_file}")
         
         success = await index_hbk_file(str(hbk_file), es_client)
@@ -85,17 +77,6 @@ async def rebuild_index(
         if success:
             docs_count = await es_client.get_documents_count()
 
-            # Ручная переиндексация — тот же разрыв, что и старт сервера: до
-            # 707 страниц (задача 13) не несут английского имени в самой
-            # русской книге и получают его только из английского индекса.
-            # Без этого шага после ручной замены книги эти страницы остались
-            # бы недостроенными до следующего перезапуска сервера — а замену
-            # книги документация как раз и предлагает завершать этим
-            # эндпоинтом, без перезапуска. Требует ОБА индекса — если
-            # английского нет, backfill_english_names сама тихо не делает
-            # ничего (см. index_exists внутри), как и при старте. Сбой этого
-            # шага не должен превращать успешную переиндексацию в ошибку
-            # запроса — это дополнительная докрутка, а не условие успеха.
             try:
                 updated = await backfill_english_names(
                     es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
