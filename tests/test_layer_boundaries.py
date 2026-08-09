@@ -1,4 +1,4 @@
-"""Which package may import which — the rule quoted by AGENTS.md."""
+"""Which package may import which — see ALLOWED_IMPORTS below."""
 
 import ast
 from pathlib import Path
@@ -98,7 +98,7 @@ def test_no_package_imports_outside_its_allowed_layers():
                     f"{package} -> {imported}"
                 )
     assert not violations, (
-        "forbidden cross-package imports (see docs/dev/ARCHITECTURE.md):\n"
+        "forbidden cross-package imports (see ALLOWED_IMPORTS above):\n"
         + "\n".join(violations)
     )
 
