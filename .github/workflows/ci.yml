@@ -28,6 +28,7 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run tests
-        # Срез без Elasticsearch: поднимать кластер в CI ради 40 тестов дорого,
-        # а 136 оставшихся покрывают парсер, карточку и контракт инструментов.
+        # Срез без Elasticsearch: поднимать кластер в CI ради 52 деселектнутых
+        # тестов дорого, а 275 оставшихся покрывают парсер, карточку и
+        # контракт инструментов.
         run: pytest -m "not elasticsearch and not slow" -q
