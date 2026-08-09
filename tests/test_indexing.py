@@ -39,6 +39,6 @@ async def test_every_fixture_page_reaches_its_own_index(
 
         await client.refresh_index(index=isolated_index)
         indexed = await client.get_documents_count(index=isolated_index)
-        assert indexed == len(ARCHIVE_PATHS_RU)
+        assert indexed == len(set(ARCHIVE_PATHS_RU.values()))
     finally:
         await client.disconnect()
