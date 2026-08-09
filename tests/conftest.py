@@ -340,3 +340,18 @@ def hbk_fixture_archive(tmp_path):
                 archive_path_inside, (FIXTURES_RU / fixture_name).read_bytes()
             )
     return archive_path
+
+
+@pytest.fixture
+async def isolated_index():
+    """Имя индекса, который тест вправе перестраивать, и уборка за ним."""
+    from src.core.elasticsearch import ElasticsearchClient
+
+    index = "help1c_docs_test"
+    client = ElasticsearchClient()
+    await client.connect()
+    try:
+        yield index
+    finally:
+        await client.delete_index(index=index)
+        await client.disconnect()
