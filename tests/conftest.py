@@ -263,36 +263,6 @@ def mock_parsed_hbk():
 
 
 @pytest.fixture
-def mock_hbk_parser():
-    """Mock HBKParser для unit тестов."""
-    from unittest.mock import Mock
-    
-    parser = Mock()
-    parser.max_files_per_type = 10
-    parser.max_total_files = 50
-    
-    # Метод parse_file возвращает mock_parsed_hbk
-    def parse_file_side_effect(file_path):
-        # Возвращаем простой mock результат
-        from src.models.doc_models import ParsedHBK, HBKFile
-        return ParsedHBK(
-            file_info=HBKFile(
-                path=file_path,
-                size=1024,
-                modified=1234567890.0,
-                entries_count=5
-            ),
-            documentation=[],
-            categories={},
-            stats={},
-            errors=[]
-        )
-    
-    parser.parse_file.side_effect = parse_file_side_effect
-    return parser
-
-
-@pytest.fixture
 async def mock_elasticsearch_indexer():
     """Mock ElasticsearchIndexer для unit тестов."""
     from unittest.mock import AsyncMock, Mock
@@ -302,3 +272,108 @@ async def mock_elasticsearch_indexer():
     indexer.index_documentation = AsyncMock(return_value=100)
     
     return indexer
+
+
+FIXTURES_RU = Path(__file__).parent / "fixtures" / "hbk"
+
+ARCHIVE_PATHS_RU = {
+    # Русские двойники нужны задаче 11 (её фикстуры без RU-аналога до задачи 3
+    # не существовали); тесты на них пишет она — здесь только путь в архиве.
+    "array_add.html":
+        "objects/catalog234/Array/methods/Add772.html",
+    "array_object.html":
+        "objects/catalog234/Array.html",
+    "valuetable_findrows.html":
+        "objects/catalog234/catalog236/ValueTable/methods/FindRows646.html",
+    "valuetable_columns.html":
+        "objects/catalog234/catalog236/ValueTable/properties/Columns1030.html",
+    "global_valueisfilled.html":
+        "objects/Global context/methods/catalog1762/ValueIsFilled2886.html",
+    "formdatacollection_delete.html":
+        "objects/catalog1649/catalog1614/FormDataCollection/methods/Delete3481.html",
+    "array_ctor_bycount.html":
+        "objects/catalog234/Array/ctors/ctor13.html",
+    "valuetable_ctor_auto.html":
+        "objects/catalog234/catalog236/ValueTable/ctors/ctor_Auto.html",
+    # Доступность с прозой после перечня контекстов.
+    "global_findbyref.html":
+        "objects/Global context/methods/catalog570/FindByRef572.html",
+    # Страница вовсе без раздела «Доступность» — единственный такой метод в справке.
+    "formextension_compactmode.html":
+        "objects/catalog1649/catalog1890/Client application form extension "
+        "for reports/methods/method6189.html",
+    # Два варианта, у каждого своё «Описание варианта метода:», общего
+    # «Описание:» на странице нет вовсе.
+    "global_notifychanged.html":
+        "objects/Global context/methods/catalog27/NotifyChanged3763.html",
+    # Второй вариант несёт «Описание варианта метода:», но на странице есть
+    # и обычное «Описание:» — для элемента в целом.
+    "formdatacollection_unload.html":
+        "objects/catalog1649/catalog1614/FormDataCollection/methods/Unload3853.html",
+    # Третий параметр называется по-английски («AddInName») внутри в остальном
+    # кириллической страницы — регрессия на _serialize_for_reparsing, см. тест
+    # test_latin_placeholder_survives_reparsing_in_russian_page в
+    # tests/test_parser_element_card.py.
+    "serveragentconnection_unregsecurityprofileaddin.html":
+        "objects/catalog1369/catalog1384/catalog1386/IServerAgentConnection/"
+        "methods/UnregSecurityProfileAddIn4409.html",
+    # У этого метода V8SH_pagetitle — «Прочитать (Read)», без имени
+    # объекта-владельца вовсе (страница не повторяет длинное имя расширения).
+    "extdatasource_record_read.html":
+        "objects/catalog1649/catalog1890/Client application form extension "
+        "for external data source table record/methods/Read4577.html",
+    # «СправочникМенеджер.<Имя справочника> (CatalogManager.<Catalog name>)» —
+    # точка есть и в русской, и в английской половине заголовка.
+    "catalogmanager_object.html":
+        "objects/catalog125/catalog126/object128.html",
+}
+
+
+@pytest.fixture
+def hbk_fixture_archive(tmp_path):
+    """Маленький архив справки из фикстурных страниц, по их путям в книге."""
+    import zipfile
+
+    archive_path = tmp_path / "fixture_book.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for fixture_name, archive_path_inside in ARCHIVE_PATHS_RU.items():
+            archive.writestr(
+                archive_path_inside, (FIXTURES_RU / fixture_name).read_bytes()
+            )
+    return archive_path
+
+
+@pytest.fixture
+async def isolated_index():
+    """Имя индекса, который тест вправе перестраивать, и уборка за ним."""
+    from src.core.elasticsearch import ElasticsearchClient
+
+    index = "help1c_docs_test"
+    client = ElasticsearchClient()
+    await client.connect()
+    try:
+        yield index
+    finally:
+        await client.delete_index(index=index)
+        await client.disconnect()
+
+
+@pytest.fixture(autouse=True)
+def refuse_writes_to_the_production_index(monkeypatch):
+    """Читать боевой индекс тест вправе, перестраивать — нет."""
+    from src.core.config import settings
+    from src.parsers.indexer import ElasticsearchIndexer
+
+    original = ElasticsearchIndexer.reindex_all
+
+    async def guarded(self, *args, **kwargs):
+        if self.index in (None, settings.elasticsearch_index, settings.elasticsearch_index_en):
+            pytest.fail(
+                f"тест перестраивает боевой индекс "
+                f"{self.index or settings.elasticsearch_index}; "
+                f"возьмите свой через фикстуру isolated_index",
+                pytrace=False,
+            )
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(ElasticsearchIndexer, "reindex_all", guarded)

@@ -108,7 +108,9 @@ def test_dialects_describe_the_same_chapters():
     assert set(RU_DIALECT.chapters) == set(EN_DIALECT.chapters)
 
 
-ENGLISH_BOOK = Path("/app/data/hbk-en/shcntx_root.hbk")
+ENGLISH_BOOK = (
+    Path(__file__).parent.parent / "data" / "hbk-en" / "shcntx_root.hbk"
+)
 
 # Одиночные буквы — алфавитные разделители на страницах каталогов, а не главы.
 # Парсер их не разбирает ни на одном языке.

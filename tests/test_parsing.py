@@ -57,8 +57,7 @@ async def test_hbk_parsing():
         hbk_files = list(hbk_dir.glob("*.hbk"))
         
         if not hbk_files:
-            print(f"❌ .hbk файлы не найдены в {hbk_dir}")
-            return False
+            pytest.skip(f".hbk файл не найден в {hbk_dir}")
         
         hbk_file = hbk_files[0]
         print(f"📁 Найден файл: {hbk_file}")
@@ -70,8 +69,7 @@ async def test_hbk_parsing():
                 print(f"📄 Обрабатывается файл в архиве: {entry.path}")
                 return super()._create_document_from_html(entry, result)
         
-        # Парсим файл с ограничениями для быстрого тестирования
-        parser = HBKParserWithLogging(max_files_per_type=3, max_total_files=50)
+        parser = HBKParserWithLogging()
         parsed_hbk = parser.parse_file(str(hbk_file))
         
         if not parsed_hbk:
