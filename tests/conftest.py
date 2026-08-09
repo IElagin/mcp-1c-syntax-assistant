@@ -366,7 +366,7 @@ def refuse_writes_to_the_production_index(monkeypatch):
     original = ElasticsearchIndexer.reindex_all
 
     async def guarded(self, *args, **kwargs):
-        if self.index in (None, settings.elasticsearch_index):
+        if self.index in (None, settings.elasticsearch_index, settings.elasticsearch_index_en):
             raise AssertionError(
                 f"тест перестраивает боевой индекс "
                 f"{self.index or settings.elasticsearch_index}; "

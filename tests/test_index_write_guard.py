@@ -22,3 +22,10 @@ async def test_reindex_of_the_configured_index_is_refused_when_named_explicitly(
 
     with pytest.raises(AssertionError, match="боевой индекс"):
         await indexer.reindex_all(None)
+
+
+async def test_reindex_of_the_english_index_is_refused():
+    indexer = ElasticsearchIndexer(AsyncMock(), index=settings.elasticsearch_index_en)
+
+    with pytest.raises(AssertionError, match="боевой индекс"):
+        await indexer.reindex_all(None)

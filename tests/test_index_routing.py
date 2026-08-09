@@ -42,9 +42,9 @@ async def test_search_service_routes_every_query_to_its_index(client):
 async def test_reindex_all_deletes_and_creates_its_own_index(client):
     """reindex_all не должен трогать чужой индекс.
 
-    Переиндексация английской книги, стирающая русский индекс по ошибке в
-    выборе имени, — самый дорогой дефект этой задачи: обнаружился бы только
-    по составу ответов, а не по сбою вызова.
+    Переиндексация одной книги, стирающая индекс другой по ошибке в выборе
+    имени, — самый дорогой дефект этой задачи: обнаружился бы только по
+    составу ответов, а не по сбою вызова.
     """
     from src.models.doc_models import ParsedHBK, HBKFile
     from src.parsers.indexer import ElasticsearchIndexer
@@ -57,11 +57,11 @@ async def test_reindex_all_deletes_and_creates_its_own_index(client):
         errors=[],
     )
 
-    indexer = ElasticsearchIndexer(client, index="help1c_docs_en")
+    indexer = ElasticsearchIndexer(client, index="help1c_docs_test")
     await indexer.reindex_all(empty_hbk)
 
-    assert client._client.indices.delete.call_args.kwargs["index"] == "help1c_docs_en"
-    assert client._client.indices.create.call_args.kwargs["index"] == "help1c_docs_en"
+    assert client._client.indices.delete.call_args.kwargs["index"] == "help1c_docs_test"
+    assert client._client.indices.create.call_args.kwargs["index"] == "help1c_docs_test"
 
 
 @pytest.mark.parametrize("lang, index, dialect_name", [
