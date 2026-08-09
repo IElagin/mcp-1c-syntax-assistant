@@ -367,10 +367,11 @@ def refuse_writes_to_the_production_index(monkeypatch):
 
     async def guarded(self, *args, **kwargs):
         if self.index in (None, settings.elasticsearch_index, settings.elasticsearch_index_en):
-            raise AssertionError(
+            pytest.fail(
                 f"тест перестраивает боевой индекс "
                 f"{self.index or settings.elasticsearch_index}; "
-                f"возьмите свой через фикстуру isolated_index"
+                f"возьмите свой через фикстуру isolated_index",
+                pytrace=False,
             )
         return await original(self, *args, **kwargs)
 
