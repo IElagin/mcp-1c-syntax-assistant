@@ -240,6 +240,8 @@ def test_parser_takes_no_argument_it_does_not_honour():
     assert "max_total_files" not in accepted, accepted
 
 
+@pytest.mark.unit
+@pytest.mark.parser
 def test_fixture_archive_holds_every_page_at_its_archive_path(hbk_fixture_archive):
     """Путь внутри архива — это то, по чему парсер узнаёт вид элемента."""
     import zipfile
