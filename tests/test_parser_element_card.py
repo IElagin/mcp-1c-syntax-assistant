@@ -18,59 +18,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.parsers.html_parser import HTMLParser
-
-FIXTURES = Path(__file__).parent / "fixtures" / "hbk"
-
-ARCHIVE_PATHS = {
-    # Русские двойники нужны задаче 11 (её фикстуры без RU-аналога до задачи 3
-    # не существовали); тесты на них пишет она — здесь только путь в архиве.
-    "array_add.html":
-        "objects/catalog234/Array/methods/Add772.html",
-    "array_object.html":
-        "objects/catalog234/Array.html",
-    "valuetable_findrows.html":
-        "objects/catalog234/catalog236/ValueTable/methods/FindRows646.html",
-    "valuetable_columns.html":
-        "objects/catalog234/catalog236/ValueTable/properties/Columns1030.html",
-    "global_valueisfilled.html":
-        "objects/Global context/methods/catalog1762/ValueIsFilled2886.html",
-    "formdatacollection_delete.html":
-        "objects/catalog1649/catalog1614/FormDataCollection/methods/Delete3481.html",
-    "array_ctor_bycount.html":
-        "objects/catalog234/Array/ctors/ctor13.html",
-    "valuetable_ctor_auto.html":
-        "objects/catalog234/catalog236/ValueTable/ctors/ctor_Auto.html",
-    # Доступность с прозой после перечня контекстов.
-    "global_findbyref.html":
-        "objects/Global context/methods/catalog570/FindByRef572.html",
-    # Страница вовсе без раздела «Доступность» — единственный такой метод в справке.
-    "formextension_compactmode.html":
-        "objects/catalog1649/catalog1890/Client application form extension "
-        "for reports/methods/method6189.html",
-    # Два варианта, у каждого своё «Описание варианта метода:», общего
-    # «Описание:» на странице нет вовсе.
-    "global_notifychanged.html":
-        "objects/Global context/methods/catalog27/NotifyChanged3763.html",
-    # Второй вариант несёт «Описание варианта метода:», но на странице есть
-    # и обычное «Описание:» — для элемента в целом.
-    "formdatacollection_unload.html":
-        "objects/catalog1649/catalog1614/FormDataCollection/methods/Unload3853.html",
-    # Третий параметр называется по-английски («AddInName») внутри в остальном
-    # кириллической страницы — регрессия на _serialize_for_reparsing, см. тест
-    # test_latin_placeholder_survives_reparsing_in_russian_page ниже.
-    "serveragentconnection_unregsecurityprofileaddin.html":
-        "objects/catalog1369/catalog1384/catalog1386/IServerAgentConnection/"
-        "methods/UnregSecurityProfileAddIn4409.html",
-    # У этого метода V8SH_pagetitle — «Прочитать (Read)», без имени
-    # объекта-владельца вовсе (страница не повторяет длинное имя расширения).
-    "extdatasource_record_read.html":
-        "objects/catalog1649/catalog1890/Client application form extension "
-        "for external data source table record/methods/Read4577.html",
-    # «СправочникМенеджер.<Имя справочника> (CatalogManager.<Catalog name>)» —
-    # точка есть и в русской, и в английской половине заголовка.
-    "catalogmanager_object.html":
-        "objects/catalog125/catalog126/object128.html",
-}
+from tests.conftest import ARCHIVE_PATHS_RU as ARCHIVE_PATHS, FIXTURES_RU as FIXTURES
 
 
 def parse_fixture(fixture_name):
