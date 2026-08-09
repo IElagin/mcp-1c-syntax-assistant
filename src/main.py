@@ -45,7 +45,7 @@ def parse_arguments():
 
 args = parse_arguments()
 if args.reindex:
-    settings.force_reindex = True
+    settings.enable_force_reindex()
     logger.info("Включена принудительная переиндексация (--reindex)")
 
 

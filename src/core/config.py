@@ -142,6 +142,10 @@ class Settings(BaseSettings):
             return True
         return self.reindex_on_startup.lower() in ("true", "1", "yes")
 
+    def enable_force_reindex(self) -> None:
+        """Включить принудительную переиндексацию при следующем запуске."""
+        self.force_reindex = True
+
     @property
     def cors_origins(self) -> list:
         """Разрешённые источники запросов как список."""
