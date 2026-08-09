@@ -355,3 +355,23 @@ async def isolated_index():
     finally:
         await client.delete_index(index=index)
         await client.disconnect()
+
+
+@pytest.fixture(autouse=True)
+def refuse_writes_to_the_production_index(monkeypatch):
+    """Читать боевой индекс тест вправе, перестраивать — нет."""
+    from src.core.config import settings
+    from src.parsers.indexer import ElasticsearchIndexer
+
+    original = ElasticsearchIndexer.reindex_all
+
+    async def guarded(self, *args, **kwargs):
+        if self.index in (None, settings.elasticsearch_index):
+            raise AssertionError(
+                f"тест перестраивает боевой индекс "
+                f"{self.index or settings.elasticsearch_index}; "
+                f"возьмите свой через фикстуру isolated_index"
+            )
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(ElasticsearchIndexer, "reindex_all", guarded)
