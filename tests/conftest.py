@@ -312,7 +312,8 @@ ARCHIVE_PATHS_RU = {
         "objects/catalog1649/catalog1614/FormDataCollection/methods/Unload3853.html",
     # Третий параметр называется по-английски («AddInName») внутри в остальном
     # кириллической страницы — регрессия на _serialize_for_reparsing, см. тест
-    # test_latin_placeholder_survives_reparsing_in_russian_page ниже.
+    # test_latin_placeholder_survives_reparsing_in_russian_page в
+    # tests/test_parser_element_card.py.
     "serveragentconnection_unregsecurityprofileaddin.html":
         "objects/catalog1369/catalog1384/catalog1386/IServerAgentConnection/"
         "methods/UnregSecurityProfileAddIn4409.html",
