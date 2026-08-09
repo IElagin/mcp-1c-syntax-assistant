@@ -52,12 +52,6 @@ async def rebuild_index(
 ):
     """Переиндексация документации из .hbk файла."""
     try:
-        if not await es_client.is_connected():
-            raise HTTPException(
-                status_code=503,
-                detail="Elasticsearch недоступен"
-            )
-        
         hbk_file = resolve_hbk_file(
             settings.data.hbk_directory, settings.data.hbk_filename
         )
@@ -69,6 +63,13 @@ async def rebuild_index(
                     f"в {settings.data.hbk_directory}"
                 )
             )
+
+        if not await es_client.is_connected():
+            raise HTTPException(
+                status_code=503,
+                detail="Elasticsearch недоступен"
+            )
+
         logger.info(f"Начинаем переиндексацию файла: {hbk_file}")
         
         success = await index_hbk_file(str(hbk_file), es_client)
