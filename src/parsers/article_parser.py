@@ -3,10 +3,13 @@
 from typing import Iterable, Iterator, List, Optional
 
 from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4.element import PreformattedString
 
 from src.core.constants import SUPPORTED_ENCODINGS
 from src.models.doc_models import Documentation, DocumentType
-from src.parsers.text_utils import clean_description, clean_multiline_description
+from src.parsers.text_utils import (
+    clean_description, normalize_lines, restore_space_after_period,
+)
 
 ARTICLE_KIND = "статья"
 LEAD_MIN_LENGTH = 40
@@ -19,6 +22,9 @@ LINE_BREAK_TAGS = frozenset({
     "h1", "h2", "h3", "h4", "h5", "h6",
 })
 CELL_TAGS = frozenset({"td", "th"})
+MONOSPACE_TAGS = frozenset({"pre", "code", "tt", "samp"})
+MONOSPACE_FONT = "Courier"
+PREFORMATTED_TAGS = frozenset({"pre"})
 
 SKIPPED_SUFFIXES = (".st", ".gif", ".png", ".jpg", ".jpeg")
 SKIPPED_NAMES = ("__categories__",)
@@ -107,23 +113,49 @@ def _after_subtree(node: Tag) -> Iterator:
     return (following for following in node.next_elements if id(following) not in inside)
 
 
+def _has_ancestor(node, names: frozenset) -> bool:
+    return any(parent.name in names for parent in node.parents)
+
+
+def _is_code(text: NavigableString) -> bool:
+    """Код в книге размечен моноширинным шрифтом: точка в нём — часть имени."""
+    if _has_ancestor(text, MONOSPACE_TAGS):
+        return True
+    return any(
+        parent.name == "font" and MONOSPACE_FONT in (parent.get("face") or "")
+        for parent in text.parents
+    )
+
+
+def _text_fragment(text: NavigableString) -> str:
+    """Перевод строки в разметке — обычный пробел; значим он только в <pre>."""
+    if _has_ancestor(text, PREFORMATTED_TAGS):
+        return str(text)
+    flat = str(text).replace("\n", " ")
+    return flat if _is_code(text) else restore_space_after_period(flat)
+
+
 def _text_of_nodes(nodes: Iterable, stop: Optional[Tag] = None) -> str:
     """Текст узлов до stop; абзацы, строки таблиц и <br> дают перевод строки.
 
     Куски склеиваются без разделителя: собственные пробелы у разметки уже есть,
     а добавленный разбивает «<Описание запроса>» на «< Описание запроса >».
+    Пробел после точки восстанавливается только в прозе — в коде точка
+    разделяет части составного имени, и «Документ.РасхНакл» ею не кончается.
     """
     collected = []
     for node in nodes:
         if node is stop:
             break
+        if isinstance(node, PreformattedString):
+            continue
         if isinstance(node, NavigableString):
-            collected.append(str(node))
+            collected.append(_text_fragment(node))
         elif node.name in LINE_BREAK_TAGS:
-            collected.append("\n")
+            collected.append(" " if _has_ancestor(node, CELL_TAGS) else "\n")
         elif node.name in CELL_TAGS:
             collected.append(" ")
-    return clean_multiline_description("".join(collected))
+    return normalize_lines("".join(collected))
 
 
 def _anchored_headings(soup: BeautifulSoup) -> List[tuple]:

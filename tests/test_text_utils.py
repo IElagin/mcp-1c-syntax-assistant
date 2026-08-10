@@ -11,7 +11,7 @@ from src.parsers.text_utils import (
     split_type_and_note,
     normalize_whitespace,
     clean_description,
-    clean_multiline_description,
+    normalize_lines,
 )
 
 
@@ -58,9 +58,9 @@ def test_type_is_empty_without_type_section():
 
 
 @pytest.mark.unit
-def test_multiline_cleanup_keeps_the_shape_of_a_code_block():
+def test_line_normalization_keeps_the_shape_of_a_code_block():
     text = "Для <Имя> = 1 По 10 Цикл\n  // Операторы\nКонецЦикла;"
-    assert clean_multiline_description(text).splitlines() == [
+    assert normalize_lines(text).splitlines() == [
         "Для <Имя> = 1 По 10 Цикл",
         "// Операторы",
         "КонецЦикла;",
@@ -68,13 +68,13 @@ def test_multiline_cleanup_keeps_the_shape_of_a_code_block():
 
 
 @pytest.mark.unit
-def test_multiline_cleanup_collapses_a_run_of_blank_lines():
+def test_line_normalization_collapses_a_run_of_blank_lines():
     """Разметка даёт подряд идущие пустые строки, читателю хватает одной."""
-    assert clean_multiline_description("Абзац\n\n\n\n\nСледующий") == \
+    assert normalize_lines("Абзац\n\n\n\n\nСледующий") == \
         "Абзац\n\nСледующий"
 
 
 @pytest.mark.unit
-def test_multiline_cleanup_still_squeezes_spaces_inside_a_line():
-    assert clean_multiline_description("Отбор\xa0=\xa0Новый\n   Структура ( ) ;") == \
+def test_line_normalization_still_squeezes_spaces_inside_a_line():
+    assert normalize_lines("Отбор\xa0=\xa0Новый\n   Структура ( ) ;") == \
         "Отбор = Новый\nСтруктура ( ) ;"

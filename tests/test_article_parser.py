@@ -19,10 +19,17 @@ WHOLE_FILE = """<html><head><meta charset="utf-8"></head><body>
 TABLE_LAYOUT = """<HTML><BODY>
 <H1 class="">Секция ОБЪЕДИНИТЬ</H1>
 <P>Объединение запросов описывается по следующему правилу:</P>
-<TABLE><TBODY>
-<TR><TD>&lt;Объединение запросов&gt;</TD></TR>
-<TR><TD>ОБЪЕДИНИТЬ [ВСЕ]</TD><TD>&lt;Описание запроса&gt;</TD></TR>
+<TABLE class=SimplyTable><TBODY>
+<TR><TD><P class=Usual>&lt;Объединение запросов&gt;</P></TD></TR>
+<TR><TD><P class=Usual>ОБЪЕДИНИТЬ [ВСЕ]</P></TD><TD><P class=Usual>&lt;Описание запроса&gt;</P></TD></TR>
 </TBODY></TABLE>
+</BODY></HTML>"""
+
+CODE_EXAMPLE = """<HTML><BODY>
+<H1 class="">Расчет общих итогов</H1>
+<P>Для расчета итогов по всей таблице указывается ключевое слово.В этом случае считаются все записи.</P>
+<H4 class="">Пример:</H4>
+<BLOCKQUOTE><P><FONT face="Courier New">ВЫБРАТЬ Док.Товар, Док.Ссылка.Номер<BR>ИЗ Документ.РасхНакл.Состав КАК Док</FONT></P></BLOCKQUOTE>
 </BODY></HTML>"""
 
 ANCHORED = """<html><body>
@@ -154,9 +161,22 @@ def test_page_footer_after_the_horizontal_rule_is_dropped():
 
 
 def test_each_table_row_is_its_own_line():
+    """Строку таблицы разбивает строка, а не абзацы внутри её ячеек."""
     article = parse_article_file("shquery", "UNIONSection", TABLE_LAYOUT)[0]
     assert "<Объединение запросов>" in article.description.splitlines()
     assert "ОБЪЕДИНИТЬ [ВСЕ] <Описание запроса>" in article.description.splitlines()
+
+
+def test_dotted_names_inside_a_code_example_keep_their_dots():
+    """«Документ. РасхНакл. Состав» — синтаксическая ошибка, а не запрос."""
+    article = parse_article_file("shquery", "overall_totals.html", CODE_EXAMPLE)[0]
+    assert "ВЫБРАТЬ Док.Товар, Док.Ссылка.Номер" in article.description
+    assert "ИЗ Документ.РасхНакл.Состав КАК Док" in article.description
+
+
+def test_the_missing_space_is_still_restored_in_prose():
+    article = parse_article_file("shquery", "overall_totals.html", CODE_EXAMPLE)[0]
+    assert "ключевое слово. В этом случае" in article.description
 
 
 def test_article_leaves_card_only_fields_empty():
@@ -197,3 +217,18 @@ def test_inline_markup_does_not_add_spaces_inside_a_placeholder():
     article = parse_article_file("shquery", "UNIONSection", INLINE_MARKUP)[0]
     assert "<Описание запроса>" in article.description
     assert article.description.endswith("ключевое слово ВСЕ.")
+
+
+COMMENTED_OUT_MARKUP = """<HTML><BODY>
+<H1 class="">Сохранение настроек</H1>
+<P>Настройки печати для веб-клиента по умолчанию.</P>
+<!-- <tr><td class="WideColumn"><p class="Usual">Черновик строки</p></td></tr> -->
+</BODY></HTML>"""
+
+
+def test_commented_out_markup_does_not_leak_into_the_article():
+    """Комментарий — не текст страницы: его разметка попадала в ответ как есть."""
+    article = parse_article_file("shlang", "SavingSettings", COMMENTED_OUT_MARKUP)[0]
+    assert "WideColumn" not in article.description
+    assert "Черновик строки" not in article.description
+    assert article.description == "Настройки печати для веб-клиента по умолчанию."

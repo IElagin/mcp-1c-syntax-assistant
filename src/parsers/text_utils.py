@@ -34,14 +34,14 @@ def clean_description(text: str) -> str:
     return restore_space_after_period(normalize_whitespace(text))
 
 
-def clean_multiline_description(text: str) -> str:
-    """Та же чистка, но перевод строки остаётся переводом строки.
+def normalize_lines(text: str) -> str:
+    """Схлопывает пробелы внутри строк, оставляя переводы строк на месте.
 
     Форма конструкции — часть ответа: «Для <Имя> = <Выражение> Цикл» и тело
     цикла стоят на разных строках, и склеенные в одну строку они перестают
     быть образцом кода.
     """
-    lines = [clean_description(line) for line in (text or "").split("\n")]
+    lines = [normalize_whitespace(line) for line in (text or "").split("\n")]
     return _BLANK_LINE_RUN.sub("\n\n", "\n".join(lines)).strip()
 
 
