@@ -15,6 +15,8 @@ MEMBERS_LIMIT_DEFAULT = 100
 MEMBERS_LIMIT_MAX = 1000
 MIN_NAME_LENGTH = 1
 
+SUPPORTED_ENCODINGS = ["utf-8", "cp1251", "iso-8859-1"]
+
 KIND_TO_TYPE = {
     "any": [],
     "global": ["global_function", "global_procedure", "global_event"],
