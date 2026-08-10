@@ -1,6 +1,7 @@
 """Строки ответа — таблица на язык, а не литералы в коде сборки."""
 
 import dataclasses
+import re
 
 import pytest
 
@@ -31,8 +32,14 @@ def test_both_languages_fill_every_field():
         ru_value = getattr(RU_STRINGS, field.name)
         en_value = getattr(EN_STRINGS, field.name)
         assert en_value, f"в EN_STRINGS не заполнено {field.name}"
-        if field.name != "lang":
-            assert en_value != ru_value, f"{field.name} не переведено"
+        if field.name == "lang" or _is_bare_placeholder(ru_value):
+            continue
+        assert en_value != ru_value, f"{field.name} не переведено"
+
+
+def _is_bare_placeholder(value) -> bool:
+    """Шаблон без единого слова — переводить в нём нечего."""
+    return isinstance(value, str) and bool(re.fullmatch(r"\{\w+\}", value))
 
 
 def test_handler_messages_are_translated():

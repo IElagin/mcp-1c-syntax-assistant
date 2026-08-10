@@ -261,6 +261,32 @@ def article_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
     return " ".join(parts)
 
 
+def render_article(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
+    """Статья целиком: заголовок, книга, текст."""
+    book = doc.get("book") or ""
+    heading = doc.get("name") or doc.get("name_ru") or ""
+    lines = [strings.article_heading.format(name=heading)]
+    if book:
+        lines.append(strings.article_book.format(book=strings.book_names.get(book, book)))
+    lines.append("")
+    lines.append(doc.get("description") or strings.description_missing)
+    return "\n".join(lines)
+
+
+def article_candidate_list(
+    name: str,
+    candidates: List[Dict[str, Any]],
+    total: int,
+    strings: UiStrings = RU_STRINGS,
+) -> str:
+    """Заголовок нашёлся в нескольких книгах — назвать их и показать, как уточнить."""
+    lines = [strings.article_ambiguous.format(name=name, total=total), ""]
+    lines.extend(f"  {article_line(doc, strings)}" for doc in candidates)
+    lines.append("")
+    lines.append(strings.article_book_hint.format(name=name))
+    return "\n".join(lines)
+
+
 def list_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
     """Одна строка на элемент — для выдачи поиска и состава объекта."""
     if (doc.get("type") or "") == DocumentType.ARTICLE.value:

@@ -78,6 +78,16 @@ def _name_filter(name: str) -> Dict[str, Any]:
     ])
 
 
+def _article_name_filter(name: str) -> Dict[str, Any]:
+    """Заголовок статьи на любом языке либо её ключ."""
+    return _any_of([
+        {"term": {"name.keyword": name}},
+        {"term": {"name_ru.keyword": name}},
+        {"term": {"name_en.keyword": name}},
+        {"term": {"id": name}},
+    ])
+
+
 def _is_real_type(object_name: Optional[str]) -> bool:
     """Имя объекта — это тип языка, а не заголовок раздела справки."""
     name = object_name or ""
@@ -497,5 +507,50 @@ class SearchService:
         """Элементы с близким именем для ответа «точного совпадения нет»."""
         return sources_of(await self._search({
             "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
+            "size": limit,
+        }))
+
+    async def article(
+        self, name: str, book: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Статья по заголовку или ключу.
+
+        Маркеры: article, ambiguous, not_found, not_indexed, error.
+        """
+        try:
+            filters = [{"term": {"type": DocumentType.ARTICLE.value}}, _article_name_filter(name)]
+            if book:
+                filters.append({"term": {"book": book}})
+
+            response = await self._search({
+                "query": {"bool": {"filter": filters}},
+                "size": CANDIDATES_IN_RESPONSE,
+                "_source": LIST_LINE_FIELDS + ["description", "name", "name_en"],
+            })
+            documents = sources_of(response)
+
+            if len(documents) == 1:
+                return {"kind": "article", "document": documents[0]}
+            if documents:
+                return {
+                    "kind": "ambiguous", "name": name,
+                    "candidates": documents, "total": total_of(response),
+                }
+            if not await self.articles_indexed():
+                return {"kind": "not_indexed", "name": name}
+            return {"kind": "not_found", "name": name, "similar": await self._similar_articles(name)}
+        except Exception as e:
+            logger.error(f"article({name!r}): {e}")
+            return {"kind": "error", "name": name, "error": str(e)}
+
+    async def _similar_articles(self, name: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Статьи с близким заголовком для ответа «точного совпадения нет»."""
+        return sources_of(await self._search({
+            "query": {
+                "bool": {
+                    "filter": [{"term": {"type": DocumentType.ARTICLE.value}}],
+                    "must": [{"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}}],
+                }
+            },
             "size": limit,
         }))

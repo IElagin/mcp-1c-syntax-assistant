@@ -79,6 +79,11 @@ class UiStrings:
     candidates_header: str
     partial_order_note: str
 
+    article_heading: str
+    article_book: str
+    article_not_found: str
+    article_ambiguous: str
+    article_book_hint: str
 
     nothing_found: str
     object_exists_but_empty: str
@@ -196,6 +201,13 @@ RU_STRINGS = UiStrings(
     partial_order_note=(
         "(порядок построен не по всем совпадениям — их слишком много "
         "для одного запроса)"
+    ),
+    article_heading="{name}",
+    article_book="Книга: {book}",
+    article_not_found="Статья «{name}» в справке не найдена.",
+    article_ambiguous="Заголовок «{name}» встречается в справке {total} раз:",
+    article_book_hint=(
+        'Повторите вызов, указав книгу: get_1c_article(name="{name}", book="shquery")'
     ),
     nothing_found="По запросу «{query}» ничего не найдено.",
     object_exists_but_empty=(
@@ -352,6 +364,13 @@ EN_STRINGS = UiStrings(
     ),
     partial_order_note=(
         "(the order does not cover all matches — there are too many for one query)"
+    ),
+    article_heading="{name}",
+    article_book="Book: {book}",
+    article_not_found="Article “{name}” is not in the help.",
+    article_ambiguous="The title “{name}” occurs {total} times in the help:",
+    article_book_hint=(
+        'Call again naming the book: get_1c_article(name="{name}", book="shquery")'
     ),
     nothing_found='Nothing found for the query "{query}".',
     object_exists_but_empty=(

@@ -177,4 +177,44 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "get_1c_article",
+        "description": (
+            "Статья справки 1С о конструкции языка целиком: операторы и структуры "
+            "встроенного языка, синтаксис языка запросов, общий синтаксис исходных "
+            "текстов, функции и операции языка выражений системы компоновки данных. "
+            "Вызывайте, когда нужно «как это пишется», а не «как это вызвать»: у "
+            "статьи нет ни объекта-владельца, ни параметров, ни типа возвращаемого "
+            "значения. Для элемента объекта справки — get_1c_element. Если заголовок "
+            "неизвестен, сначала find_1c_help с kind=\"article\". Если заголовок "
+            "встречается в нескольких книгах, вернётся список — повторите вызов, "
+            "указав book."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": MIN_NAME_LENGTH,
+                    "description": "Заголовок статьи или её ключ вида shquery/MONTH",
+                },
+                "book": {
+                    "type": "string",
+                    "enum": ["shlang", "shquery", "shclang", "dcsui"],
+                    "description": (
+                        "Книга: shlang — встроенный язык, shquery — язык запросов, "
+                        "shclang — общий синтаксис, dcsui — выражения СКД"
+                    ),
+                },
+                "lang": {
+                    "type": "string",
+                    "enum": ["ru", "en"],
+                    "default": DEFAULT_LANG,
+                    "description": LANG_DESCRIPTION,
+                },
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
 ]

@@ -1,4 +1,4 @@
-"""Обработчики трёх инструментов MCP."""
+"""Обработчики четырёх инструментов MCP."""
 
 import re
 from typing import List, Optional, Tuple
@@ -9,12 +9,14 @@ from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.handlers.element_card import (
     render_element_card, render_object_card, hint_about_remainder, member_list,
-    candidate_list, elsewhere_list, list_line,
+    candidate_list, elsewhere_list, list_line, render_article,
+    article_candidate_list, article_line,
 )
 from src.handlers.mcp_formatter import mcp_formatter
 from src.handlers.ui_strings import RU_STRINGS, UiStrings, strings_for
 from src.models.mcp_models import (
-    Find1CHelpRequest, Get1CElementRequest, List1CObjectMembersRequest, MCPResponse,
+    Find1CHelpRequest, Get1CArticleRequest, Get1CElementRequest,
+    List1CObjectMembersRequest, MCPResponse,
 )
 from src.search.search_service import SearchService
 
@@ -266,6 +268,50 @@ def _element_missing(
     if similar:
         lines.append(strings.similar_by_name)
         lines.extend(f"  {list_line(doc, strings)}" for doc in similar)
+    else:
+        lines.append(strings.no_similar)
+    return "\n".join(lines)
+
+
+async def handle_get_1c_article(
+    request: Get1CArticleRequest, es_client: ElasticsearchClient
+) -> MCPResponse:
+    """Статья справки либо причина, почему её нет."""
+    logger.info(f"get_1c_article: {request.name!r} book={request.book!r}")
+    lang = request.lang.value
+    strings = strings_for(lang)
+    try:
+        service = SearchService(es_client, index=index_for(lang))
+        answer = await service.article(request.name, request.book)
+        kind = answer.get("kind")
+
+        if kind == "article":
+            return _text_response(render_article(answer["document"], strings))
+        if kind == "ambiguous":
+            return _text_response(article_candidate_list(
+                answer["name"], answer["candidates"], answer["total"], strings
+            ))
+        if kind == "not_indexed":
+            return _text_response(strings.articles_not_indexed)
+        if kind == "not_found":
+            return _text_response(_article_missing(answer, request, strings))
+
+        return mcp_formatter.create_error_response(
+            strings.card_error_title, answer.get("error", "")
+        )
+    except Exception as e:
+        logger.error(f"get_1c_article: {e}")
+        return mcp_formatter.create_error_response(strings.card_error_title, str(e))
+
+
+def _article_missing(
+    answer: dict, request: Get1CArticleRequest, strings: UiStrings
+) -> str:
+    similar = answer.get("similar") or []
+    lines = [strings.article_not_found.format(name=request.name)]
+    if similar:
+        lines.append(strings.similar_by_name)
+        lines.extend(f"  {article_line(doc, strings)}" for doc in similar)
     else:
         lines.append(strings.no_similar)
     return "\n".join(lines)

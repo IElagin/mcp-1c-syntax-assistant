@@ -19,6 +19,7 @@ class MCPToolType(str, Enum):
     FIND_1C_HELP = "find_1c_help"
     GET_1C_ELEMENT = "get_1c_element"
     LIST_1C_OBJECT_MEMBERS = "list_1c_object_members"
+    GET_1C_ARTICLE = "get_1c_article"
 
 
 class SearchKind(str, Enum):
@@ -77,6 +78,18 @@ class Get1CElementRequest(BaseModel):
     name: str = Field(..., min_length=1, description="Точное имя элемента")
     object: Optional[str] = Field(None, min_length=1, description="Объект справки")
     variant: Optional[str] = Field(None, min_length=1, description="Имя варианта вызова")
+    lang: Lang = Field(
+        default_factory=lambda: Lang(settings.default_help_lang),
+        description="Язык ответа",
+    )
+
+
+class Get1CArticleRequest(BaseModel):
+    """Запрос статьи справки."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, description="Заголовок статьи или её ключ")
+    book: Optional[str] = Field(None, min_length=1, description="Книга справки")
     lang: Lang = Field(
         default_factory=lambda: Lang(settings.default_help_lang),
         description="Язык ответа",
