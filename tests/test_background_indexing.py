@@ -3,7 +3,7 @@
 import pytest
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from src.infrastructure.background.indexing_manager import (
     BackgroundIndexingManager,
@@ -30,6 +30,22 @@ def indexing_manager():
     return BackgroundIndexingManager(
         shutdown_timeout=5,
         progress_log_interval=100
+    )
+
+
+def parsed_book_of(pages: int):
+    """Разобранная книга из pages страниц, все до одной разобраны успешно."""
+    from src.models.doc_models import Documentation, DocumentType, HBKFile, ParsedHBK
+
+    documents = [
+        Documentation(id=f"doc{number}", type=DocumentType.OBJECT_FUNCTION, name=f"Метод{number}")
+        for number in range(pages)
+    ]
+    return ParsedHBK(
+        file_info=HBKFile(path="test.hbk", size=0, modified=0.0),
+        documentation=documents,
+        pages_attempted=pages,
+        pages_parsed=pages,
     )
 
 
@@ -137,10 +153,8 @@ async def test_status_during_indexing(indexing_manager, mock_es_client, tmp_path
          patch('src.parsers.indexer.ElasticsearchIndexer') as mock_indexer:
         
         # Настраиваем моки
-        mock_parsed = MagicMock()
-        mock_parsed.documentation = [MagicMock() for _ in range(100)]
-        mock_parser.return_value.parse_file.return_value = mock_parsed
-        
+        mock_parser.return_value.parse_file.return_value = parsed_book_of(100)
+
         mock_indexer_instance = mock_indexer.return_value
         
         # Делаем индексацию медленной чтобы успеть проверить статус
@@ -199,8 +213,8 @@ async def test_concurrent_indexing_blocked(indexing_manager, mock_es_client, tmp
     встаёт в очередь и обрабатывается той же фоновой задачей следом за
     первым. Тест обязан дождаться, пока очередь не опустеет ЦЕЛИКОМ, не
     выходя из patch(...): иначе второй (отложенный) запуск проверки внутри
-    очереди выполнился бы уже настоящим HBKParser и настоящим 7-Zip вместо
-    мока — тест был бы зелёным, но проверял бы не то, что написано.
+    очереди выполнился бы уже настоящим разбором книги вместо мока — тест был
+    бы зелёным, но проверял бы не то, что написано.
     """
     # Создаём временный файл
     test_file = tmp_path / "test.hbk"
@@ -209,9 +223,7 @@ async def test_concurrent_indexing_blocked(indexing_manager, mock_es_client, tmp
     with patch('src.parsers.hbk_parser.HBKParser') as mock_parser, \
          patch('src.parsers.indexer.ElasticsearchIndexer') as mock_indexer:
 
-        mock_parsed = MagicMock()
-        mock_parsed.documentation = [MagicMock() for _ in range(10)]
-        mock_parser.return_value.parse_file.return_value = mock_parsed
+        mock_parser.return_value.parse_file.return_value = parsed_book_of(10)
 
         # Медленная индексация
         async def slow_reindex(parsed, progress_callback=None):

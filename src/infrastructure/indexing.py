@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from src.core.config import settings
 from src.core.constants import MAX_TOLERATED_PAGE_LOSS_SHARE
@@ -14,6 +14,8 @@ from src.parsers.dialects import dialect_for
 from src.parsers.name_backfill import backfill_english_names
 
 logger = get_logger(__name__)
+
+ProgressCallback = Callable[[int, int], None]
 
 
 def _book_lost_too_many_pages(parsed_hbk: ParsedHBK) -> bool:
@@ -191,6 +193,7 @@ async def index_hbk_file(
     es_client: ElasticsearchClient,
     index: Optional[str] = None,
     lang: str = "ru",
+    progress_callback: Optional[ProgressCallback] = None,
 ) -> bool:
     """
     Индексирует .hbk файл в Elasticsearch (используется и для ручной
@@ -201,6 +204,7 @@ async def index_hbk_file(
         es_client: Подключённый клиент Elasticsearch
         index: Индекс назначения (None — индекс из конфигурации)
         lang: Язык книги — выбирает диалект разбора HTML
+        progress_callback: Callback прогресса (indexed, total) для очереди
 
     Returns:
         bool: True если индексация успешна, False иначе
@@ -210,7 +214,7 @@ async def index_hbk_file(
         from src.parsers.indexer import ElasticsearchIndexer
         from src.parsers.article_books import parse_article_books
 
-        logger.info(f"Начинаем синхронную индексацию файла: {file_path}")
+        logger.info(f"Начинаем индексацию файла: {file_path}")
 
         parser = HBKParser(dialect=dialect_for(lang))
         logger.info("Запускаем парсинг HBK файла в отдельном потоке...")
@@ -239,7 +243,7 @@ async def index_hbk_file(
             logger.info(f"Книги статей отсутствуют: {', '.join(absent)}")
 
         indexer = ElasticsearchIndexer(es_client, index=index)
-        success = await indexer.reindex_all(parsed_hbk)
+        success = await indexer.reindex_all(parsed_hbk, progress_callback=progress_callback)
 
         if success:
             docs_count = await es_client.get_documents_count(index=index)
