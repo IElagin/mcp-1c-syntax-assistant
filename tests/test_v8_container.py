@@ -1,10 +1,12 @@
 """Чтение книги справки: контейнер V8 и zip внутри него."""
 
+import struct
 from pathlib import Path
 
 import pytest
 
-from src.parsers.v8_container import HelpBookArchive, HelpBookArchiveError
+import src.parsers.v8_container as v8_container
+from src.parsers.v8_container import FILE_HEADER_SIZE, NO_PAGE, HelpBookArchive, HelpBookArchiveError
 from tests.conftest import build_container, write_book
 
 REAL_BOOK = Path(__file__).resolve().parents[1] / "data" / "hbk" / "shcntx_ru.hbk"
@@ -37,27 +39,59 @@ def test_archive_reads_content_split_across_pages(book):
         assert archive.read("big.html") == big
 
 
-def test_archive_ignores_empty_data_block(book):
-    """Элемент с пустым блоком данных исключается из архива."""
+def test_archive_opens_a_book_whose_element_has_an_empty_data_block(book):
+    """Пустой служебный элемент не мешает читать файлы книги."""
     path = book({"root.html": b"<html/>"}, extra={"IndexMainData": b""})
     with HelpBookArchive(path) as archive:
         assert archive.names() == ["root.html"]
+        assert archive.read("root.html") == b"<html/>"
 
 
-def test_archive_ignores_element_with_no_data_address(tmp_path):
-    """Элемент, объявленный в таблице, но без адреса данных (data_address == NO_PAGE)."""
+def test_archive_opens_a_book_whose_element_has_no_data_address(tmp_path):
+    """Элемент, объявленный в таблице без адреса данных (data_address == NO_PAGE)."""
     from tests.conftest import build_container, zip_of
 
     files = {"root.html": b"<html/>"}
     elements = {
         "Book": b'{7,"Test"}',
         "FileStorage": zip_of(files),
-        "IndexMainData": None,  # Нет адреса данных — не читаем содержимое
+        "IndexMainData": None,
     }
     path = tmp_path / "with_no_data_address.hbk"
     path.write_bytes(build_container(elements))
     with HelpBookArchive(path) as archive:
         assert archive.names() == ["root.html"]
+        assert archive.read("root.html") == b"<html/>"
+
+
+def _container_with_a_self_referencing_block(data_size: int, page_size: int) -> bytes:
+    """Контейнер, чей единственный блок объявляет себя же следующей страницей."""
+    file_header = struct.pack("<IIII", NO_PAGE, page_size or 512, 1, 0)
+    return file_header + b"\r\n%08x %08x %08x \r\n" % (data_size, page_size, FILE_HEADER_SIZE)
+
+
+def test_archive_refuses_a_block_that_declares_a_zero_length_page(tmp_path):
+    """Страница нулевой длины не добавляет байтов — раньше чтение крутилось вечно."""
+    path = tmp_path / "zero_page_ru.hbk"
+    path.write_bytes(_container_with_a_self_referencing_block(data_size=100, page_size=0))
+    with pytest.raises(HelpBookArchiveError, match="нулевого размера"):
+        HelpBookArchive(path)
+
+
+def test_archive_refuses_a_page_chain_that_never_ends(tmp_path):
+    """Цепочка страниц, замкнутая на себя, обязана кончиться ошибкой, а не зависанием."""
+    path = tmp_path / "looping_ru.hbk"
+    path.write_bytes(_container_with_a_self_referencing_block(data_size=100, page_size=64))
+    with pytest.raises(HelpBookArchiveError, match="не кончается"):
+        HelpBookArchive(path)
+
+
+def test_archive_refuses_a_file_bigger_than_the_size_limit(book, monkeypatch):
+    """Читатель книги защищает себя сам, а не полагается на проверку в HBKParser."""
+    path = book({"root.html": b"<html/>"})
+    monkeypatch.setattr(v8_container, "MAX_FILE_SIZE_MB", 0)
+    with pytest.raises(HelpBookArchiveError, match="МБ"):
+        HelpBookArchive(path)
 
 
 def test_archive_refuses_a_file_that_is_not_a_container(tmp_path):

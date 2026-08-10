@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from src.core.constants import MAX_FILE_SIZE_MB
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,14 +36,29 @@ def _block_header(data: bytes, offset: int) -> Tuple[int, int, int]:
         ) from error
 
 
+def _page_limit(data: bytes) -> int:
+    """Сколько страниц вообще помещается в файл — цепочка длиннее зациклена."""
+    return len(data) // BLOCK_HEADER_SIZE + 1
+
+
 def _read_block(data: bytes, offset: int) -> bytes:
     data_size, page_size, next_page = _block_header(data, offset)
     body = bytearray()
     start = offset + BLOCK_HEADER_SIZE
+    pages_left = _page_limit(data)
     while True:
+        if page_size == 0:
+            raise HelpBookArchiveError(
+                f"Блок по смещению {offset} объявляет страницу нулевого размера"
+            )
         body += data[start:start + min(page_size, data_size - len(body))]
         if len(body) >= data_size or next_page == NO_PAGE:
             break
+        pages_left -= 1
+        if pages_left <= 0:
+            raise HelpBookArchiveError(
+                f"Цепочка страниц блока по смещению {offset} не кончается"
+            )
         _, page_size, following = _block_header(data, next_page)
         start = next_page + BLOCK_HEADER_SIZE
         next_page = following
@@ -77,6 +93,13 @@ class HelpBookArchive:
 
     def __init__(self, path: Path):
         path = Path(path)
+        size = path.stat().st_size
+        if size > MAX_FILE_SIZE_MB * 1024 * 1024:
+            raise HelpBookArchiveError(
+                f"Книга {path} больше допустимых {MAX_FILE_SIZE_MB} МБ: "
+                f"{size / 1024 / 1024:.1f} МБ"
+            )
+
         raw = path.read_bytes()
         if len(raw) < FILE_HEADER_SIZE + BLOCK_HEADER_SIZE:
             raise HelpBookArchiveError(f"Файл слишком мал для книги справки: {path}")
