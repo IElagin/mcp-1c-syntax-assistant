@@ -213,3 +213,12 @@ class ParsedHBK(BaseModel):
     documentation: List[Documentation] = []
     errors: List[str] = []
     stats: Dict[str, int] = {}
+    pages_attempted: int = 0
+    pages_parsed: int = 0
+
+    @property
+    def lost_pages_share(self) -> float:
+        """Доля страниц книги, не давших документа: не прочитанных или не разобранных."""
+        if not self.pages_attempted:
+            return 0.0
+        return (self.pages_attempted - self.pages_parsed) / self.pages_attempted

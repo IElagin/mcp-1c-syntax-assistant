@@ -11,11 +11,14 @@ from src.models.doc_models import Documentation, DocumentType, HBKFile, ParsedHB
 pytestmark = [pytest.mark.unit, pytest.mark.indexer]
 
 
-def _parsed(documentation, errors):
+def _parsed(documentation, errors, pages_attempted=None):
+    """Книга, у которой страниц было pages_attempted, а документов вышло len(documentation)."""
     return ParsedHBK(
         file_info=HBKFile(path="test.hbk", size=0, modified=0.0),
         documentation=documentation,
         errors=errors,
+        pages_attempted=pages_attempted if pages_attempted is not None else len(documentation),
+        pages_parsed=len(documentation),
     )
 
 
@@ -30,7 +33,7 @@ def _docs(count: int):
 
 async def test_a_book_that_lost_a_small_share_of_pages_is_still_indexed(tmp_path, caplog):
     """1 страница из 100 (1%) — ниже порога, книга индексируется, потеря видна в предупреждении."""
-    parsed = _parsed(_docs(99), errors=["страница X не читается"])
+    parsed = _parsed(_docs(99), errors=["страница X не читается"], pages_attempted=100)
 
     with patch("src.parsers.hbk_parser.HBKParser.parse_file", return_value=parsed), \
          patch(
@@ -47,7 +50,9 @@ async def test_a_book_that_lost_a_small_share_of_pages_is_still_indexed(tmp_path
 
 async def test_a_book_that_lost_most_of_its_pages_is_refused_and_the_index_is_left_alone(tmp_path, caplog):
     """95 страниц из 100 (95%) — выше порога, переиндексация не запускается, старый индекс цел."""
-    parsed = _parsed(_docs(5), errors=[f"страница {n} не читается" for n in range(95)])
+    parsed = _parsed(
+        _docs(5), errors=[f"страница {n} не читается" for n in range(95)], pages_attempted=100
+    )
 
     with patch("src.parsers.hbk_parser.HBKParser.parse_file", return_value=parsed), \
          patch(

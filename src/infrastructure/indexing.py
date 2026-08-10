@@ -16,10 +16,28 @@ from src.parsers.name_backfill import backfill_english_names
 logger = get_logger(__name__)
 
 
-def _lost_pages_share(parsed_hbk: ParsedHBK) -> float:
-    """Доля страниц книги, которые не удалось прочитать или разобрать."""
-    attempted = len(parsed_hbk.documentation) + len(parsed_hbk.errors)
-    return len(parsed_hbk.errors) / attempted if attempted else 0.0
+def _book_lost_too_many_pages(parsed_hbk: ParsedHBK) -> bool:
+    """Книга потеряла столько страниц, что заменять ею живой индекс нельзя."""
+    lost_pages = parsed_hbk.pages_attempted - parsed_hbk.pages_parsed
+    if not lost_pages:
+        return False
+
+    lost_share = parsed_hbk.lost_pages_share
+    if lost_share > MAX_TOLERATED_PAGE_LOSS_SHARE:
+        logger.error(
+            f"Книга потеряла {lost_pages} страниц из {parsed_hbk.pages_attempted} "
+            f"({lost_share:.0%}) — это больше допустимых "
+            f"{MAX_TOLERATED_PAGE_LOSS_SHARE:.0%}, переиндексация отклонена, "
+            f"текущий индекс не тронут"
+        )
+        return True
+
+    logger.warning(
+        f"Книга прочитана не полностью: потеряно страниц — {lost_pages} из "
+        f"{parsed_hbk.pages_attempted}, из них не прочитано — {len(parsed_hbk.errors)}; "
+        f"в индекс всё равно уйдут разобранные {parsed_hbk.pages_parsed}"
+    )
+    return False
 
 
 def resolve_hbk_file(hbk_directory: str, filename: str) -> Optional[Path]:
@@ -207,20 +225,8 @@ async def index_hbk_file(
             logger.warning("В файле не найдена документация для индексации")
             return False
 
-        if parsed_hbk.errors:
-            lost_share = _lost_pages_share(parsed_hbk)
-            if lost_share > MAX_TOLERATED_PAGE_LOSS_SHARE:
-                logger.error(
-                    f"Книга потеряла {len(parsed_hbk.errors)} страниц из "
-                    f"{len(parsed_hbk.documentation) + len(parsed_hbk.errors)} ({lost_share:.0%}) — "
-                    f"это больше допустимых {MAX_TOLERATED_PAGE_LOSS_SHARE:.0%}, переиндексация "
-                    f"отклонена, текущий индекс не тронут"
-                )
-                return False
-            logger.warning(
-                f"Книга прочитана не полностью: потеряно страниц — {len(parsed_hbk.errors)}, "
-                f"в индекс всё равно уйдут прочитанные {len(parsed_hbk.documentation)}"
-            )
+        if _book_lost_too_many_pages(parsed_hbk):
+            return False
 
         logger.info(f"Найдено {len(parsed_hbk.documentation)} документов для индексации")
 

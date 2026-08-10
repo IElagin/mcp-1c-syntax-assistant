@@ -160,9 +160,11 @@ class HBKParser:
         if removed:
             logger.info(f"Устранены столкновения id: удалено страниц-заглушек — {removed}")
 
+        result.pages_attempted = len(object_pages)
+        result.pages_parsed = processed
         result.stats = {
-            "html_files": len(object_pages),
-            "processed_html": processed,
+            "html_files": result.pages_attempted,
+            "processed_html": result.pages_parsed,
             "st_files": st_files,
             "category_files": category_files,
             "total_entries": len(names),

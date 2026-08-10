@@ -261,7 +261,9 @@ def mock_parsed_hbk():
         documentation=docs,
         categories=categories,
         stats=stats,
-        errors=[]
+        errors=[],
+        pages_attempted=5,
+        pages_parsed=5,
     )
 
 
