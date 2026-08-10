@@ -28,6 +28,10 @@ def is_article_file(book: str, name: str) -> bool:
     return not (book == DIALOG_HELP_BOOK and name.startswith(DIALOG_HELP_PREFIX))
 
 
+class ArticleDecodingError(Exception):
+    """Файл книги не читается ни в одной из поддерживаемых кодировок."""
+
+
 def decode_article(raw: bytes) -> str:
     """Текст файла книги; кодировка книг — UTF-8 с BOM."""
     for encoding in ("utf-8-sig", *SUPPORTED_ENCODINGS):
@@ -35,7 +39,10 @@ def decode_article(raw: bytes) -> str:
             return raw.decode(encoding)
         except UnicodeDecodeError:
             continue
-    return raw.decode("utf-8", "replace")
+    tried = ["utf-8-sig", *SUPPORTED_ENCODINGS]
+    raise ArticleDecodingError(
+        f"файл не читается ни в одной из кодировок {tried}: первые байты {raw[:16]!r}"
+    )
 
 
 def parse_article_file(book: str, file_name: str, html: str) -> List[Documentation]:
@@ -62,12 +69,13 @@ def parse_article_file(book: str, file_name: str, html: str) -> List[Documentati
 
 
 def _anchored_headings(soup: BeautifulSoup) -> List[tuple]:
-    """Заголовки 2–6 уровня, внутри которых стоит якорь, с именами якорей."""
+    """Заголовки 2–6 уровня, внутри которых стоит якорь с непустым именем."""
     found = []
     for heading in soup.find_all(SECTION_HEADINGS):
         anchor = heading.find("a", attrs={"name": True})
-        if anchor:
-            found.append((heading, anchor["name"]))
+        name = anchor["name"] if anchor else ""
+        if name:
+            found.append((heading, name))
     return found
 
 

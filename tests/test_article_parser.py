@@ -35,6 +35,13 @@ ANCHOR_IN_PROSE = """<HTML><BODY>
 <P>Текст с точкой перехода <A name=Common></A> посреди абзаца, а не заголовком.</P>
 </BODY></HTML>"""
 
+ANCHOR_NAME_EMPTY = """<HTML><BODY>
+<H1 class="">Работа со строками</H1>
+<P>Общие сведения о работе со строковыми значениями и их преобразовании в системе.</P>
+<H3><A name="">Технический подраздел без якоря</A></H3>
+<P>Текст технического подраздела, который не должен стать отдельной статьёй.</P>
+</BODY></HTML>"""
+
 LEAD_IS_ONLY_LINKS = """<html><body>
 <h1>Функции работы со строками</h1>
 <blockquote><a href="#Left">Лев</a><br><a href="#Right">Прав</a></blockquote>
@@ -52,6 +59,7 @@ def test_whole_file_without_heading_anchors_is_one_article():
     assert articles[0].element_kind == ARTICLE_KIND
     assert articles[0].source_file == "shlang/struct_For"
     assert articles[0].id == "shlang/struct_For"
+    assert articles[0].full_path == "shlang/struct_For"
     assert "циклического повторения" in articles[0].description
 
 
@@ -62,7 +70,9 @@ def test_heading_anchors_split_the_file_into_named_articles():
         "ВычислитьВыражение (EvalExpression)",
     ]
     assert articles[0].source_file == "dcsui/SKD_Functions_Expressions#calculate"
+    assert articles[0].full_path == "dcsui/SKD_Functions_Expressions#calculate"
     assert articles[1].id == "dcsui/SKD_Functions_Expressions#EvalExpression"
+    assert articles[1].full_path == "dcsui/SKD_Functions_Expressions#EvalExpression"
 
 
 def test_anchor_wrapping_the_heading_text_also_splits():
@@ -75,10 +85,24 @@ def test_anchor_wrapping_the_heading_text_also_splits():
     assert articles[1].source_file == "shclang/source_wasistdas_kind.html#ManagedApplicationModule"
 
 
+def test_lead_article_text_does_not_repeat_its_own_heading():
+    articles = parse_article_file("shclang", "source_wasistdas_kind.html", ANCHOR_WRAPS_TITLE)
+    lead = articles[0]
+    assert lead.name == "Виды программных модулей"
+    assert lead.description == "В системе существует несколько видов программных модулей."
+    assert not lead.description.startswith(lead.name)
+
+
 def test_anchor_outside_a_heading_does_not_split_the_file():
     articles = parse_article_file("shlang", "expressions_logical.html", ANCHOR_IN_PROSE)
     assert len(articles) == 1
     assert articles[0].name == "Логические выражения"
+
+
+def test_heading_with_empty_anchor_name_does_not_split_the_file():
+    articles = parse_article_file("shlang", "string_functions.html", ANCHOR_NAME_EMPTY)
+    assert len(articles) == 1
+    assert articles[0].name == "Работа со строками"
 
 
 def test_lead_that_is_only_a_link_list_produces_no_article():
