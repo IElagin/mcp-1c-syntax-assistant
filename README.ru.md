@@ -91,7 +91,8 @@ Invoke-RestMethod http://localhost:8000/health
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
  "documents_count":23125,"indexing_status":"idle","indexing_active":false,
- "index_en_exists":true,"documents_count_en":23104,"version":"2.2.0"}
+ "index_en_exists":true,"documents_count_en":23104,
+ "missing_article_books":[],"missing_article_books_en":[],"version":"2.3.0"}
 ```
 
 Сервер готов, когда `indexing_active` равно `false`, а `documents_count`
