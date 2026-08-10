@@ -35,13 +35,18 @@ def parse_article_books(directory: str, lang: str) -> Tuple[List[Documentation],
 
 
 def _book_articles(archive: HelpBookArchive, book_key: str, book_name: str) -> List[Documentation]:
-    """Статьи всех читаемых файлов книги; файл, который не декодируется, теряет только себя."""
+    """Статьи всех читаемых файлов книги; файл, который не читается или не декодируется, теряет только себя."""
     articles: List[Documentation] = []
     for name in archive.names():
         if not is_article_file(book_key, name):
             continue
         try:
-            html = decode_article(archive.read(name))
+            raw = archive.read(name)
+        except Exception as error:
+            logger.error(f"Файл {name} книги {book_name} не читается: {error}")
+            continue
+        try:
+            html = decode_article(raw)
         except ArticleDecodingError as error:
             logger.error(f"Файл {name} книги {book_name} не декодируется: {error}")
             continue

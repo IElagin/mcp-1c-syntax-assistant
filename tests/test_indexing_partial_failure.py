@@ -1,4 +1,4 @@
-"""index_hbk_file отличает потерю нескольких страниц от полной неудачи чтения книги."""
+"""index_hbk_file отличает царапину книги от её ампутации по доле потерянных страниц."""
 
 import logging
 from unittest.mock import AsyncMock, patch
@@ -19,14 +19,18 @@ def _parsed(documentation, errors):
     )
 
 
-def _doc(name: str) -> Documentation:
-    doc = Documentation(id=name, type=DocumentType.OBJECT_FUNCTION, name=name)
-    doc.build_call_strings()
-    return doc
+def _docs(count: int):
+    docs = []
+    for n in range(count):
+        doc = Documentation(id=f"doc{n}", type=DocumentType.OBJECT_FUNCTION, name=f"Метод{n}")
+        doc.build_call_strings()
+        docs.append(doc)
+    return docs
 
 
-async def test_a_book_that_lost_some_pages_is_still_indexed(tmp_path, caplog):
-    parsed = _parsed([_doc("Добавить"), _doc("Удалить")], errors=["страница X не читается"])
+async def test_a_book_that_lost_a_small_share_of_pages_is_still_indexed(tmp_path, caplog):
+    """1 страница из 100 (1%) — ниже порога, книга индексируется, потеря видна в предупреждении."""
+    parsed = _parsed(_docs(99), errors=["страница X не читается"])
 
     with patch("src.parsers.hbk_parser.HBKParser.parse_file", return_value=parsed), \
          patch(
@@ -39,6 +43,23 @@ async def test_a_book_that_lost_some_pages_is_still_indexed(tmp_path, caplog):
     assert result is True
     reindex.assert_awaited_once()
     assert any("потеряно страниц" in message for message in caplog.messages)
+
+
+async def test_a_book_that_lost_most_of_its_pages_is_refused_and_the_index_is_left_alone(tmp_path, caplog):
+    """95 страниц из 100 (95%) — выше порога, переиндексация не запускается, старый индекс цел."""
+    parsed = _parsed(_docs(5), errors=[f"страница {n} не читается" for n in range(95)])
+
+    with patch("src.parsers.hbk_parser.HBKParser.parse_file", return_value=parsed), \
+         patch(
+             "src.parsers.indexer.ElasticsearchIndexer.reindex_all",
+             new=AsyncMock(return_value=True),
+         ) as reindex:
+        with caplog.at_level(logging.ERROR):
+            result = await index_hbk_file(str(tmp_path / "book.hbk"), AsyncMock(), index="ignored")
+
+    assert result is False
+    reindex.assert_not_awaited()
+    assert any("отклонена" in message for message in caplog.messages)
 
 
 async def test_a_book_that_produced_no_documentation_is_refused_without_indexing(tmp_path):

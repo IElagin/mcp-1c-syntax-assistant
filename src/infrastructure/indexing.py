@@ -5,13 +5,21 @@ from pathlib import Path
 from typing import Optional
 
 from src.core.config import settings
+from src.core.constants import MAX_TOLERATED_PAGE_LOSS_SHARE
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
 from src.infrastructure.background.indexing_manager import get_indexing_manager
+from src.models.doc_models import ParsedHBK
 from src.parsers.dialects import dialect_for
 from src.parsers.name_backfill import backfill_english_names
 
 logger = get_logger(__name__)
+
+
+def _lost_pages_share(parsed_hbk: ParsedHBK) -> float:
+    """Доля страниц книги, которые не удалось прочитать или разобрать."""
+    attempted = len(parsed_hbk.documentation) + len(parsed_hbk.errors)
+    return len(parsed_hbk.errors) / attempted if attempted else 0.0
 
 
 def resolve_hbk_file(hbk_directory: str, filename: str) -> Optional[Path]:
@@ -200,6 +208,15 @@ async def index_hbk_file(
             return False
 
         if parsed_hbk.errors:
+            lost_share = _lost_pages_share(parsed_hbk)
+            if lost_share > MAX_TOLERATED_PAGE_LOSS_SHARE:
+                logger.error(
+                    f"Книга потеряла {len(parsed_hbk.errors)} страниц из "
+                    f"{len(parsed_hbk.documentation) + len(parsed_hbk.errors)} ({lost_share:.0%}) — "
+                    f"это больше допустимых {MAX_TOLERATED_PAGE_LOSS_SHARE:.0%}, переиндексация "
+                    f"отклонена, текущий индекс не тронут"
+                )
+                return False
             logger.warning(
                 f"Книга прочитана не полностью: потеряно страниц — {len(parsed_hbk.errors)}, "
                 f"в индекс всё равно уйдут прочитанные {len(parsed_hbk.documentation)}"

@@ -35,6 +35,8 @@ MIN_NAME_LENGTH = 1
 
 SUPPORTED_ENCODINGS = ["utf-8", "cp1251"]
 
+MAX_TOLERATED_PAGE_LOSS_SHARE = 0.05
+
 KIND_TO_TYPE = {
     "any": [],
     "global": ["global_function", "global_procedure", "global_event"],

@@ -1,7 +1,5 @@
 """Сбор статей всех книг перед индексацией."""
 
-from pathlib import Path
-
 from src.core.constants import ARTICLE_BOOKS
 from src.parsers.article_books import parse_article_books
 from tests.conftest import write_book as _book
@@ -46,18 +44,4 @@ def test_undecodable_file_does_not_cost_the_rest_of_its_book(tmp_path):
     _book(tmp_path / "shlang_ru.hbk", {"struct_For": ARTICLE, "struct_While": UNDECODABLE})
     articles, missing = parse_article_books(str(tmp_path), "ru")
     assert [a.name for a in articles] == ["Для (For)"]
-    assert missing == ["shquery", "shclang", "dcsui"]
-
-
-def test_health_names_the_article_books_that_are_absent(tmp_path, monkeypatch):
-    """Отсутствие книги видно в статусе, а не только в логе."""
-    from src.core.config import settings
-
-    monkeypatch.setattr(settings, "hbk_directory", str(tmp_path))
-    _book(tmp_path / "shlang_ru.hbk", {"struct_For": b"<h1>For</h1>"})
-
-    missing = [
-        book.key for book in ARTICLE_BOOKS
-        if not (Path(settings.data.hbk_directory) / book.ru).exists()
-    ]
     assert missing == ["shquery", "shclang", "dcsui"]
