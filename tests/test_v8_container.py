@@ -37,8 +37,25 @@ def test_archive_reads_content_split_across_pages(book):
         assert archive.read("big.html") == big
 
 
-def test_archive_tolerates_element_without_data(book):
+def test_archive_ignores_empty_data_block(book):
+    """Элемент с пустым блоком данных исключается из архива."""
     path = book({"root.html": b"<html/>"}, extra={"IndexMainData": b""})
+    with HelpBookArchive(path) as archive:
+        assert archive.names() == ["root.html"]
+
+
+def test_archive_ignores_element_with_no_data_address(tmp_path):
+    """Элемент, объявленный в таблице, но без адреса данных (data_address == NO_PAGE)."""
+    from tests.conftest import build_container, zip_of
+
+    files = {"root.html": b"<html/>"}
+    elements = {
+        "Book": b'{7,"Test"}',
+        "FileStorage": zip_of(files),
+        "IndexMainData": None,  # Нет адреса данных — не читаем содержимое
+    }
+    path = tmp_path / "with_no_data_address.hbk"
+    path.write_bytes(build_container(elements))
     with HelpBookArchive(path) as archive:
         assert archive.names() == ["root.html"]
 

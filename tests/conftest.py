@@ -305,11 +305,18 @@ def build_container(elements: dict, page_size: int = 512) -> bytes:
     for name, content in elements.items():
         header = b"\x00" * ELEMENT_NAME_OFFSET + name.encode("utf-16-le") + b"\x00\x00"
         header_block = _pages(header, page_size, cursor)
-        data_start = cursor + len(header_block)
-        data_block = _pages(content, page_size, data_start)
-        table += struct.pack("<III", cursor, data_start, NO_PAGE)
-        body += header_block + data_block
-        cursor = data_start + len(data_block)
+        body += header_block
+        table_entry = [cursor]
+        cursor += len(header_block)
+        if content is not None:
+            data_block = _pages(content, page_size, cursor)
+            table_entry.append(cursor)
+            body += data_block
+            cursor += len(data_block)
+        else:
+            table_entry.append(NO_PAGE)
+        table_entry.append(NO_PAGE)
+        table += struct.pack("<III", *table_entry)
 
     file_header = struct.pack("<IIII", NO_PAGE, page_size, 1, 0)
     table_block = (
