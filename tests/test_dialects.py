@@ -120,9 +120,7 @@ _ALPHABET_HEADING = re.compile(r"^\W*\w\W*$")
 # записью №44280 из 48 682, за пределами любого среза вроде entries[:400].
 # Если выборка снова сузится до первых записей архива, это же имя выпадет из
 # unknown-проверки, и assert ниже по коду упадёт раньше, чем тест научится
-# молчать о своей слепоте. Путь сравнивается по нормализованному разделителю:
-# Windows 7z.exe (хостовая проверка) отдаёт '\', линуксовый 7z в контейнере —
-# '/' для одного и того же архива.
+# молчать о своей слепоте.
 _KNOWN_VALUES_PAGE = "objects/catalog274/StyleColors.html"
 
 
@@ -140,31 +138,22 @@ def test_every_chapter_of_the_english_book_is_known_to_the_dialect():
     (HBKParser._analyze_structure берёт в работу только пути с 'objects/',
     tables/ не разбирает вовсе — то же условие продублировано здесь, а не
     выведено из HBKParser, чтобы тест не зависел от приватностей парсера).
-    Извлечение батчами по BATCH_SIZE — тем же способом, что и в
-    HBKParser._analyze_structure, — иначе поштучное извлечение (по одному
-    7z-процессу на файл) превратило бы прогон в многочасовой.
     """
-    from src.core.constants import BATCH_SIZE
-    from src.parsers.hbk_parser import HBKParser
+    from src.parsers.v8_container import HelpBookArchive
 
-    parser = HBKParser()
-    entries = parser._extract_archive(ENGLISH_BOOK)
-    object_pages = [
-        entry for entry in entries
-        if entry.path.endswith(".html")
-        and ('objects/' in entry.path or 'objects\\' in entry.path)
-    ]
+    with HelpBookArchive(ENGLISH_BOOK) as archive:
+        object_pages = [
+            name for name in archive.names()
+            if name.endswith(".html") and name.startswith("objects/")
+        ]
 
-    assert any(
-        entry.path.replace('\\', '/') == _KNOWN_VALUES_PAGE for entry in object_pages
-    ), f"{_KNOWN_VALUES_PAGE} выпала из выборки — тест снова ничего не проверяет"
+        assert _KNOWN_VALUES_PAGE in object_pages, (
+            f"{_KNOWN_VALUES_PAGE} выпала из выборки — тест снова ничего не проверяет"
+        )
 
-    unknown = set()
-    for i in range(0, len(object_pages), BATCH_SIZE):
-        batch = object_pages[i:i + BATCH_SIZE]
-        extracted = parser.extract_batch_files([entry.path for entry in batch])
-        for content in extracted.values():
-            html = content.decode("utf-8", errors="replace")
+        unknown = set()
+        for name in object_pages:
+            html = archive.read(name).decode("utf-8", errors="replace")
             for heading in re.findall(r'<p class="V8SH_chapter">(.*?)</p>', html):
                 if _ALPHABET_HEADING.match(heading.strip()):
                     continue

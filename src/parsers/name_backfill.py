@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Tuple
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
-from src.core.utils import canonical_source_file
 
 logger = get_logger(__name__)
 
@@ -24,9 +23,20 @@ MAX_CANDIDATES = 5000
 LOOKUP_CHUNK = 500
 
 
+def _normalize_index_path(source_file: Optional[str]) -> str:
+    """Путь из индекса в прямых слэшах.
+
+    Индекс, построенный до перехода на zipfile, может содержать пути через
+    обратный слэш (7-Zip под Windows печатает его). Эта функция приводит такие
+    пути к единому формату для склейки индексов на разных платформах.
+    """
+    return (source_file or "").replace("\\", "/")
+
+
 def _both_separators(source_file: str) -> Tuple[str, str]:
-    canonical = canonical_source_file(source_file)
-    return canonical, canonical.replace("/", "\\")
+    """Путь страницы в обоих написаниях: индекс мог быть построен до перехода на zipfile."""
+    forward = _normalize_index_path(source_file)
+    return forward, forward.replace("/", "\\")
 
 
 async def _candidates(es_client: ElasticsearchClient, index: str) -> List[Dict]:
@@ -90,13 +100,13 @@ async def _english_by_source_file(
         for hit in response.get("hits", {}).get("hits", []):
             source_file = hit["_source"].get("source_file")
             if source_file:
-                found[canonical_source_file(source_file)] = hit["_source"]
+                found[_normalize_index_path(source_file)] = hit["_source"]
     return found
 
 
 def _page_stem(source_file: Optional[str]) -> str:
     """«objects/catalog2/catalog2627.html» → «catalog2627»."""
-    name = canonical_source_file(source_file).rsplit("/", 1)[-1]
+    name = _normalize_index_path(source_file).rsplit("/", 1)[-1]
     return name[:-5] if name.endswith(".html") else name
 
 
@@ -185,7 +195,7 @@ def _plan_updates(
     operations: List[Dict] = []
 
     for doc_id, ru_source in russian.items():
-        en_source = english.get(canonical_source_file(ru_source["source_file"]))
+        en_source = english.get(_normalize_index_path(ru_source["source_file"]))
         if not en_source:
             continue
 

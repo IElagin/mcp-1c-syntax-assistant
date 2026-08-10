@@ -16,6 +16,7 @@ class DocumentType(str, Enum):
     OBJECT_EVENT = "object_event"
     OBJECT_CONSTRUCTOR = "object_constructor"
     OBJECT = "object"
+    ARTICLE = "article"
 
 
 class ObjectMethod(BaseModel):
@@ -92,6 +93,7 @@ class Documentation(BaseModel):
     version_from: Optional[str] = None
     examples: List[str] = []
     source_file: str = ""
+    book: str = ""
     full_path: str = ""  # Полный путь типа "ТаблицаЗначений.Добавить"
 
     methods: List[ObjectMethod] = []
@@ -211,3 +213,12 @@ class ParsedHBK(BaseModel):
     documentation: List[Documentation] = []
     errors: List[str] = []
     stats: Dict[str, int] = {}
+    pages_attempted: int = 0
+    pages_parsed: int = 0
+
+    @property
+    def lost_pages_share(self) -> float:
+        """Доля страниц книги, не давших документа: не прочитанных или не разобранных."""
+        if not self.pages_attempted:
+            return 0.0
+        return (self.pages_attempted - self.pages_parsed) / self.pages_attempted

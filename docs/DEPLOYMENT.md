@@ -66,7 +66,9 @@ docker save mcp-1c-syntax:arm64 -o mcp-1c-syntax-arm64.tar
 Базовый образ `python:3.14-slim` существует под обе архитектуры, поэтому
 специальных правок в `Dockerfile` не нужно. Сборка под ARM64 через эмуляцию
 заметно медленнее нативной — `build-essential` и компиляция `psutil` занимают
-основное время.
+основное время. Пакета `p7zip-full` в списке `apt-get install` больше нет:
+сервер читает книги справки `.hbk` собственным кодом, а не через внешний
+7-Zip.
 
 ### Перенос на сервер
 
@@ -195,7 +197,8 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
  "documents_count":23125,"indexing_status":"idle","indexing_active":false,
- "index_en_exists":true,"documents_count_en":23104,"version":"2.2.0"}
+ "index_en_exists":true,"documents_count_en":23104,
+ "missing_article_books":[],"missing_article_books_en":[],"version":"2.3.0"}
 ```
 
 `index_en_exists`/`documents_count_en` — то же самое для необязательной

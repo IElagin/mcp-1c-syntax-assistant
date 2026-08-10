@@ -22,6 +22,7 @@ from src.api.routes.health import router as health_router
 from src.api.routes.index import router as index_router
 from src.core.config import settings
 from src.models.index_status import IndexingStatus, IndexProgressInfo
+from tests.conftest import write_book
 
 
 pytestmark = pytest.mark.unit
@@ -164,3 +165,19 @@ async def test_index_status_carries_the_background_indexing_block():
 
     assert body["indexing"]["is_active"] is True
     assert body["indexing"]["status"] == IndexingStatus.COMPLETED.value
+
+
+async def test_health_reports_the_article_books_missing_from_each_language(tmp_path, monkeypatch):
+    """missing_article_books/_en идут через настоящий обработчик, а не мимо него."""
+    ru_dir, en_dir = tmp_path / "ru", tmp_path / "en"
+    ru_dir.mkdir()
+    en_dir.mkdir()
+    write_book(ru_dir / "shlang_ru.hbk", {"struct_For": b"<h1>For</h1>"})
+    write_book(en_dir / "shlang_root.hbk", {"struct_For": b"<h1>For</h1>"})
+    monkeypatch.setattr(settings, "hbk_directory", str(ru_dir))
+    monkeypatch.setattr(settings, "hbk_directory_en", str(en_dir))
+
+    body = await get_json(make_app(make_client(), make_manager()), "/health")
+
+    assert body["missing_article_books"] == ["shquery", "shclang", "dcsui"]
+    assert body["missing_article_books_en"] == ["shquery", "shclang", "dcsui"]

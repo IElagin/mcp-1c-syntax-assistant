@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from src.core.constants import SEARCH_LIMIT_MAX
 from src.handlers.mcp_formatter import truncate_at_sentence
 from src.handlers.ui_strings import RU_STRINGS, UiStrings
+from src.models.doc_models import DocumentType
 
 NOT_IN_HELP = RU_STRINGS.not_in_help
 
@@ -245,8 +246,52 @@ def _composition(counts: Dict[str, int], key: str, strings: UiStrings) -> List[s
     return lines
 
 
+def article_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
+    """Одна строка на статью: заголовок, вид и книга."""
+    parts = [doc.get("name") or doc.get("name_ru") or ""]
+    kind = doc.get("element_kind") or ""
+    if kind:
+        parts.append(f"— {strings.element_kind_names.get(kind, kind)}")
+    book = doc.get("book") or ""
+    if book:
+        parts.append(f"— {strings.book_names.get(book, book)}")
+    description = doc.get("description") or ""
+    if description:
+        parts.append(f"— {truncate_at_sentence(description, DESCRIPTION_LIMIT_IN_LIST)}")
+    return " ".join(parts)
+
+
+def render_article(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
+    """Статья целиком: заголовок, книга, текст."""
+    book = doc.get("book") or ""
+    heading = doc.get("name") or doc.get("name_ru") or ""
+    lines = [strings.article_heading.format(name=heading)]
+    if book:
+        lines.append(strings.article_book.format(book=strings.book_names.get(book, book)))
+    lines.append("")
+    lines.append(doc.get("description") or strings.description_missing)
+    return "\n".join(lines)
+
+
+def article_candidate_list(
+    name: str,
+    candidates: List[Dict[str, Any]],
+    total: int,
+    strings: UiStrings = RU_STRINGS,
+) -> str:
+    """Заголовок нашёлся в нескольких книгах — назвать их и показать, как уточнить."""
+    lines = [strings.article_ambiguous.format(name=name, total=total), ""]
+    lines.extend(f"  {article_line(doc, strings)}" for doc in candidates)
+    lines.append("")
+    lines.append(strings.article_book_hint.format(name=name))
+    return "\n".join(lines)
+
+
 def list_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
     """Одна строка на элемент — для выдачи поиска и состава объекта."""
+    if (doc.get("type") or "") == DocumentType.ARTICLE.value:
+        return article_line(doc, strings)
+
     path = doc.get("full_path") or doc.get("name_ru") or ""
     kind = doc.get("element_kind") or ""
     call = doc.get("call_primary") or ""

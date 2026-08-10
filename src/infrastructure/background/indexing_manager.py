@@ -3,13 +3,12 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Callable
+from typing import List, Optional
 from pathlib import Path
 
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
 from src.models.index_status import IndexingStatus, IndexProgressInfo
-from src.parsers.dialects import dialect_for
 
 logger = get_logger(__name__)
 
@@ -116,7 +115,10 @@ class BackgroundIndexingManager:
         lang: str = "ru",
     ):
         """
-        Выполнить индексацию одной книги (внутренний метод).
+        Выполнить индексацию одной книги очереди (внутренний метод).
+
+        Разбор, порог потерь и сбор статей принадлежат index_hbk_file — очередь
+        добавляет к ним только свой статус, прогресс и обработку ошибок.
 
         Args:
             file_path: Путь к .hbk файлу
@@ -131,52 +133,36 @@ class BackgroundIndexingManager:
                     file_path=file_path,
                     start_time=datetime.now()
                 )
-            
+
             logger.info(f"Начата фоновая индексация файла: {file_path}")
-            
+
             if not Path(file_path).exists():
                 raise FileNotFoundError(f"Файл не найден: {file_path}")
-            
-            from src.parsers.hbk_parser import HBKParser
-            parser = HBKParser(dialect=dialect_for(lang))
 
-            loop = asyncio.get_event_loop()
-            parsed_hbk = await loop.run_in_executor(
-                None,  # Использует default ThreadPoolExecutor
-                parser.parse_file,
-                file_path
-            )
-            
-            if not parsed_hbk or not parsed_hbk.documentation:
-                raise ValueError("Не удалось распарсить файл или документация пуста")
-            
-            total = len(parsed_hbk.documentation)
-            logger.info(f"Найдено {total} документов для индексации")
-            
-            async with self._lock:
-                self._progress_info.total_documents = total
-            
-            from src.parsers.indexer import ElasticsearchIndexer
-            indexer = ElasticsearchIndexer(es_client, index=index)
+            from src.infrastructure.indexing import index_hbk_file
 
-            success = await indexer.reindex_all(
-                parsed_hbk,
-                progress_callback=self._update_progress
+            success = await index_hbk_file(
+                file_path,
+                es_client,
+                index=index,
+                lang=lang,
+                progress_callback=self._update_progress,
             )
-            
+
             if not success:
                 raise RuntimeError("Индексация вернула False")
-            
+
             async with self._lock:
                 self._progress_info.status = IndexingStatus.COMPLETED
                 self._progress_info.end_time = datetime.now()
-                self._progress_info.indexed_documents = total
-            
+                self._progress_info.indexed_documents = self._progress_info.total_documents
+
             duration = self._progress_info.duration_seconds
             logger.info(
-                f"✅ Индексация завершена успешно: {total} документов за {duration:.1f} сек"
+                f"✅ Индексация завершена успешно: "
+                f"{self._progress_info.indexed_documents} документов за {duration:.1f} сек"
             )
-                
+
         except asyncio.CancelledError:
             logger.warning("Индексация отменена (shutdown)")
             async with self._lock:

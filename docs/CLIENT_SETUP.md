@@ -13,7 +13,8 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
  "documents_count":23125,"indexing_status":"idle","indexing_active":false,
- "index_en_exists":true,"documents_count_en":23104,"version":"2.2.0"}
+ "index_en_exists":true,"documents_count_en":23104,
+ "missing_article_books":[],"missing_article_books_en":[],"version":"2.3.0"}
 ```
 
 Пока `indexing_active` равно `true`, инструменты уже отвечают, но справка ещё
@@ -37,7 +38,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/mcp `
 ```json
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18",
  "capabilities":{"tools":{}},
- "serverInfo":{"name":"1c-syntax-helper-mcp","version":"2.2.0"}}}
+ "serverInfo":{"name":"1c-syntax-helper-mcp","version":"2.3.0"}}}
 ```
 
 Перечень инструментов:
@@ -78,7 +79,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/mcp `
 
 ```json
 {"jsonrpc":"2.0","id":4,"error":{"code":-32602,
- "message":"Unknown tool: nope. Available tools: find_1c_help, get_1c_element, list_1c_object_members"}}
+ "message":"Unknown tool: nope. Available tools: find_1c_help, get_1c_element, list_1c_object_members, get_1c_article"}}
 ```
 
 Это тело приходит с HTTP-статусом **400**, а не 200. `Invoke-RestMethod` на 400
@@ -104,8 +105,8 @@ VS Code читает конфигурацию MCP из `.vscode/mcp.json` в к�
 
 После сохранения VS Code предложит запустить сервер. Проверить состояние —
 команда **MCP: List Servers** в палитре (`Ctrl+Shift+P`); в списке инструментов
-чата должны появиться `find_1c_help`, `get_1c_element` и
-`list_1c_object_members`.
+чата должны появиться `find_1c_help`, `get_1c_element`,
+`list_1c_object_members` и `get_1c_article`.
 
 ## Claude Code
 

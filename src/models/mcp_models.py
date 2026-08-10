@@ -19,6 +19,7 @@ class MCPToolType(str, Enum):
     FIND_1C_HELP = "find_1c_help"
     GET_1C_ELEMENT = "get_1c_element"
     LIST_1C_OBJECT_MEMBERS = "list_1c_object_members"
+    GET_1C_ARTICLE = "get_1c_article"
 
 
 class SearchKind(str, Enum):
@@ -29,6 +30,7 @@ class SearchKind(str, Enum):
     PROPERTY = "property"
     EVENT = "event"
     CONSTRUCTOR = "constructor"
+    ARTICLE = "article"
 
 
 class MemberType(str, Enum):
@@ -82,6 +84,18 @@ class Get1CElementRequest(BaseModel):
     )
 
 
+class Get1CArticleRequest(BaseModel):
+    """Запрос статьи справки."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, description="Заголовок статьи или её ключ")
+    book: Optional[str] = Field(None, min_length=1, description="Книга справки")
+    lang: Lang = Field(
+        default_factory=lambda: Lang(settings.default_help_lang),
+        description="Язык ответа",
+    )
+
+
 class List1CObjectMembersRequest(BaseModel):
     """Запрос состава объекта."""
     model_config = ConfigDict(extra="forbid")
@@ -114,4 +128,6 @@ class HealthResponse(BaseModel):
     indexing_active: Optional[bool] = None
     index_en_exists: Optional[bool] = None
     documents_count_en: Optional[int] = None
+    missing_article_books: List[str] = []
+    missing_article_books_en: List[str] = []
     version: str = __version__

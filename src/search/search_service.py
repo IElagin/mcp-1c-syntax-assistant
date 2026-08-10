@@ -5,6 +5,7 @@ import time
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
+from src.models.doc_models import DocumentType
 from src.search.query_builder import QueryBuilder
 from src.search.ranker import SearchRanker
 from src.search.formatter import SearchFormatter
@@ -16,7 +17,7 @@ CANDIDATES_CAP = 500
 
 LIST_LINE_FIELDS = [
     "type", "element_kind", "name_ru", "object", "object_ru",
-    "full_path", "call_primary", "description", "variants.variant",
+    "full_path", "call_primary", "description", "variants.variant", "book",
 ]
 
 OBJECT_MEMBER_KINDS = [
@@ -74,6 +75,16 @@ def _name_filter(name: str) -> Dict[str, Any]:
     return _any_of([
         {"term": {"name_ru.keyword": name}},
         {"term": {"name_en.keyword": name}},
+    ])
+
+
+def _article_name_filter(name: str) -> Dict[str, Any]:
+    """Заголовок статьи на любом языке либо её ключ."""
+    return _any_of([
+        {"term": {"name.keyword": name}},
+        {"term": {"name_ru.keyword": name}},
+        {"term": {"name_en.keyword": name}},
+        {"term": {"id": name}},
     ])
 
 
@@ -448,6 +459,10 @@ class SearchService:
         })
         return {b["key"]: b["doc_count"] for b in buckets_of(response, "by_object")}
 
+    async def articles_indexed(self) -> bool:
+        """Есть ли в индексе хоть одна статья."""
+        return await self._count([{"term": {"type": DocumentType.ARTICLE.value}}]) > 0
+
     async def object_exists(self, object_name: str) -> bool:
         """Есть ли в справке объект с таким именем.
 
@@ -492,5 +507,50 @@ class SearchService:
         """Элементы с близким именем для ответа «точного совпадения нет»."""
         return sources_of(await self._search({
             "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
+            "size": limit,
+        }))
+
+    async def article(
+        self, name: str, book: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Статья по заголовку или ключу.
+
+        Маркеры: article, ambiguous, not_found, not_indexed, error.
+        """
+        try:
+            filters = [{"term": {"type": DocumentType.ARTICLE.value}}, _article_name_filter(name)]
+            if book:
+                filters.append({"term": {"book": book}})
+
+            response = await self._search({
+                "query": {"bool": {"filter": filters}},
+                "size": CANDIDATES_IN_RESPONSE,
+                "_source": LIST_LINE_FIELDS + ["description", "name", "name_en"],
+            })
+            documents = sources_of(response)
+
+            if len(documents) == 1:
+                return {"kind": "article", "document": documents[0]}
+            if documents:
+                return {
+                    "kind": "ambiguous", "name": name,
+                    "candidates": documents, "total": total_of(response),
+                }
+            if not await self.articles_indexed():
+                return {"kind": "not_indexed", "name": name}
+            return {"kind": "not_found", "name": name, "similar": await self._similar_articles(name)}
+        except Exception as e:
+            logger.error(f"article({name!r}): {e}")
+            return {"kind": "error", "name": name, "error": str(e)}
+
+    async def _similar_articles(self, name: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Статьи с близким заголовком для ответа «точного совпадения нет»."""
+        return sources_of(await self._search({
+            "query": {
+                "bool": {
+                    "filter": [{"term": {"type": DocumentType.ARTICLE.value}}],
+                    "must": [{"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}}],
+                }
+            },
             "size": limit,
         }))

@@ -14,11 +14,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.api.mcp_tools import TOOLS
 
-TOOL_NAMES = {"find_1c_help", "get_1c_element", "list_1c_object_members"}
+TOOL_NAMES = {
+    "find_1c_help", "get_1c_element", "list_1c_object_members", "get_1c_article",
+}
 
 
 @pytest.mark.unit
-def test_exactly_three_tools_without_overlap():
+def test_exactly_four_tools_without_overlap():
     assert {t["name"] for t in TOOLS} == TOOL_NAMES
 
 
@@ -29,7 +31,7 @@ def test_schema_defines_enum_and_default():
 
     search = by_name["find_1c_help"]["inputSchema"]
     assert search["properties"]["kind"]["enum"] == [
-        "any", "global", "method", "property", "event", "constructor"
+        "any", "global", "method", "property", "event", "constructor", "article"
     ]
     assert search["properties"]["kind"]["default"] == "any"
     assert search["properties"]["limit"]["default"] == 10

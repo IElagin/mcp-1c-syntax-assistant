@@ -1,8 +1,12 @@
 """Health check endpoints."""
 
+from pathlib import Path
+from typing import List
+
 from fastapi import APIRouter, Depends
 
 from src.models.mcp_models import HealthResponse
+from src.core.constants import ARTICLE_BOOKS
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector
 from src.core.config import settings
@@ -10,6 +14,14 @@ from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 
 router = APIRouter(tags=["health"])
+
+
+def _missing_article_books(directory: str, filename_attr: str) -> List[str]:
+    """Ключи книг статей, чьего файла нет в каталоге поставки данного языка."""
+    return [
+        book.key for book in ARTICLE_BOOKS
+        if not (Path(directory) / getattr(book, filename_attr)).exists()
+    ]
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -38,6 +50,9 @@ async def health_check(
 
         indexing_progress = await indexing_manager.get_status()
 
+        missing_books = _missing_article_books(settings.data.hbk_directory, "ru")
+        missing_books_en = _missing_article_books(settings.data.hbk_directory_en, "en")
+
     await metrics.increment("health_check.requests")
 
     return HealthResponse(
@@ -49,4 +64,6 @@ async def health_check(
         indexing_active=indexing_manager.is_indexing(),
         index_en_exists=index_en_exists,
         documents_count_en=docs_count_en,
+        missing_article_books=missing_books,
+        missing_article_books_en=missing_books_en,
     )

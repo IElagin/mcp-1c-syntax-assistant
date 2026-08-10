@@ -22,6 +22,7 @@ class UiStrings:
     lang: str
 
     element_kind_names: Dict[str, str]
+    book_names: Dict[str, str]
 
     heading_global: str
     heading_of_object: str
@@ -78,6 +79,11 @@ class UiStrings:
     candidates_header: str
     partial_order_note: str
 
+    article_heading: str
+    article_book: str
+    article_not_found: str
+    article_ambiguous: str
+    article_book_hint: str
 
     nothing_found: str
     object_exists_but_empty: str
@@ -85,6 +91,7 @@ class UiStrings:
     object_name_differs_hint: str
     kind_filter_hint: str
     no_filters_hint: str
+    articles_not_indexed: str
 
     no_similar_objects: str
 
@@ -125,6 +132,11 @@ RU_STRINGS = UiStrings(
     element_kind_names={
         "функция": "функция", "процедура": "процедура", "свойство": "свойство",
         "событие": "событие", "конструктор": "конструктор", "объект": "объект",
+        "статья": "статья",
+    },
+    book_names={
+        "shlang": "язык 1С", "shquery": "язык запросов",
+        "shclang": "общий синтаксис", "dcsui": "выражения СКД",
     },
     heading_global="{kind} глобального контекста",
     heading_of_object="{kind} объекта {owner}",
@@ -190,6 +202,13 @@ RU_STRINGS = UiStrings(
         "(порядок построен не по всем совпадениям — их слишком много "
         "для одного запроса)"
     ),
+    article_heading="{name}",
+    article_book="Книга: {book}",
+    article_not_found="Статья «{name}» в справке не найдена.",
+    article_ambiguous="Заголовок «{name}» встречается в справке {total} раз:",
+    article_book_hint=(
+        'Повторите вызов, указав книгу: get_1c_article(name="{name}", book="shquery")'
+    ),
     nothing_found="По запросу «{query}» ничего не найдено.",
     object_exists_but_empty=(
         "Объект «{object}» в справке есть, но подходящих элементов у него не "
@@ -212,6 +231,11 @@ RU_STRINGS = UiStrings(
         "во всей справке. Что можно сделать: проверить имя по-русски и "
         "по-английски; поискать по словам из описания; если известен "
         "объект — посмотреть его состав через list_1c_object_members."
+    ),
+    articles_not_indexed=(
+        "Статьи не проиндексированы: книг shlang_ru.hbk, shquery_ru.hbk, "
+        "shclang_ru.hbk и dcsui_ru.hbk нет в каталоге data/hbk. "
+        "Это не значит, что статьи по запросу отсутствуют."
     ),
     no_similar_objects="подходящих не найдено",
     object_missing_for_element=(
@@ -273,6 +297,11 @@ EN_STRINGS = UiStrings(
     element_kind_names={
         "функция": "function", "процедура": "procedure", "свойство": "property",
         "событие": "event", "конструктор": "constructor", "объект": "object",
+        "статья": "article",
+    },
+    book_names={
+        "shlang": "1C language", "shquery": "query language",
+        "shclang": "common syntax", "dcsui": "DCS expressions",
     },
     heading_global="{kind} of the global context",
     heading_of_object="{kind} of {owner}",
@@ -336,6 +365,13 @@ EN_STRINGS = UiStrings(
     partial_order_note=(
         "(the order does not cover all matches — there are too many for one query)"
     ),
+    article_heading="{name}",
+    article_book="Book: {book}",
+    article_not_found="Article “{name}” is not in the help.",
+    article_ambiguous="The title “{name}” occurs {total} times in the help:",
+    article_book_hint=(
+        'Call again naming the book: get_1c_article(name="{name}", book="shquery")'
+    ),
     nothing_found='Nothing found for the query "{query}".',
     object_exists_but_empty=(
         'The object "{object}" is in the reference, but no matching elements '
@@ -360,6 +396,11 @@ EN_STRINGS = UiStrings(
         "matches anywhere in the reference. What to try: check the name in "
         "both Russian and English; search by words from the description; if "
         "you know the object, look at its member list via list_1c_object_members."
+    ),
+    articles_not_indexed=(
+        "Articles are not indexed: shlang_root.hbk, shquery_root.hbk, "
+        "shclang_root.hbk and dcsui_root.hbk are absent from data/hbk-en. "
+        "This does not mean no article matches the query."
     ),
     no_similar_objects="none found",
     object_missing_for_element=(

@@ -45,6 +45,9 @@ Real output of `get_1c_element(name="Добавить", object="Массив")`:
 - 4 GB RAM free (Elasticsearch is configured for a 1 GB heap)
 - The 1C syntax reference file `shcntx_ru.hbk`
 
+No 7-Zip or other archiver needed — the server reads the `.hbk` container
+itself.
+
 > **The `.hbk` syntax reference file is not included.** It is proprietary and
 > ships with your licensed 1C:Enterprise installation — copy it from there.
 > Do not redistribute it.
@@ -89,7 +92,8 @@ background. `/health` reports its progress:
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
  "documents_count":23125,"indexing_status":"idle","indexing_active":false,
- "index_en_exists":true,"documents_count_en":23104,"version":"2.2.0"}
+ "index_en_exists":true,"documents_count_en":23104,
+ "missing_article_books":[],"missing_article_books_en":[],"version":"2.3.0"}
 ```
 
 The server is ready when `indexing_active` is `false` and `documents_count`
@@ -108,8 +112,45 @@ Next: point your editor at the server — [docs/CLIENT_SETUP.md](docs/CLIENT_SET
 | `find_1c_help` | Find candidates when the exact name is unknown — one line per element, no full card. |
 | `get_1c_element` | Full card for an element whose exact name is known; a candidate list instead of a card when the name is ambiguous. |
 | `list_1c_object_members` | Methods, properties, events and constructors of one object, one line each. |
+| `get_1c_article` | Full text of an article about a language construct, query syntax, common syntax or a DCS expression function. |
 
 Schemas, limits and the exact behaviour on ambiguous or missing names:
+[docs/MCP_TOOLS.md](docs/MCP_TOOLS.md).
+
+## Article books (optional)
+
+Four more books add articles alongside the element cards — full text for
+operators and language constructs, query syntax, common source-text syntax,
+and DCS expression functions, retrieved whole through `get_1c_article` and
+found by `find_1c_help` like everything else. Copy them next to
+`shcntx_ru.hbk`:
+
+```bash
+cp /path/to/shlang_ru.hbk data/hbk/
+cp /path/to/shquery_ru.hbk data/hbk/
+cp /path/to/shclang_ru.hbk data/hbk/
+cp /path/to/dcsui_ru.hbk data/hbk/
+```
+
+| File | Covers |
+|---|---|
+| `shlang_ru.hbk` | The 1C language: operators, statements, constructs |
+| `shquery_ru.hbk` | The query language |
+| `shclang_ru.hbk` | Common syntax: source-text format, property access, comments |
+| `dcsui_ru.hbk` | DCS expression language functions and operators |
+
+All four are optional and independent of each other and of `shcntx_ru.hbk`:
+**without them the server works exactly as before** — the other three tools
+are unaffected, and `/health` names the missing ones in
+`missing_article_books`. The same four books exist for English, named
+`shlang_root.hbk` and so on, and go into `data/hbk-en` next to
+`shcntx_root.hbk`; missing ones there are named in `missing_article_books_en`.
+Together the eight files weigh under a megabyte, against tens of megabytes
+for `shcntx_ru.hbk` alone.
+
+Filenames come from one table in `src/core/constants.py`, not environment
+variables — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md). The five
+outcomes of `get_1c_article` and the `kind="article"` value of `find_1c_help`:
 [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md).
 
 ## Language support
@@ -186,7 +227,7 @@ Based on [Antonio1C/1c-syntax-helper-mcp](https://github.com/Antonio1C/1c-syntax
 - **The element card is a contract, not free text.** A fixed set of fields is
   always printed, and absent data is labelled (`Доступность: в справке не
   указана`, `Примеров в справке нет`) instead of being dropped.
-- **Three MCP tools instead of one**, each with an explicit JSON schema, so an
+- **Four MCP tools instead of one**, each with an explicit JSON schema, so an
   agent picks a tool by purpose rather than by guessing arguments.
 - **Disambiguation instead of a silent pick.** `Добавить` occurs on 197 pages;
   the server returns an ordered candidate list and asks for the object, rather
@@ -195,14 +236,11 @@ Based on [Antonio1C/1c-syntax-helper-mcp](https://github.com/Antonio1C/1c-syntax
   parsed out of the help HTML.
 - **A reproducible search-quality measurement** — `scripts/eval_search.py`
   builds its ground truth from the index itself and reports hit rates.
+- **The `.hbk` container is read directly**, not through 7-Zip: 7-Zip finds a
+  zip stream inside it by scanning and silently drops entries it does not
+  confirm — a quarter of one of the article books before this change.
 
 Full attribution and the complete list of changes: [NOTICE](NOTICE).
-
-## Roadmap
-
-- Reference for the 1C language, the query language and the DCS expression
-  language (`shlang`, `shquery`, `shclang`). These books use a different page
-  format and need a separate parser.
 
 ## License
 
