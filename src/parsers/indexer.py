@@ -188,6 +188,7 @@ class ElasticsearchIndexer:
             "version_from": doc.version_from,
             "examples": doc.examples,
             "source_file": doc.source_file,
+            "book": doc.book,
             "indexed_at": datetime.now().isoformat(),
         }
     

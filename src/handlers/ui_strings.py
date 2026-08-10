@@ -125,6 +125,7 @@ RU_STRINGS = UiStrings(
     element_kind_names={
         "функция": "функция", "процедура": "процедура", "свойство": "свойство",
         "событие": "событие", "конструктор": "конструктор", "объект": "объект",
+        "статья": "статья",
     },
     heading_global="{kind} глобального контекста",
     heading_of_object="{kind} объекта {owner}",
@@ -273,6 +274,7 @@ EN_STRINGS = UiStrings(
     element_kind_names={
         "функция": "function", "процедура": "procedure", "свойство": "property",
         "событие": "event", "конструктор": "constructor", "объект": "object",
+        "статья": "article",
     },
     heading_global="{kind} of the global context",
     heading_of_object="{kind} of {owner}",

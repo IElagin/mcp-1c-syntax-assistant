@@ -158,6 +158,7 @@ class ElasticsearchClient:
                     "version_from": {"type": "keyword"},
                     "examples": {"type": "text", "analyzer": "russian"},
                     "source_file": {"type": "keyword"},
+                    "book": {"type": "keyword"},
                     "full_path": {"type": "keyword"}
                 }
             }
