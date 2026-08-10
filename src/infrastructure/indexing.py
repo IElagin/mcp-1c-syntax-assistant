@@ -235,7 +235,7 @@ async def index_hbk_file(
         logger.info(f"Найдено {len(parsed_hbk.documentation)} документов для индексации")
 
         directory = str(Path(file_path).parent)
-        articles, absent = parse_article_books(directory, lang)
+        articles, absent = await asyncio.to_thread(parse_article_books, directory, lang)
         if articles:
             parsed_hbk.documentation.extend(articles)
             logger.info(f"Добавлено статей к индексации: {len(articles)}")
