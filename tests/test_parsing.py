@@ -18,60 +18,28 @@ from src.parsers.hbk_parser import HBKParser
 async def test_hbk_parsing():
     """Тест парсинга .hbk файла."""
     print("=== Тест 2: Парсинг .hbk файла ===")
-    
-    # Проверяем наличие 7zip (используем ту же логику, что и парсер)
-    import subprocess
-    zip_commands = [
-        '7z',           # В PATH
-        '7z.exe',       # В PATH  
-        '7za',          # В PATH (standalone версия)
-        '7za.exe',      # В PATH (standalone версия)
-        # Стандартные пути Windows
-        'C:\\Program Files\\7-Zip\\7z.exe',
-        'C:\\Program Files (x86)\\7-Zip\\7z.exe',
-    ]
-    
-    zip_available = False
-    working_7z = None
-    
-    for cmd in zip_commands:
-        try:
-            result = subprocess.run([cmd], capture_output=True, timeout=5)
-            if result.returncode == 0 or b'Igor Pavlov' in result.stdout or b'7-Zip' in result.stdout:
-                zip_available = True
-                working_7z = cmd
-                break
-        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
-            continue
-    
-    if not zip_available:
-        print("⚠️ 7-Zip не найден в системе. Тест пропущен.")
-        print("📋 Для полного тестирования установите 7-Zip: https://www.7-zip.org/")
-        pytest.skip("7-Zip не установлен в системе")
-    else:
-        print(f"✅ 7-Zip найден: {working_7z}")
-    
+
     try:
         # Ищем .hbk файл
         hbk_dir = Path(settings.data.hbk_directory)
         hbk_files = list(hbk_dir.glob("*.hbk"))
-        
+
         if not hbk_files:
             pytest.skip(f".hbk файл не найден в {hbk_dir}")
-        
+
         hbk_file = hbk_files[0]
         print(f"📁 Найден файл: {hbk_file}")
         print(f"📊 Размер: {hbk_file.stat().st_size / 1024 / 1024:.1f} МБ")
-        
+
         # Создаем парсер с выводом путей файлов
         class HBKParserWithLogging(HBKParser):
-            def _create_document_from_html(self, entry, result):
-                print(f"📄 Обрабатывается файл в архиве: {entry.path}")
-                return super()._create_document_from_html(entry, result)
-        
+            def _create_document_from_html(self, name, content, result):
+                print(f"📄 Обрабатывается файл в архиве: {name}")
+                return super()._create_document_from_html(name, content, result)
+
         parser = HBKParserWithLogging()
         parsed_hbk = parser.parse_file(str(hbk_file))
-        
+
         if not parsed_hbk:
             print("❌ Ошибка парсинга файла")
             assert False, "Парсер вернул None"

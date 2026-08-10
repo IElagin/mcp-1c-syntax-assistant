@@ -400,16 +400,12 @@ ARCHIVE_PATHS_RU = {
 
 @pytest.fixture
 def hbk_fixture_archive(tmp_path):
-    """Маленький архив справки из фикстурных страниц, по их путям в книге."""
-    import zipfile
-
-    archive_path = tmp_path / "fixture_book.zip"
-    with zipfile.ZipFile(archive_path, "w") as archive:
-        for fixture_name, archive_path_inside in ARCHIVE_PATHS_RU.items():
-            archive.writestr(
-                archive_path_inside, (FIXTURES_RU / fixture_name).read_bytes()
-            )
-    return archive_path
+    """Маленькая книга справки из фикстурных страниц, по их путям в книге."""
+    pages = {
+        archive_path_inside: (FIXTURES_RU / fixture_name).read_bytes()
+        for fixture_name, archive_path_inside in ARCHIVE_PATHS_RU.items()
+    }
+    return write_book(tmp_path / "fixture_book.hbk", pages)
 
 
 @pytest.fixture

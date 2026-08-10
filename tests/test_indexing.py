@@ -20,9 +20,6 @@ async def test_every_fixture_page_reaches_its_own_index(
 ):
     """Считаем по source_file: счётчик скрыл бы потерю одной страницы и дубль другой."""
     parser = HBKParser()
-    if parser._find_7zip_command() is None:
-        pytest.skip("7-Zip не установлен в системе")
-
     parsed = parser.parse_file(str(hbk_fixture_archive))
     assert parsed is not None, "парсер не открыл фикстурный архив"
 

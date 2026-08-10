@@ -244,11 +244,10 @@ def test_parser_takes_no_argument_it_does_not_honour():
 @pytest.mark.parser
 def test_fixture_archive_holds_every_page_at_its_archive_path(hbk_fixture_archive):
     """Путь внутри архива — это то, по чему парсер узнаёт вид элемента."""
-    import zipfile
-
+    from src.parsers.v8_container import HelpBookArchive
     from tests.conftest import ARCHIVE_PATHS_RU
 
-    with zipfile.ZipFile(hbk_fixture_archive) as archive:
-        stored = set(archive.namelist())
+    with HelpBookArchive(hbk_fixture_archive) as archive:
+        stored = set(archive.names())
 
     assert stored == set(ARCHIVE_PATHS_RU.values())
