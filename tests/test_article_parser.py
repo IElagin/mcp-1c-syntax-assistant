@@ -232,3 +232,17 @@ def test_commented_out_markup_does_not_leak_into_the_article():
     assert "WideColumn" not in article.description
     assert "Черновик строки" not in article.description
     assert article.description == "Настройки печати для веб-клиента по умолчанию."
+
+
+HEADER_WORDED_DIFFERENTLY = """<html><body>
+<h1 class="V8SH_pagetitle">Для&nbsp;Каждого&nbsp;(For Each)</h1>
+<div class="V8SH_title">Для каждого</div>
+<p class="Usual"><b>Синтаксис:<br></b>Для Каждого &lt;Имя&gt; Из &lt;Коллекция&gt; Цикл</p>
+</body></html>"""
+
+
+def test_page_header_is_dropped_even_when_worded_differently():
+    """Шапку помечает класс книги, а не совпадение её текста с заголовком."""
+    article = parse_article_file("shlang", "struct_ForEach", HEADER_WORDED_DIFFERENTLY)[0]
+    assert article.name == "Для Каждого (For Each)"
+    assert article.description.startswith("Синтаксис:")

@@ -15,7 +15,7 @@ ARTICLE_KIND = "статья"
 LEAD_MIN_LENGTH = 40
 SECTION_HEADINGS = ("h2", "h3", "h4", "h5", "h6")
 PAGE_TITLE_HEADING = "h1"
-TITLE_REPEAT_TAG = "div"
+PAGE_HEADER_CLASS = "V8SH_title"
 FOOTER_SEPARATOR = "hr"
 LINE_BREAK_TAGS = frozenset({
     "br", "p", "div", "li", "tr", "table", "pre", "blockquote",
@@ -64,7 +64,7 @@ def parse_article_file(book: str, file_name: str, html: str) -> List[Documentati
     soup = BeautifulSoup(html or "", "html.parser")
     _drop_page_footer(soup)
     page_title = _text_of(soup.find(PAGE_TITLE_HEADING))
-    _drop_page_header(soup, page_title)
+    _drop_page_header(soup)
 
     title = page_title or file_name
     sections = _anchored_headings(soup)
@@ -98,13 +98,17 @@ def _drop_page_footer(soup: BeautifulSoup) -> None:
     separator.extract()
 
 
-def _drop_page_header(soup: BeautifulSoup, page_title: str) -> None:
-    """Шапка повторяет заголовок страницы, а он печатается отдельной строкой."""
-    if not page_title:
-        return
-    for node in soup.find_all((PAGE_TITLE_HEADING, TITLE_REPEAT_TAG)):
-        if _text_of(node) == page_title:
-            node.decompose()
+def _drop_page_header(soup: BeautifulSoup) -> None:
+    """Шапка повторяет заголовок страницы, а он печатается отдельной строкой.
+
+    Шапку книга помечает классом сама, и сверять её текст с <h1> нельзя: на
+    двух страницах она написана другими словами — «Для каждого» под
+    заголовком «Для Каждого (For Each)», — но остаётся шапкой.
+    """
+    for node in soup.find_all(PAGE_TITLE_HEADING):
+        node.decompose()
+    for node in soup.find_all(class_=PAGE_HEADER_CLASS):
+        node.decompose()
 
 
 def _after_subtree(node: Tag) -> Iterator:
