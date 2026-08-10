@@ -187,6 +187,15 @@ def test_backfill_matches_a_page_indexed_with_windows_separators():
 
 
 @pytest.mark.unit
+def test_both_separators_normalizes_backslash_input():
+    """_both_separators должна обрабатывать пути из старых индексов с обратными слэшами."""
+    assert _both_separators("objects\\Global context.html") == (
+        "objects/Global context.html",
+        "objects\\Global context.html",
+    )
+
+
+@pytest.mark.unit
 async def test_join_survives_books_indexed_on_different_platforms():
     """Русская книга собрана под Windows, английская — в контейнере.
 
