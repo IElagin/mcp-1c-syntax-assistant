@@ -29,6 +29,7 @@ class SearchKind(str, Enum):
     PROPERTY = "property"
     EVENT = "event"
     CONSTRUCTOR = "constructor"
+    ARTICLE = "article"
 
 
 class MemberType(str, Enum):

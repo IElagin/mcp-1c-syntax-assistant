@@ -5,6 +5,7 @@ import time
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
+from src.models.doc_models import DocumentType
 from src.search.query_builder import QueryBuilder
 from src.search.ranker import SearchRanker
 from src.search.formatter import SearchFormatter
@@ -16,7 +17,7 @@ CANDIDATES_CAP = 500
 
 LIST_LINE_FIELDS = [
     "type", "element_kind", "name_ru", "object", "object_ru",
-    "full_path", "call_primary", "description", "variants.variant",
+    "full_path", "call_primary", "description", "variants.variant", "book",
 ]
 
 OBJECT_MEMBER_KINDS = [
@@ -447,6 +448,10 @@ class SearchService:
             "aggs": {"by_object": {"terms": {"field": "object", "size": len(names)}}},
         })
         return {b["key"]: b["doc_count"] for b in buckets_of(response, "by_object")}
+
+    async def articles_indexed(self) -> bool:
+        """Есть ли в индексе хоть одна статья."""
+        return await self._count([{"term": {"type": DocumentType.ARTICLE.value}}]) > 0
 
     async def object_exists(self, object_name: str) -> bool:
         """Есть ли в справке объект с таким именем.

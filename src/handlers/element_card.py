@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from src.core.constants import SEARCH_LIMIT_MAX
 from src.handlers.mcp_formatter import truncate_at_sentence
 from src.handlers.ui_strings import RU_STRINGS, UiStrings
+from src.models.doc_models import DocumentType
 
 NOT_IN_HELP = RU_STRINGS.not_in_help
 
@@ -245,8 +246,26 @@ def _composition(counts: Dict[str, int], key: str, strings: UiStrings) -> List[s
     return lines
 
 
+def article_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
+    """Одна строка на статью: заголовок, вид и книга."""
+    parts = [doc.get("name") or doc.get("name_ru") or ""]
+    kind = doc.get("element_kind") or ""
+    if kind:
+        parts.append(f"— {strings.element_kind_names.get(kind, kind)}")
+    book = doc.get("book") or ""
+    if book:
+        parts.append(f"— {strings.book_names.get(book, book)}")
+    description = doc.get("description") or ""
+    if description:
+        parts.append(f"— {truncate_at_sentence(description, DESCRIPTION_LIMIT_IN_LIST)}")
+    return " ".join(parts)
+
+
 def list_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
     """Одна строка на элемент — для выдачи поиска и состава объекта."""
+    if (doc.get("type") or "") == DocumentType.ARTICLE.value:
+        return article_line(doc, strings)
+
     path = doc.get("full_path") or doc.get("name_ru") or ""
     kind = doc.get("element_kind") or ""
     call = doc.get("call_primary") or ""

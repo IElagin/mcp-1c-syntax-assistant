@@ -83,6 +83,9 @@ async def _why_empty(
             )
             lines.append(strings.object_name_differs_hint)
 
+    if request.kind.value == "article" and not await service.articles_indexed():
+        lines.append(strings.articles_not_indexed)
+
     if request.kind.value != "any":
         lines.append(strings.kind_filter_hint.format(kind=request.kind.value))
 

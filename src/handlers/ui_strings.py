@@ -22,6 +22,7 @@ class UiStrings:
     lang: str
 
     element_kind_names: Dict[str, str]
+    book_names: Dict[str, str]
 
     heading_global: str
     heading_of_object: str
@@ -85,6 +86,7 @@ class UiStrings:
     object_name_differs_hint: str
     kind_filter_hint: str
     no_filters_hint: str
+    articles_not_indexed: str
 
     no_similar_objects: str
 
@@ -126,6 +128,10 @@ RU_STRINGS = UiStrings(
         "функция": "функция", "процедура": "процедура", "свойство": "свойство",
         "событие": "событие", "конструктор": "конструктор", "объект": "объект",
         "статья": "статья",
+    },
+    book_names={
+        "shlang": "язык 1С", "shquery": "язык запросов",
+        "shclang": "общий синтаксис", "dcsui": "выражения СКД",
     },
     heading_global="{kind} глобального контекста",
     heading_of_object="{kind} объекта {owner}",
@@ -214,6 +220,11 @@ RU_STRINGS = UiStrings(
         "по-английски; поискать по словам из описания; если известен "
         "объект — посмотреть его состав через list_1c_object_members."
     ),
+    articles_not_indexed=(
+        "Статьи не проиндексированы: книг shlang_ru.hbk, shquery_ru.hbk, "
+        "shclang_ru.hbk и dcsui_ru.hbk нет в каталоге data/hbk. "
+        "Это не значит, что статьи по запросу отсутствуют."
+    ),
     no_similar_objects="подходящих не найдено",
     object_missing_for_element=(
         "Объект «{object}» в справке не найден, поэтому элемент «{name}» у "
@@ -275,6 +286,10 @@ EN_STRINGS = UiStrings(
         "функция": "function", "процедура": "procedure", "свойство": "property",
         "событие": "event", "конструктор": "constructor", "объект": "object",
         "статья": "article",
+    },
+    book_names={
+        "shlang": "1C language", "shquery": "query language",
+        "shclang": "common syntax", "dcsui": "DCS expressions",
     },
     heading_global="{kind} of the global context",
     heading_of_object="{kind} of {owner}",
@@ -362,6 +377,11 @@ EN_STRINGS = UiStrings(
         "matches anywhere in the reference. What to try: check the name in "
         "both Russian and English; search by words from the description; if "
         "you know the object, look at its member list via list_1c_object_members."
+    ),
+    articles_not_indexed=(
+        "Articles are not indexed: shlang_root.hbk, shquery_root.hbk, "
+        "shclang_root.hbk and dcsui_root.hbk are absent from data/hbk-en. "
+        "This does not mean no article matches the query."
     ),
     no_similar_objects="none found",
     object_missing_for_element=(

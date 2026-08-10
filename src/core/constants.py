@@ -44,4 +44,5 @@ KIND_TO_TYPE = {
     "property": ["object_property"],
     "event": ["object_event"],
     "constructor": ["object_constructor"],
+    "article": ["article"],
 }

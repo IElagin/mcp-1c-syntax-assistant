@@ -29,7 +29,7 @@ def test_schema_defines_enum_and_default():
 
     search = by_name["find_1c_help"]["inputSchema"]
     assert search["properties"]["kind"]["enum"] == [
-        "any", "global", "method", "property", "event", "constructor"
+        "any", "global", "method", "property", "event", "constructor", "article"
     ]
     assert search["properties"]["kind"]["default"] == "any"
     assert search["properties"]["limit"]["default"] == 10
