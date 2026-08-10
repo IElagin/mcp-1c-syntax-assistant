@@ -1,5 +1,23 @@
 """Константы проекта."""
 
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ArticleBook:
+    """Книга статей справки и имена её файлов в обеих поставках."""
+    key: str
+    ru: str
+    en: str
+
+
+ARTICLE_BOOKS = (
+    ArticleBook(key="shlang", ru="shlang_ru.hbk", en="shlang_root.hbk"),
+    ArticleBook(key="shquery", ru="shquery_ru.hbk", en="shquery_root.hbk"),
+    ArticleBook(key="shclang", ru="shclang_ru.hbk", en="shclang_root.hbk"),
+    ArticleBook(key="dcsui", ru="dcsui_ru.hbk", en="dcsui_root.hbk"),
+)
+
 ELASTICSEARCH_CONNECTION_TIMEOUT = 30
 ELASTICSEARCH_REQUEST_TIMEOUT = 60
 

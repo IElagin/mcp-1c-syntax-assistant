@@ -114,4 +114,5 @@ class HealthResponse(BaseModel):
     indexing_active: Optional[bool] = None
     index_en_exists: Optional[bool] = None
     documents_count_en: Optional[int] = None
+    missing_article_books: List[str] = []
     version: str = __version__

@@ -1,8 +1,11 @@
 """Health check endpoints."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends
 
 from src.models.mcp_models import HealthResponse
+from src.core.constants import ARTICLE_BOOKS
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector
 from src.core.config import settings
@@ -38,6 +41,12 @@ async def health_check(
 
         indexing_progress = await indexing_manager.get_status()
 
+        missing_books = [
+            book.key
+            for book in ARTICLE_BOOKS
+            if not (Path(settings.data.hbk_directory) / book.ru).exists()
+        ]
+
     await metrics.increment("health_check.requests")
 
     return HealthResponse(
@@ -49,4 +58,5 @@ async def health_check(
         indexing_active=indexing_manager.is_indexing(),
         index_en_exists=index_en_exists,
         documents_count_en=docs_count_en,
+        missing_article_books=missing_books,
     )

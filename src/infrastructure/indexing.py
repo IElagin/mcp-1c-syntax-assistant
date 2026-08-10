@@ -182,6 +182,7 @@ async def index_hbk_file(
     try:
         from src.parsers.hbk_parser import HBKParser
         from src.parsers.indexer import ElasticsearchIndexer
+        from src.parsers.article_books import parse_article_books
 
         logger.info(f"Начинаем синхронную индексацию файла: {file_path}")
 
@@ -198,7 +199,21 @@ async def index_hbk_file(
             logger.warning("В файле не найдена документация для индексации")
             return False
 
+        if parsed_hbk.errors:
+            logger.warning(
+                f"Книга прочитана не полностью: потеряно страниц — {len(parsed_hbk.errors)}, "
+                f"в индекс всё равно уйдут прочитанные {len(parsed_hbk.documentation)}"
+            )
+
         logger.info(f"Найдено {len(parsed_hbk.documentation)} документов для индексации")
+
+        directory = str(Path(file_path).parent)
+        articles, absent = parse_article_books(directory, lang)
+        if articles:
+            parsed_hbk.documentation.extend(articles)
+            logger.info(f"Добавлено статей к индексации: {len(articles)}")
+        if absent:
+            logger.info(f"Книги статей отсутствуют: {', '.join(absent)}")
 
         indexer = ElasticsearchIndexer(es_client, index=index)
         success = await indexer.reindex_all(parsed_hbk)
