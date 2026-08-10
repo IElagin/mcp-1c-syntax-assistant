@@ -385,3 +385,14 @@ class TestFieldsToFill:
         )
 
         assert fields == {"name_en": "Array"}
+
+    def test_article_takes_its_english_title_not_its_file_name(self):
+        """«Ключевое слово ВЫБРАТЬ» получает name_en «SELECT keyword»."""
+        russian = {"source_file": "shquery/KeyWordsSELECT", "name_en": "", "object_en": None}
+        english = {"source_file": "shquery/KeyWordsSELECT", "name": "SELECT keyword"}
+        assert _fields_to_fill(russian, english) == {"name_en": "SELECT keyword"}
+
+    def test_anchored_article_joins_on_the_same_key_in_both_books(self):
+        russian = {"source_file": "dcsui/SKD_Functions_Date#Year", "name_en": "", "object_en": None}
+        english = {"source_file": "dcsui/SKD_Functions_Date#Year", "name": "Year"}
+        assert _fields_to_fill(russian, english)["name_en"] == "Year"
