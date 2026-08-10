@@ -15,19 +15,16 @@ from src.parsers.hbk_parser import HBKParser
 @pytest.mark.slow
 @pytest.mark.parser
 @pytest.mark.asyncio
-async def test_hbk_parsing():
-    """Тест парсинга .hbk файла."""
+async def test_configured_book_parses_into_known_document_types():
+    """Книга, заданная конфигурацией (а не первая по алфавиту в каталоге), разбирается в документы известных типов."""
     print("=== Тест 2: Парсинг .hbk файла ===")
 
     try:
-        # Ищем .hbk файл
-        hbk_dir = Path(settings.data.hbk_directory)
-        hbk_files = list(hbk_dir.glob("*.hbk"))
+        hbk_file = Path(settings.data.hbk_directory) / settings.data.hbk_filename
 
-        if not hbk_files:
-            pytest.skip(f".hbk файл не найден в {hbk_dir}")
+        if not hbk_file.exists():
+            pytest.skip(f"книга {settings.data.hbk_filename} не найдена в {hbk_file.parent}")
 
-        hbk_file = hbk_files[0]
         print(f"📁 Найден файл: {hbk_file}")
         print(f"📊 Размер: {hbk_file.stat().st_size / 1024 / 1024:.1f} МБ")
 
@@ -128,4 +125,4 @@ async def test_hbk_parsing():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_hbk_parsing())
+    asyncio.run(test_configured_book_parses_into_known_document_types())

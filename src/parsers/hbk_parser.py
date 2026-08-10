@@ -1,17 +1,16 @@
 
 """Парсер .hbk файлов (архивы документации 1С)."""
 
-import re
 from collections import defaultdict
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-from src.models.doc_models import HBKFile, ParsedHBK, CategoryInfo, Documentation, DocumentType
+from src.models.doc_models import HBKFile, ParsedHBK, Documentation, DocumentType
 from src.core.logging import get_logger
 from src.parsers.html_parser import HTMLParser
 from src.parsers.dialects import HelpDialect, RU_DIALECT
 from src.core.utils import SafeSubprocessError, validate_file_path
-from src.core.constants import MAX_FILE_SIZE_MB, SUPPORTED_ENCODINGS
+from src.core.constants import MAX_FILE_SIZE_MB
 from src.parsers.v8_container import HelpBookArchive, HelpBookArchiveError
 
 logger = get_logger(__name__)
@@ -136,7 +135,6 @@ class HBKParser:
         for name in names:
             if name.rsplit("/", 1)[-1] == "__categories__":
                 category_files += 1
-                self._parse_categories_file(name, archive.read(name), result)
             elif name.endswith(".st"):
                 st_files += 1
             elif name.endswith(".html") and name.startswith("objects/"):
@@ -146,7 +144,7 @@ class HBKParser:
 
         processed = 0
         for name in object_pages:
-            if self._create_document_from_html(name, archive.read(name), result):
+            if self._create_document_from_html(archive, name, result):
                 processed += 1
 
         logger.info(f"Обработано всего: {processed} HTML файлов")
@@ -170,9 +168,15 @@ class HBKParser:
         }
 
     def _create_document_from_html(
-        self, name: str, content: bytes, result: ParsedHBK
+        self, archive: HelpBookArchive, name: str, result: ParsedHBK
     ) -> bool:
         """Создаёт документ из страницы книги; False — страницу разобрать не удалось."""
+        try:
+            content = archive.read(name)
+        except Exception as e:
+            logger.warning(f"Не удалось прочитать файл {name}: {e}")
+            return False
+
         try:
             documentation = self.html_parser.parse_html_content(content=content, file_path=name)
         except Exception as e:
@@ -185,45 +189,3 @@ class HBKParser:
 
         result.documentation.append(documentation)
         return True
-
-    def _parse_categories_file(self, name: str, content: bytes, result: ParsedHBK):
-        """Парсит файл __categories__ для извлечения метаинформации."""
-        if not content:
-            return
-
-        try:
-            decoded = None
-            for encoding in SUPPORTED_ENCODINGS:
-                try:
-                    decoded = content.decode(encoding)
-                    break
-                except UnicodeDecodeError:
-                    continue
-
-            if not decoded:
-                logger.warning(f"Не удалось декодировать файл категорий {name}")
-                return
-
-            path_parts = name.split('/')
-            section_name = path_parts[-2] if len(path_parts) > 1 else "unknown"
-
-            category = CategoryInfo(
-                name=section_name,
-                section=section_name,
-                description=f"Раздел документации: {section_name}"
-            )
-
-            lines = decoded.split('\n')
-            for line in lines:
-                line = line.strip()
-                if 'version' in line.lower() or 'версия' in line.lower():
-                    version_match = re.search(r'8\.\d+\.\d+', line)
-                    if version_match:
-                        category.version_from = version_match.group(0)
-                        break
-
-            result.categories[section_name] = category
-            logger.debug(f"Обработана категория: {section_name}")
-
-        except Exception as e:
-            logger.warning(f"Ошибка парсинга файла категорий {name}: {e}")
