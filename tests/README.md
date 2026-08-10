@@ -1,6 +1,6 @@
 # Тесты
 
-395 тестов. Настройки pytest — в `pytest.ini` в корне репозитория, общие
+407 тестов. Настройки pytest — в `pytest.ini` в корне репозитория, общие
 фикстуры и заглушки — в `conftest.py`, тестовые данные — в `fixtures/`.
 
 ## Как запускать
@@ -45,12 +45,12 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-serve
 
 | Маркер | Что помечает | Тестов |
 |---|---|---|
-| `unit` | Быстрые тесты на заглушках, без внешних зависимостей | 234 |
+| `unit` | Быстрые тесты на заглушках, без внешних зависимостей | 243 |
 | `integration` | Тесты с настоящими компонентами — Elasticsearch, файл справки | 55 |
 | `slow` | Тесты дольше десятка секунд: полный разбор или полная индексация | 13 |
 | `elasticsearch` | Требуют поднятого Elasticsearch с построенным индексом | 52 |
-| `parser` | Разбор `.hbk` и HTML справки | 80 |
-| `indexer` | Индексация в Elasticsearch | 18 |
+| `parser` | Разбор `.hbk` и HTML справки | 87 |
+| `indexer` | Индексация в Elasticsearch | 24 |
 | `search` | Поиск и ранжирование | 6 |
 | `background` | Фоновые задачи | 0 |
 | `retry` | Механизмы повторов | 0 |
@@ -60,7 +60,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-serve
 используются. Маркер новому тесту ставится обязательно: `--strict-markers`
 превращает опечатку в ошибку, а не в молчаливо пропущенный фильтр.
 
-Сумма по `unit` и `integration` (234 + 55 = 289) меньше 395: часть тестов не
+Сумма по `unit` и `integration` (243 + 55 = 298) меньше 407: часть тестов не
 помечена ни тем, ни другим — среди них разбор статей (`test_article_parser.py`),
 он проверяется как чистая функция строки и маркера не несёт.
 
@@ -70,9 +70,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-serve
 (`tests/test_article_parser.py`, `tests/test_article_parser_real_books.py`,
 `tests/test_article_model.py`, `tests/test_article_indexing.py`,
 `tests/test_article_index_write.py`, `tests/test_article_search.py`,
-`tests/test_get_article.py`, `tests/test_article_books_real_corruption.py`).
-`tests/test_indexing_partial_failure.py` покрывает `MAX_TOLERATED_PAGE_LOSS_SHARE` —
-книгу, потерявшую при разборе больше 5% страниц.
+`tests/test_get_article.py`, `tests/test_article_books_real_corruption.py`,
+`tests/test_article_book_isolation.py`).
+`tests/test_indexing_partial_failure.py` и `tests/test_page_loss_accounting.py`
+покрывают `MAX_TOLERATED_PAGE_LOSS_SHARE` — книгу, потерявшую при разборе
+больше 5% страниц, и способы потерять страницу.
+`tests/test_startup_indexing_path.py` держит фоновый путь индексации на том же
+`index_hbk_file`, что и ручной.
 
 ## Тесты, которым нужен Elasticsearch
 
@@ -91,7 +95,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 [docs/CONFIGURATION.md](../docs/CONFIGURATION.md#переиндексация).
 
 CI кластер не поднимает: держать Elasticsearch ради 65 тестов (`elasticsearch`
-и `slow`) дорого, а оставшиеся 330 покрывают парсер, карточку и контракт
+и `slow`) дорого, а оставшиеся 342 покрывают парсер, карточку и контракт
 инструментов.
 
 ## Соглашения
