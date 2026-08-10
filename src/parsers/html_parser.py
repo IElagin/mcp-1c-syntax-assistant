@@ -10,7 +10,6 @@ from src.models.doc_models import (
     ObjectMethod, ObjectProperty, ObjectEvent,
 )
 from src.core.logging import get_logger
-from src.core.utils import canonical_source_file
 from src.parsers.dialects import Chapter, HelpDialect, RU_DIALECT
 from src.parsers.indexer import split_name_ru_en
 from src.parsers.text_utils import (
@@ -227,7 +226,7 @@ class HTMLParser:
         объектный. Владелец «Global context» переводит метод и событие в
         глобальный вид.
         """
-        path = canonical_source_file(file_path)
+        path = file_path or ""
         file_name = path.rsplit('/', 1)[-1]
         if file_name.endswith('.html'):
             file_name = file_name[:-5]

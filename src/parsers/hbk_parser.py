@@ -9,7 +9,8 @@ from src.models.doc_models import HBKFile, ParsedHBK, Documentation, DocumentTyp
 from src.core.logging import get_logger
 from src.parsers.html_parser import HTMLParser
 from src.parsers.dialects import HelpDialect, RU_DIALECT
-from src.core.utils import SafeSubprocessError, validate_file_path
+from src.core.errors import FilePathError
+from src.core.utils import validate_file_path
 from src.core.constants import MAX_FILE_SIZE_MB
 from src.parsers.v8_container import HelpBookArchive, HelpBookArchiveError
 
@@ -90,7 +91,7 @@ class HBKParser:
 
         try:
             validate_file_path(file_path)
-        except SafeSubprocessError as e:
+        except FilePathError as e:
             logger.error(f"Валидация файла не прошла: {e}")
             return None
 

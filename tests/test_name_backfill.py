@@ -14,8 +14,7 @@ import pytest
 
 from src.core.config import settings
 from src.core.elasticsearch import es_client
-from src.core.utils import canonical_source_file
-from src.parsers.name_backfill import _fields_to_fill, backfill_english_names
+from src.parsers.name_backfill import _fields_to_fill, _both_separators, backfill_english_names
 
 
 def _page_query(source_file: str) -> dict:
@@ -28,8 +27,8 @@ def _page_query(source_file: str) -> dict:
     Прежний term по одной записи падал IndexError'ом на индексе, собранном на
     хосте, — и это было не «страницы нет», а «тест смотрит не туда».
     """
-    canonical = canonical_source_file(source_file)
-    return {"terms": {"source_file": [canonical, canonical.replace("/", "\\")]}}
+    forward, backward = _both_separators(source_file)
+    return {"terms": {"source_file": [forward, backward]}}
 
 
 @pytest.mark.integration
@@ -179,10 +178,12 @@ async def test_already_parsed_name_en_is_not_overwritten():
 
 
 @pytest.mark.unit
-def test_source_file_is_canonicalised_to_one_separator():
-    assert canonical_source_file("objects\\Global context.html") == "objects/Global context.html"
-    assert canonical_source_file("objects/Global context.html") == "objects/Global context.html"
-    assert canonical_source_file(None) == ""
+def test_backfill_matches_a_page_indexed_with_windows_separators():
+    """Индекс, построенный старой версией, ещё содержит objects\\…"""
+    assert _both_separators("objects/Global context.html") == (
+        "objects/Global context.html",
+        "objects\\Global context.html",
+    )
 
 
 @pytest.mark.unit

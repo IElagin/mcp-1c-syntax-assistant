@@ -3,7 +3,6 @@
 import pytest
 
 from src.core.elasticsearch import ElasticsearchClient
-from src.core.utils import canonical_source_file
 from src.parsers.hbk_parser import HBKParser
 from src.parsers.indexer import ElasticsearchIndexer
 from tests.conftest import ARCHIVE_PATHS_RU
@@ -24,7 +23,7 @@ async def test_every_fixture_page_reaches_its_own_index(
     assert parsed is not None, "парсер не открыл фикстурный архив"
 
     parsed_paths = {
-        canonical_source_file(doc.source_file) for doc in parsed.documentation
+        doc.source_file for doc in parsed.documentation
     }
     assert parsed_paths == set(ARCHIVE_PATHS_RU.values())
 
