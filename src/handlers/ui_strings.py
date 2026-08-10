@@ -101,6 +101,7 @@ class UiStrings:
     single_variant_no_name: str
 
     element_not_found: str
+    element_is_an_article: str
     similar_by_name: str
     no_similar: str
 
@@ -249,6 +250,9 @@ RU_STRINGS = UiStrings(
     ),
     single_variant_no_name="вариант единственный и без имени",
     element_not_found='Элемент с точным именем «{name}» в справке не найден.',
+    element_is_an_article=(
+        'Зато под этим заголовком есть статья: get_1c_article(name="{name}").'
+    ),
     similar_by_name="Похожие по имени:",
     no_similar="Похожих по имени тоже нет — проверьте написание.",
     element_not_in_object=(
@@ -415,6 +419,9 @@ EN_STRINGS = UiStrings(
     ),
     single_variant_no_name="there is only one variant, and it has no name",
     element_not_found='No element with the exact name "{name}" was found in the reference.',
+    element_is_an_article=(
+        'There is an article under that title: get_1c_article(name="{name}").'
+    ),
     similar_by_name="Similar by name:",
     no_similar="There is nothing similar by name either — check the spelling.",
     element_not_in_object=(

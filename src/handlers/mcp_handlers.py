@@ -276,6 +276,8 @@ def _element_missing(
 ) -> str:
     similar = answer.get("similar") or []
     lines = [strings.element_not_found.format(name=request.name)]
+    if answer.get("article_exists"):
+        lines.append(strings.element_is_an_article.format(name=request.name))
     if similar:
         lines.append(strings.similar_by_name)
         lines.extend(f"  {list_line(doc, strings)}" for doc in similar)

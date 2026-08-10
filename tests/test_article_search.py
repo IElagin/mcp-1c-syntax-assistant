@@ -101,3 +101,59 @@ async def test_mixed_results_name_both_tools():
     text = await _search_text(ARTICLE, CARD)
     assert "get_1c_element" in text
     assert "get_1c_article" in text
+
+
+from src.handlers.mcp_handlers import handle_get_1c_element
+from src.models.mcp_models import Get1CElementRequest
+from src.search.search_service import SearchService
+
+OBJECT_CARD = {
+    "type": "object",
+    "element_kind": "объект",
+    "name": "ТаблицаЗначений",
+    "name_ru": "ТаблицаЗначений",
+    "full_path": "ТаблицаЗначений",
+    "description": "Представляет собой таблицу произвольных значений.",
+}
+
+SAME_NAME_ARTICLE = {
+    "type": "article",
+    "element_kind": "статья",
+    "name": "ТаблицаЗначений",
+    "name_ru": "ТаблицаЗначений",
+    "book": "shclang",
+    "full_path": "shclang/ValueTable",
+    "description": "Таблица значений в терминах языка.",
+}
+
+
+def _card_client() -> AsyncMock:
+    """Индекс, где под одним именем лежат и карточка объекта, и статья."""
+    client = AsyncMock()
+    client.index_exists = AsyncMock(return_value=True)
+
+    async def search(body, index=None):
+        filters = body.get("query", {}).get("bool", {}).get("filter", [])
+        card_only = {"bool": {"must_not": {"term": {"type": "article"}}}} in filters
+        sources = [OBJECT_CARD] if card_only else [OBJECT_CARD, SAME_NAME_ARTICLE]
+        return {"hits": {"hits": [{"_source": s, "_score": 1.0} for s in sources],
+                         "total": {"value": len(sources)}}}
+
+    client.search = AsyncMock(side_effect=search)
+    return client
+
+
+async def test_an_article_of_the_same_name_does_not_make_a_card_ambiguous():
+    """«ТаблицаЗначений» — и объект, и заголовок статьи; карточка одна."""
+    answer = await SearchService(_card_client()).element_card("ТаблицаЗначений")
+
+    assert answer["kind"] == "card"
+    assert answer["document"]["element_kind"] == "объект"
+
+
+async def test_the_card_of_that_name_is_still_rendered_by_the_tool():
+    response = await handle_get_1c_element(
+        Get1CElementRequest(name="ТаблицаЗначений"), _card_client()
+    )
+
+    assert "ТаблицаЗначений — объект" in response.content[0]["text"]
