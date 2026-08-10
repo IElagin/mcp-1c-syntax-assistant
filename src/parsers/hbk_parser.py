@@ -174,7 +174,9 @@ class HBKParser:
         try:
             content = archive.read(name)
         except Exception as e:
-            logger.warning(f"Не удалось прочитать файл {name}: {e}")
+            message = f"Не удалось прочитать файл {name}: {e}"
+            logger.warning(message)
+            result.errors.append(message)
             return False
 
         try:

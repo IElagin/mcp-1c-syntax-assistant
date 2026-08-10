@@ -30,9 +30,9 @@ async def test_configured_book_parses_into_known_document_types():
 
         # Создаем парсер с выводом путей файлов
         class HBKParserWithLogging(HBKParser):
-            def _create_document_from_html(self, name, content, result):
+            def _create_document_from_html(self, archive, name, result):
                 print(f"📄 Обрабатывается файл в архиве: {name}")
-                return super()._create_document_from_html(name, content, result)
+                return super()._create_document_from_html(archive, name, result)
 
         parser = HBKParserWithLogging()
         parsed_hbk = parser.parse_file(str(hbk_file))
