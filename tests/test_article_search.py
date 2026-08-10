@@ -58,3 +58,46 @@ def test_card_outranks_an_article_on_an_exact_card_name():
         "Найти",
     )
     assert ranked[0]["document"]["name"] == "Найти (Find)"
+
+
+from unittest.mock import AsyncMock
+
+from src.handlers.mcp_handlers import handle_find_1c_help
+from src.models.mcp_models import Find1CHelpRequest
+
+
+def _client(*sources) -> AsyncMock:
+    client = AsyncMock()
+    client.index_exists = AsyncMock(return_value=True)
+    client.search = AsyncMock(return_value={
+        "hits": {
+            "hits": [{"_source": source, "_score": 10.0} for source in sources],
+            "total": {"value": len(sources)},
+        }
+    })
+    return client
+
+
+async def _search_text(*sources) -> str:
+    response = await handle_find_1c_help(
+        Find1CHelpRequest(query="МЕСЯЦ"), _client(*sources)
+    )
+    return response.content[0]["text"]
+
+
+async def test_article_only_results_send_the_reader_to_the_article_tool():
+    text = await _search_text(ARTICLE)
+    assert "get_1c_article" in text
+    assert "get_1c_element" not in text
+
+
+async def test_card_only_results_send_the_reader_to_the_card_tool():
+    text = await _search_text(CARD)
+    assert "get_1c_element" in text
+    assert "get_1c_article" not in text
+
+
+async def test_mixed_results_name_both_tools():
+    text = await _search_text(ARTICLE, CARD)
+    assert "get_1c_element" in text
+    assert "get_1c_article" in text

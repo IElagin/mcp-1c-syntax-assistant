@@ -115,6 +115,7 @@ class UiStrings:
 
     found_count: str
     full_card_hint_generic: str
+    full_article_hint_generic: str
 
     english_index_missing: str
     russian_name_in_english_book: str
@@ -284,6 +285,7 @@ RU_STRINGS = UiStrings(
     ),
     found_count="Найдено {total} элементов по запросу «{query}».",
     full_card_hint_generic="Полная карточка: get_1c_element(name=…, object=…)",
+    full_article_hint_generic='Полный текст статьи: get_1c_article(name="…")',
     search_failed="Ошибка выполнения поиска",
     search_error_title="Ошибка поиска",
     internal_search_error_title="Внутренняя ошибка поиска",
@@ -453,6 +455,7 @@ EN_STRINGS = UiStrings(
     ),
     found_count='Found {total} elements for the query "{query}".',
     full_card_hint_generic="Full card: get_1c_element(name=…, object=…)",
+    full_article_hint_generic='Full article text: get_1c_article(name="…")',
     search_failed="The search request failed",
     search_error_title="Search error",
     internal_search_error_title="Internal search error",

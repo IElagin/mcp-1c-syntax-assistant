@@ -12,6 +12,7 @@ from typing import Tuple
 from bs4 import BeautifulSoup
 
 _PERIOD_WITHOUT_SPACE = re.compile(r'([а-яёa-z0-9])\.([А-ЯЁA-Z])')
+_BLANK_LINE_RUN = re.compile(r'\n{3,}')
 
 
 def normalize_whitespace(text: str) -> str:
@@ -31,6 +32,17 @@ def restore_space_after_period(text: str) -> str:
 def clean_description(text: str) -> str:
     """Полная чистка текста описания."""
     return restore_space_after_period(normalize_whitespace(text))
+
+
+def clean_multiline_description(text: str) -> str:
+    """Та же чистка, но перевод строки остаётся переводом строки.
+
+    Форма конструкции — часть ответа: «Для <Имя> = <Выражение> Цикл» и тело
+    цикла стоят на разных строках, и склеенные в одну строку они перестают
+    быть образцом кода.
+    """
+    lines = [clean_description(line) for line in (text or "").split("\n")]
+    return _BLANK_LINE_RUN.sub("\n\n", "\n".join(lines)).strip()
 
 
 def text_from_html(html: str) -> str:

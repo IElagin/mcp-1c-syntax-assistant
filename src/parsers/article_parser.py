@@ -1,16 +1,24 @@
 """Разбор статей книг справки: язык, запросы, общий синтаксис, выражения СКД."""
 
-from typing import List, Optional
+from typing import Iterable, Iterator, List, Optional
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from src.core.constants import SUPPORTED_ENCODINGS
 from src.models.doc_models import Documentation, DocumentType
-from src.parsers.text_utils import clean_description
+from src.parsers.text_utils import clean_description, clean_multiline_description
 
 ARTICLE_KIND = "статья"
 LEAD_MIN_LENGTH = 40
 SECTION_HEADINGS = ("h2", "h3", "h4", "h5", "h6")
+PAGE_TITLE_HEADING = "h1"
+TITLE_REPEAT_TAG = "div"
+FOOTER_SEPARATOR = "hr"
+LINE_BREAK_TAGS = frozenset({
+    "br", "p", "div", "li", "tr", "table", "pre", "blockquote",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+})
+CELL_TAGS = frozenset({"td", "th"})
 
 SKIPPED_SUFFIXES = (".st", ".gif", ".png", ".jpg", ".jpeg")
 SKIPPED_NAMES = ("__categories__",)
@@ -48,24 +56,74 @@ def decode_article(raw: bytes) -> str:
 def parse_article_file(book: str, file_name: str, html: str) -> List[Documentation]:
     """Статьи одного файла книги: целиком или по заголовочным якорям."""
     soup = BeautifulSoup(html or "", "html.parser")
-    title = _text_of(soup.find("h1")) or file_name
+    _drop_page_footer(soup)
+    page_title = _text_of(soup.find(PAGE_TITLE_HEADING))
+    _drop_page_header(soup, page_title)
+
+    title = page_title or file_name
     sections = _anchored_headings(soup)
+    root = soup.body or soup
 
     if not sections:
-        text = clean_description(soup.get_text(" "))
+        text = _text_of_nodes(root.descendants)
         return [_article(book, file_name, None, title, text)] if text else []
 
     articles = []
-    lead = _lead_text(soup, sections[0][0], title)
+    lead = _text_of_nodes(root.descendants, sections[0][0])
     if len(lead) > LEAD_MIN_LENGTH:
         articles.append(_article(book, file_name, None, title, lead))
 
     for position, (heading, anchor) in enumerate(sections):
         following = sections[position + 1][0] if position + 1 < len(sections) else None
-        articles.append(
-            _article(book, file_name, anchor, _text_of(heading), _section_text(heading, following))
-        )
+        articles.append(_article(
+            book, file_name, anchor, _text_of(heading),
+            _text_of_nodes(_after_subtree(heading), following),
+        ))
     return articles
+
+
+def _drop_page_footer(soup: BeautifulSoup) -> None:
+    """Подвал страницы отделён горизонтальной чертой и в статью не входит."""
+    separator = soup.find(FOOTER_SEPARATOR)
+    if separator is None:
+        return
+    for node in list(separator.next_elements):
+        node.extract()
+    separator.extract()
+
+
+def _drop_page_header(soup: BeautifulSoup, page_title: str) -> None:
+    """Шапка повторяет заголовок страницы, а он печатается отдельной строкой."""
+    if not page_title:
+        return
+    for node in soup.find_all((PAGE_TITLE_HEADING, TITLE_REPEAT_TAG)):
+        if _text_of(node) == page_title:
+            node.decompose()
+
+
+def _after_subtree(node: Tag) -> Iterator:
+    """Документ после поддерева узла: заголовок в текст своего раздела не входит."""
+    inside = {id(child) for child in node.descendants}
+    return (following for following in node.next_elements if id(following) not in inside)
+
+
+def _text_of_nodes(nodes: Iterable, stop: Optional[Tag] = None) -> str:
+    """Текст узлов до stop; абзацы, строки таблиц и <br> дают перевод строки.
+
+    Куски склеиваются без разделителя: собственные пробелы у разметки уже есть,
+    а добавленный разбивает «<Описание запроса>» на «< Описание запроса >».
+    """
+    collected = []
+    for node in nodes:
+        if node is stop:
+            break
+        if isinstance(node, NavigableString):
+            collected.append(str(node))
+        elif node.name in LINE_BREAK_TAGS:
+            collected.append("\n")
+        elif node.name in CELL_TAGS:
+            collected.append(" ")
+    return clean_multiline_description("".join(collected))
 
 
 def _anchored_headings(soup: BeautifulSoup) -> List[tuple]:
@@ -81,33 +139,6 @@ def _anchored_headings(soup: BeautifulSoup) -> List[tuple]:
 
 def _text_of(node: Optional[Tag]) -> str:
     return clean_description(node.get_text(" ")) if node else ""
-
-
-def _strings_until(start, stop) -> str:
-    collected = []
-    for node in start.next_elements:
-        if stop is not None and node is stop:
-            break
-        if isinstance(node, NavigableString):
-            collected.append(str(node))
-    return clean_description(" ".join(collected))
-
-
-def _section_text(heading: Tag, following: Optional[Tag]) -> str:
-    return _strings_until(heading, following)
-
-
-def _lead_text(soup: BeautifulSoup, first_heading: Tag, title: str) -> str:
-    """Текст файла до первого заголовочного якоря, без самого названия статьи."""
-    root = soup.body or soup
-    collected = []
-    for node in root.descendants:
-        if node is first_heading:
-            break
-        if isinstance(node, NavigableString):
-            collected.append(str(node))
-    text = clean_description(" ".join(collected))
-    return text.replace(title, "", 1).strip() if title else text
 
 
 def _article(
