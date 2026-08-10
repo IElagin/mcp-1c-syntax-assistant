@@ -5,6 +5,9 @@
 import pytest
 import asyncio
 import sys
+import io
+import struct
+import zipfile
 from pathlib import Path
 
 # Добавляем корневую директорию проекта в sys.path
@@ -272,6 +275,65 @@ async def mock_elasticsearch_indexer():
     indexer.index_documentation = AsyncMock(return_value=100)
     
     return indexer
+
+
+NO_PAGE = 0x7FFFFFFF
+BLOCK_HEADER_SIZE = 31
+ELEMENT_NAME_OFFSET = 20
+
+
+def _pages(body: bytes, page_size: int, start: int) -> bytes:
+    """Тело элемента как цепочка страниц, начинающаяся по адресу start."""
+    pages = [body[i:i + page_size] for i in range(0, len(body), page_size)] or [b""]
+    out = bytearray()
+    position = start
+    for number, page in enumerate(pages):
+        position += BLOCK_HEADER_SIZE + page_size
+        following = position if number + 1 < len(pages) else NO_PAGE
+        declared = len(body) if number == 0 else page_size
+        out += b"\r\n%08x %08x %08x \r\n" % (declared, page_size, following)
+        out += page.ljust(page_size, b"\x00")
+    return bytes(out)
+
+
+def build_container(elements: dict, page_size: int = 512) -> bytes:
+    """Контейнер V8 из именованных элементов."""
+    table_page = max(page_size, 12 * len(elements))
+    cursor = 16 + BLOCK_HEADER_SIZE + table_page
+    table, body = bytearray(), bytearray()
+
+    for name, content in elements.items():
+        header = b"\x00" * ELEMENT_NAME_OFFSET + name.encode("utf-16-le") + b"\x00\x00"
+        header_block = _pages(header, page_size, cursor)
+        data_start = cursor + len(header_block)
+        data_block = _pages(content, page_size, data_start)
+        table += struct.pack("<III", cursor, data_start, NO_PAGE)
+        body += header_block + data_block
+        cursor = data_start + len(data_block)
+
+    file_header = struct.pack("<IIII", NO_PAGE, page_size, 1, 0)
+    table_block = (
+        b"\r\n%08x %08x %08x \r\n" % (len(table), table_page, NO_PAGE)
+        + bytes(table).ljust(table_page, b"\x00")
+    )
+    return file_header + table_block + bytes(body)
+
+
+def zip_of(files: dict) -> bytes:
+    """Zip в памяти — содержимое элемента FileStorage книги справки."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+def write_book(path: Path, files: dict, page_size: int = 512, extra: dict = None) -> Path:
+    """Книга справки из готовых файлов, для тестов без настоящей поставки 1С."""
+    elements = {"Book": b'{7,"Test"}', "FileStorage": zip_of(files)}
+    elements.update(extra or {})
+    path.write_bytes(build_container(elements, page_size=page_size))
+    return path
 
 
 FIXTURES_RU = Path(__file__).parent / "fixtures" / "hbk"
