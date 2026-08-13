@@ -20,7 +20,7 @@ from src.infrastructure.indexing import index_hbk_file
 from src.models.doc_models import Documentation, DocumentType, HBKFile, ParsedHBK
 from src.parsers.article_books import parse_article_books
 
-pytestmark = pytest.mark.slow
+pytestmark = pytest.mark.real_book
 
 BOOKS_DIR = Path(__file__).resolve().parent.parent / "data" / "hbk"
 CORRUPT_BOOK = "shquery"

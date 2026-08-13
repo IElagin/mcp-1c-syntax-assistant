@@ -125,7 +125,7 @@ _KNOWN_VALUES_PAGE = "objects/catalog274/StyleColors.html"
 
 
 @pytest.mark.hbk_en
-@pytest.mark.slow
+@pytest.mark.real_book
 @pytest.mark.skipif(not ENGLISH_BOOK.exists(), reason="английской книги нет")
 def test_every_chapter_of_the_english_book_is_known_to_the_dialect():
     """Нераспознанная глава теряется молча — это и ловит тест.

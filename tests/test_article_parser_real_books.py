@@ -9,7 +9,7 @@ from src.parsers.v8_container import HelpBookArchive
 
 BOOKS = Path(__file__).resolve().parents[1] / "data" / "hbk"
 
-pytestmark = pytest.mark.slow
+pytestmark = pytest.mark.real_book
 
 
 def _archive(book: str) -> HelpBookArchive:

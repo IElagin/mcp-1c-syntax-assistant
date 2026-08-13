@@ -108,7 +108,7 @@ def test_archive_refuses_a_container_without_file_storage(tmp_path):
         HelpBookArchive(path)
 
 
-@pytest.mark.slow
+@pytest.mark.real_book
 def test_archive_reads_the_whole_syntax_helper_book():
     """Настоящая книга: 48 682 файла, из них 23 125 карточек объектов."""
     if not REAL_BOOK.exists():

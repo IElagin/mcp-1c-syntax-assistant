@@ -12,7 +12,7 @@ from src.parsers.hbk_parser import HBKParser
 
 
 @pytest.mark.integration
-@pytest.mark.slow
+@pytest.mark.real_book
 @pytest.mark.parser
 @pytest.mark.asyncio
 async def test_configured_book_parses_into_known_document_types():

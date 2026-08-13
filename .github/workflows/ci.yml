@@ -15,6 +15,21 @@ jobs:
         # на конкретную версию.
         python-version: ["3.12", "3.13"]
 
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.1.0
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: "false"
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,7 +43,7 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run tests
-        # Срез без Elasticsearch: поднимать кластер в CI ради 52 деселектнутых
-        # тестов дорого, а 275 оставшихся покрывают парсер, карточку и
-        # контракт инструментов.
-        run: pytest -m "not elasticsearch and not slow" -q
+        # Кластер CI поднимает: тесты, которым нужен только он, готовят данные
+        # сами. Не запускаются те, чьё требование в CI не воспроизвести:
+        # настоящая поставка 1С, заполненный боевой индекс, живой сервер.
+        run: pytest -m "not real_book and not real_index and not live_server" -q

@@ -24,6 +24,7 @@ from src.search.search_service import SearchService
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_homonym_is_not_chosen_silently():
     assert await es_client.connect(), "Elasticsearch недоступен"
@@ -39,6 +40,7 @@ async def test_homonym_is_not_chosen_silently():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_qualified_object_yields_card():
     assert await es_client.connect(), "Elasticsearch недоступен"
@@ -56,6 +58,7 @@ async def test_qualified_object_yields_card():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_nonexistent_object_is_not_substituted_silently():
     """«ФоновыеЗадания» — идентификатор из кода, в справке объект зовётся иначе.
@@ -77,6 +80,7 @@ async def test_nonexistent_object_is_not_substituted_silently():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_candidates_start_with_real_types():
     """Настоящие типы важнее заголовков разделов справки вида «ОбъектМетаданных: Х»."""
@@ -92,6 +96,7 @@ async def test_candidates_start_with_real_types():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_candidate_order_is_built_over_all_matches():
     """Порядок не должен зависеть от произвольного окна выдачи.
@@ -118,6 +123,7 @@ async def test_candidate_order_is_built_over_all_matches():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_constructors_come_from_separate_documents():
     """У документа объекта variants пуст — конструкторы лежат отдельно.
@@ -139,6 +145,7 @@ async def test_constructors_come_from_separate_documents():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_canonical_object_path_does_not_double_the_name():
     """full_path объекта — его имя, а не «ТаблицаЗначений.ТаблицаЗначений».
@@ -165,6 +172,7 @@ async def test_canonical_object_path_does_not_double_the_name():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_object_card_hint_with_overlapping_path_is_executable():
     """У 16 объектов хвост object повторял начало имени страницы.
@@ -199,6 +207,7 @@ async def test_object_card_hint_with_overlapping_path_is_executable():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_unknown_name_gives_not_found_not_an_empty_card():
     """Точного совпадения по имени нет вообще — сервис называет это прямо."""
@@ -216,6 +225,7 @@ async def test_unknown_name_gives_not_found_not_an_empty_card():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_element_absent_at_the_object_is_not_declared_absent_from_the_book():
     """object сужает поиск — отрицание обязано сужаться вместе с ним.
@@ -244,6 +254,7 @@ async def test_element_absent_at_the_object_is_not_declared_absent_from_the_book
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_answer_does_not_deny_the_name_it_then_lists():
     """Тот же дефект на уровне текста ответа — его читает агент, а не kind."""
@@ -263,6 +274,7 @@ async def test_answer_does_not_deny_the_name_it_then_lists():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_name_absent_everywhere_still_says_absent_from_the_book():
     """Обратная сторона: если имени нет нигде, сужать отрицание нечем.
@@ -284,6 +296,7 @@ async def test_name_absent_everywhere_still_says_absent_from_the_book():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_unknown_variant_lists_existing_ones_instead_of_choosing_silently():
     """У 'ДанныеФормыКоллекция.Выгрузить' два варианта вызова.
@@ -315,6 +328,7 @@ async def test_unknown_variant_lists_existing_ones_instead_of_choosing_silently(
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_similar_objects_searches_object_names_not_element_names():
     """Подсказка о похожих объектах ищет среди имён объектов, а не элементов.
@@ -338,6 +352,7 @@ async def test_similar_objects_searches_object_names_not_element_names():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_similar_objects_helps_after_a_typo_in_the_english_name():
     """Опечатка в английском имени объекта тоже обязана давать подсказку.
@@ -358,6 +373,7 @@ async def test_similar_objects_helps_after_a_typo_in_the_english_name():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_object_filter_accepts_english_name():
     """object= принимает английское имя объекта — задача 11 заполнила object_en.
@@ -379,6 +395,7 @@ async def test_object_filter_accepts_english_name():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_dotted_english_path_is_found():
     """'ValueTable.Add' находит элемент через ту же точечную запись, что и по-русски.
@@ -398,6 +415,7 @@ async def test_dotted_english_path_is_found():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_global_context_members_are_listable_under_its_russian_name():
     """Перечень глобального контекста обязан включать его процедуры и функции.
@@ -436,6 +454,7 @@ async def test_global_context_members_are_listable_under_its_russian_name():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_empty_result_names_the_object_the_query_itself_narrowed_to():
     """Фильтр, вычитанный из запроса, обязан быть назван в объяснении пустоты.
