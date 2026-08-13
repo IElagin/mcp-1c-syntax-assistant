@@ -10,6 +10,7 @@ from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
 from src.infrastructure.background.indexing_manager import get_indexing_manager
 from src.models.doc_models import ParsedHBK
+from src.models.indexing_outcome import IndexingOutcome
 from src.parsers.dialects import dialect_for
 from src.parsers.name_backfill import backfill_english_names
 
@@ -194,21 +195,8 @@ async def index_hbk_file(
     index: Optional[str] = None,
     lang: str = "ru",
     progress_callback: Optional[ProgressCallback] = None,
-) -> bool:
-    """
-    Индексирует .hbk файл в Elasticsearch (используется и для ручной
-    индексации через API, и для фоновой индексации при запуске).
-
-    Args:
-        file_path: Путь к .hbk файлу
-        es_client: Подключённый клиент Elasticsearch
-        index: Индекс назначения (None — индекс из конфигурации)
-        lang: Язык книги — выбирает диалект разбора HTML
-        progress_callback: Callback прогресса (indexed, total) для очереди
-
-    Returns:
-        bool: True если индексация успешна, False иначе
-    """
+) -> IndexingOutcome:
+    """Индексирует книгу справки и называет, чем это кончилось."""
     try:
         from src.parsers.hbk_parser import HBKParser
         from src.parsers.indexer import ElasticsearchIndexer
@@ -217,20 +205,22 @@ async def index_hbk_file(
         logger.info(f"Начинаем индексацию файла: {file_path}")
 
         parser = HBKParser(dialect=dialect_for(lang))
-        logger.info("Запускаем парсинг HBK файла в отдельном потоке...")
         parsed_hbk = await asyncio.to_thread(parser.parse_file, file_path)
-        logger.info("Парсинг HBK файла завершен")
 
         if not parsed_hbk:
-            logger.error("Ошибка парсинга .hbk файла")
-            return False
+            logger.error(f"Книга {file_path} не разобрана")
+            return IndexingOutcome.parse_failed(file_path)
 
         if not parsed_hbk.documentation:
-            logger.warning("В файле не найдена документация для индексации")
-            return False
+            logger.warning(f"В книге {file_path} нечего индексировать")
+            return IndexingOutcome.nothing_to_index(file_path)
 
         if _book_lost_too_many_pages(parsed_hbk):
-            return False
+            return IndexingOutcome.page_loss_too_high(
+                parsed_hbk.pages_parsed,
+                parsed_hbk.pages_attempted,
+                parsed_hbk.lost_pages_share,
+            )
 
         logger.info(f"Найдено {len(parsed_hbk.documentation)} документов для индексации")
 
@@ -243,14 +233,14 @@ async def index_hbk_file(
             logger.info(f"Книги статей отсутствуют: {', '.join(absent)}")
 
         indexer = ElasticsearchIndexer(es_client, index=index)
-        success = await indexer.reindex_all(parsed_hbk, progress_callback=progress_callback)
+        written = await indexer.reindex_all(parsed_hbk, progress_callback=progress_callback)
+        if not written:
+            return IndexingOutcome.index_write_failed(index or settings.elasticsearch_index)
 
-        if success:
-            docs_count = await es_client.get_documents_count(index=index)
-            logger.info(f"Индексация завершена. Документов в индексе: {docs_count}")
-
-        return success
+        docs_count = await es_client.get_documents_count(index=index)
+        logger.info(f"Индексация завершена. Документов в индексе: {docs_count}")
+        return IndexingOutcome.indexed(len(parsed_hbk.documentation), len(articles))
 
     except Exception as e:
         logger.error(f"Ошибка индексации файла {file_path}: {e}")
-        return False
+        return IndexingOutcome.error(str(e))

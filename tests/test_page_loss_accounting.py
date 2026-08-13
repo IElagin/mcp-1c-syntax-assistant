@@ -88,7 +88,7 @@ async def test_a_book_that_lost_almost_all_pages_to_parsing_never_reaches_the_in
     ) as reindex:
         result = await index_hbk_file(str(path), AsyncMock(), index="ignored")
 
-    assert result is False
+    assert not result.ok, result
     reindex.assert_not_awaited()
 
 

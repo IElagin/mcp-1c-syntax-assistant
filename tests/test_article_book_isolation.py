@@ -57,7 +57,7 @@ async def test_the_card_book_is_indexed_although_an_article_book_is_unreadable(t
     ) as reindex:
         result = await index_hbk_file(str(card_book), AsyncMock(), index="ignored")
 
-    assert result is True
+    assert result.ok, result
     reindex.assert_awaited_once()
     indexed = reindex.await_args.args[0].documentation
     assert [document.name for document in indexed if document.book == "shlang"] == ["Для (For)"]

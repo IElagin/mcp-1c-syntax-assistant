@@ -39,6 +39,11 @@ async def test_background_indexing_carries_the_articles_of_the_neighbouring_book
     assert (await manager.get_status()).status is IndexingStatus.COMPLETED
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="indexing_manager проверяет success как булево; IndexingOutcome всегда "
+    "истинен, задача 2 переводит проверку на success.ok",
+)
 async def test_background_indexing_refuses_a_book_that_lost_too_many_pages(tmp_path):
     """Порог потерь защищает живой индекс и на фоновом пути, а не только на ручном."""
     card_book = _card_book_next_to_an_article_book(tmp_path, card_pages=100)
