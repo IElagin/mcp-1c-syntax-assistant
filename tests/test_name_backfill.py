@@ -82,16 +82,7 @@ async def test_global_context_gets_its_english_name(own_index_pair):
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 async def test_backfill_is_exhaustive_in_one_pass_and_idempotent_after(own_index_pair):
-    """Один вызов обязан достроить всё достижимое, второй — ничего не менять.
-
-    Прежняя версия теста звала достройку дважды на живом индексе и проверяла
-    только «второй раз ноль» — утверждение удовлетворяла бы и достройка, не
-    делающая ничего вообще, включая сломанную ровно так, как предупреждает
-    докстринг _english_by_source_file (terms по несуществующему под-полю).
-    Здесь есть ровно один кандидат, поэтому первому вызову точно есть что
-    делать, и проверяются оба свойства сразу: исчерпывающесть одного прохода
-    и отсутствие работы у следующего.
-    """
+    """Один вызов обязан достроить всё достижимое, второй — ничего не менять."""
     client, ru_index, en_index = own_index_pair
     source_file = "objects/Global context.html"
 
@@ -117,13 +108,7 @@ async def test_backfill_is_exhaustive_in_one_pass_and_idempotent_after(own_index
 @pytest.mark.integration
 @pytest.mark.elasticsearch
 async def test_already_parsed_name_en_is_not_overwritten(own_index_pair):
-    """object_en бывает пуст у страниц, чьё name_en уже разобрано задачей 11.
-
-    В русской книге составной заголовок вида «Массив (Array)» разбирается
-    точнее, чем сырой заголовок английской страницы. Если достройка при
-    случае докладки object_en заодно перепишет и name_en значением из
-    английского индекса — она отменит результат задачи 11 молча.
-    """
+    """Достройка object_en не переписывает уже заполненный name_en."""
     client, ru_index, en_index = own_index_pair
     source_file = "test/name_backfill_probe.html"
 

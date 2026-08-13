@@ -467,6 +467,7 @@ def refuse_writes_to_the_production_index(monkeypatch):
         )
 
     original_reindex = ElasticsearchIndexer.reindex_all
+    original_index_documentation = ElasticsearchIndexer.index_documentation
     original_write = ElasticsearchClient.index_document
 
     async def guarded_reindex(self, *args, **kwargs):
@@ -474,10 +475,16 @@ def refuse_writes_to_the_production_index(monkeypatch):
             refuse(self.index)
         return await original_reindex(self, *args, **kwargs)
 
+    async def guarded_index_documentation(self, *args, **kwargs):
+        if self.index in production:
+            refuse(self.index)
+        return await original_index_documentation(self, *args, **kwargs)
+
     async def guarded_write(self, document, index=None):
         if index in production:
             refuse(index)
         return await original_write(self, document, index=index)
 
     monkeypatch.setattr(ElasticsearchIndexer, "reindex_all", guarded_reindex)
+    monkeypatch.setattr(ElasticsearchIndexer, "index_documentation", guarded_index_documentation)
     monkeypatch.setattr(ElasticsearchClient, "index_document", guarded_write)

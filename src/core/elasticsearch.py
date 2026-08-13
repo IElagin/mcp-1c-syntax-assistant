@@ -221,7 +221,7 @@ class ElasticsearchClient:
     async def index_document(self, document: Dict[str, Any], index: Optional[str] = None) -> bool:
         """Пишет один документ; имя индекса разрешается так же, как в search()."""
         if not self._client:
-            return False
+            raise ConnectionFailedError("No connection to Elasticsearch")
         await self._client.index(index=self._index(index), document=document)
         return True
 
