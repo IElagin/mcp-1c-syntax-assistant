@@ -7,6 +7,7 @@ from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.infrastructure.indexing import index_hbk_file, resolve_hbk_file
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
+from src.api.indexing_messages import describe_outcome
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 from src.parsers.name_backfill import backfill_english_names
 
@@ -33,7 +34,13 @@ async def index_status(
     docs_count = await es_client.get_documents_count() if index_exists else 0
     
     progress = await indexing_manager.get_status()
-    
+    reported = progress.to_dict()
+    if progress.outcome is not None:
+        reported["error_message"] = (
+            None if progress.outcome.ok else describe_outcome(progress.outcome)
+        )
+        reported["message"] = describe_outcome(progress.outcome)
+
     return {
         "elasticsearch_connected": es_connected,
         "index_exists": index_exists,
@@ -41,7 +48,7 @@ async def index_status(
         "index_name": settings.elasticsearch.index_name,
         "indexing": {
             "is_active": indexing_manager.is_indexing(),
-            **progress.to_dict()
+            **reported,
         }
     }
 
@@ -71,33 +78,30 @@ async def rebuild_index(
             )
 
         logger.info(f"Начинаем переиндексацию файла: {hbk_file}")
-        
-        success = await index_hbk_file(str(hbk_file), es_client)
 
-        if success:
-            docs_count = await es_client.get_documents_count()
+        outcome = await index_hbk_file(str(hbk_file), es_client)
 
-            try:
-                updated = await backfill_english_names(
-                    es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
-                )
-                if updated:
-                    logger.info(f"Достроено английских имён после переиндексации: {updated}")
-            except Exception as e:
-                logger.error(f"Ошибка достройки английских имён после переиндексации: {e}")
+        if not outcome.ok:
+            raise HTTPException(status_code=500, detail=describe_outcome(outcome))
 
-            return {
-                "status": "success",
-                "message": "Переиндексация завершена успешно",
-                "file": str(hbk_file),
-                "documents_count": docs_count
-            }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail="Ошибка переиндексации"
+        docs_count = await es_client.get_documents_count()
+
+        try:
+            updated = await backfill_english_names(
+                es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
             )
-            
+            if updated:
+                logger.info(f"Достроено английских имён после переиндексации: {updated}")
+        except Exception as e:
+            logger.error(f"Ошибка достройки английских имён после переиндексации: {e}")
+
+        return {
+            "status": "success",
+            "message": describe_outcome(outcome),
+            "file": str(hbk_file),
+            "documents_count": docs_count,
+        }
+
     except HTTPException:
         raise
     except Exception as e:

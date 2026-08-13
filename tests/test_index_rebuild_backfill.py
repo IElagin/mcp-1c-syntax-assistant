@@ -14,6 +14,7 @@ import pytest
 
 from src.core.config import settings
 from src.api.routes.index import rebuild_index
+from src.models.indexing_outcome import IndexingOutcome
 
 
 pytestmark = pytest.mark.unit
@@ -29,7 +30,10 @@ async def test_successful_rebuild_triggers_backfill(tmp_path):
     es_client.get_documents_count = AsyncMock(return_value=23125)
 
     with patch("src.api.routes.index.resolve_hbk_file", return_value=hbk_file), \
-         patch("src.api.routes.index.index_hbk_file", new=AsyncMock(return_value=True)), \
+         patch(
+             "src.api.routes.index.index_hbk_file",
+             new=AsyncMock(return_value=IndexingOutcome.indexed(documents=23125, articles=366)),
+         ), \
          patch(
              "src.api.routes.index.backfill_english_names", new=AsyncMock(return_value=42)
          ) as fake_backfill:
@@ -48,7 +52,10 @@ async def test_failed_reindex_does_not_trigger_backfill(tmp_path):
     es_client.is_connected = AsyncMock(return_value=True)
 
     with patch("src.api.routes.index.resolve_hbk_file", return_value=hbk_file), \
-         patch("src.api.routes.index.index_hbk_file", new=AsyncMock(return_value=False)), \
+         patch(
+             "src.api.routes.index.index_hbk_file",
+             new=AsyncMock(return_value=IndexingOutcome.parse_failed(str(hbk_file))),
+         ), \
          patch("src.api.routes.index.backfill_english_names", new=AsyncMock()) as fake_backfill:
         with pytest.raises(Exception):
             await rebuild_index(es_client=es_client)
@@ -68,7 +75,10 @@ async def test_backfill_failure_does_not_fail_the_whole_request(tmp_path):
     es_client.get_documents_count = AsyncMock(return_value=23125)
 
     with patch("src.api.routes.index.resolve_hbk_file", return_value=hbk_file), \
-         patch("src.api.routes.index.index_hbk_file", new=AsyncMock(return_value=True)), \
+         patch(
+             "src.api.routes.index.index_hbk_file",
+             new=AsyncMock(return_value=IndexingOutcome.indexed(documents=23125, articles=366)),
+         ), \
          patch(
              "src.api.routes.index.backfill_english_names",
              new=AsyncMock(side_effect=RuntimeError("boom")),
@@ -92,7 +102,10 @@ async def test_backfill_silently_skipped_without_english_index(tmp_path):
     es_client.index_exists = AsyncMock(return_value=False)
 
     with patch("src.api.routes.index.resolve_hbk_file", return_value=hbk_file), \
-         patch("src.api.routes.index.index_hbk_file", new=AsyncMock(return_value=True)):
+         patch(
+             "src.api.routes.index.index_hbk_file",
+             new=AsyncMock(return_value=IndexingOutcome.indexed(documents=23125, articles=366)),
+         ):
         # backfill_english_names настоящая (не мокнута) — сама должна
         # молча вернуть 0, увидев отсутствие английского индекса.
         result = await rebuild_index(es_client=es_client)

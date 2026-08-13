@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from src.models.indexing_outcome import IndexingOutcome
+
 
 class IndexingStatus(str, Enum):
     """Статус процесса индексации."""
@@ -26,7 +28,8 @@ class IndexProgressInfo:
     end_time: Optional[datetime] = None
     error_message: Optional[str] = None
     file_path: Optional[str] = None
-    
+    outcome: Optional[IndexingOutcome] = None
+
     @property
     def progress_percent(self) -> float:
         """
@@ -69,5 +72,6 @@ class IndexProgressInfo:
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "error_message": self.error_message,
             "file_path": self.file_path,
+            "outcome": self.outcome.kind.value if self.outcome else None,
             "duration_seconds": round(self.duration_seconds, 2) if self.duration_seconds else None
         }

@@ -191,14 +191,12 @@ async def test_indexing_with_error(indexing_manager, mock_es_client, tmp_path):
     """Тест индексации с ошибкой."""
     # Создаём несуществующий файл
     test_file = tmp_path / "nonexistent.hbk"
-    
+
     # Запускаем индексацию
     await indexing_manager.start_indexing(str(test_file), mock_es_client)
-    
-    # Ждём завершения
+
     await asyncio.sleep(0.5)
-    
-    # Проверяем статус
+
     status = await indexing_manager.get_status()
     assert status.status == IndexingStatus.FAILED
     assert status.error_message is not None

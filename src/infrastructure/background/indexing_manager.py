@@ -141,7 +141,7 @@ class BackgroundIndexingManager:
 
             from src.infrastructure.indexing import index_hbk_file
 
-            success = await index_hbk_file(
+            outcome = await index_hbk_file(
                 file_path,
                 es_client,
                 index=index,
@@ -149,13 +149,18 @@ class BackgroundIndexingManager:
                 progress_callback=self._update_progress,
             )
 
-            if not success:
-                raise RuntimeError("Индексация вернула False")
-
             async with self._lock:
-                self._progress_info.status = IndexingStatus.COMPLETED
+                self._progress_info.outcome = outcome
+                self._progress_info.status = (
+                    IndexingStatus.COMPLETED if outcome.ok else IndexingStatus.FAILED
+                )
                 self._progress_info.end_time = datetime.now()
-                self._progress_info.indexed_documents = self._progress_info.total_documents
+                if outcome.ok:
+                    self._progress_info.indexed_documents = self._progress_info.total_documents
+
+            if not outcome.ok:
+                logger.error(f"Индексация не удалась: {outcome.kind.value} {outcome.details}")
+                return
 
             duration = self._progress_info.duration_seconds
             logger.info(
@@ -256,7 +261,8 @@ class BackgroundIndexingManager:
                 start_time=self._progress_info.start_time,
                 end_time=self._progress_info.end_time,
                 error_message=self._progress_info.error_message,
-                file_path=self._progress_info.file_path
+                file_path=self._progress_info.file_path,
+                outcome=self._progress_info.outcome
             )
     
     def is_indexing(self) -> bool:
