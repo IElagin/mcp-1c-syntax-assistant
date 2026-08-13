@@ -78,12 +78,24 @@ def _requested_languages(lang: RebuildLang) -> list:
     return ["ru", "en"] if lang is RebuildLang.BOTH else [lang.value]
 
 
+def _overall_status(reported: Dict[str, dict]) -> str:
+    """Итог вызова целиком: собраны все запрошенные книги, часть или ни одной."""
+    verdicts = {report["status"] for report in reported.values()}
+    if verdicts == {"success"}:
+        return "success"
+    return "partial" if "success" in verdicts else "failed"
+
+
 @router.post("/rebuild")
 async def rebuild_index(
     lang: RebuildLang = RebuildLang.RU,
     es_client: ElasticsearchClient = Depends(get_elasticsearch_client),
 ):
-    """Переиндексация книг справки: русской, английской или обеих."""
+    """Переиндексация книг справки: русской, английской или обеих.
+
+    Отдаёт исход по каждому запрошенному языку и итог вызова целиком —
+    success, partial или failed.
+    """
     try:
         languages = _requested_languages(lang)
         reported: Dict[str, dict] = {}
@@ -125,6 +137,7 @@ async def rebuild_index(
                 )
 
         any_success = any(report["status"] == "success" for report in reported.values())
+        overall_status = _overall_status(reported)
 
         if any_success:
             try:
@@ -137,9 +150,12 @@ async def rebuild_index(
                 logger.error(f"Ошибка достройки английских имён после переиндексации: {e}")
 
         if not any_success:
-            raise HTTPException(status_code=500, detail={"languages": reported})
+            raise HTTPException(
+                status_code=500,
+                detail={"status": overall_status, "languages": reported},
+            )
 
-        return {"status": "success", "languages": reported}
+        return {"status": overall_status, "languages": reported}
 
     except HTTPException:
         raise

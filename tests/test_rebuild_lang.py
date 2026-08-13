@@ -11,14 +11,18 @@ from src.models.indexing_outcome import IndexingOutcome
 pytestmark = pytest.mark.unit
 
 
-async def _rebuild(query: str, indexed=None):
+async def _rebuild(query: str, outcomes=None, missing_books=()):
     from src.main import app
 
     calls = []
+    outcomes = outcomes or {}
 
     async def remember(file_path, es_client, index=None, lang="ru", progress_callback=None):
         calls.append({"file_path": file_path, "index": index, "lang": lang})
-        return IndexingOutcome.indexed(documents=10, articles=1)
+        return outcomes.get(lang, IndexingOutcome.indexed(documents=10, articles=1))
+
+    def resolve(directory, filename):
+        return None if filename in missing_books else f"{directory}/{filename}"
 
     client = AsyncMock()
     client.is_connected = AsyncMock(return_value=True)
@@ -26,8 +30,7 @@ async def _rebuild(query: str, indexed=None):
 
     with patch("src.api.routes.index.index_hbk_file", side_effect=remember), \
          patch("src.api.routes.index.backfill_english_names", new=AsyncMock(return_value=0)), \
-         patch("src.api.routes.index.resolve_hbk_file",
-               side_effect=lambda directory, filename: f"{directory}/{filename}"), \
+         patch("src.api.routes.index.resolve_hbk_file", side_effect=resolve), \
          patch("src.api.dependencies.get_elasticsearch_client", return_value=client):
         app.dependency_overrides.clear()
         from src.api.dependencies import get_elasticsearch_client
@@ -63,9 +66,37 @@ async def test_lang_both_rebuilds_two_books_and_reports_two_outcomes():
 
     assert [call["lang"] for call in calls] == ["ru", "en"]
     body = response.json()
+    assert body["status"] == "success"
     assert set(body["languages"]) == {"ru", "en"}
     assert body["languages"]["ru"]["message"]
     assert body["languages"]["en"]["message"]
+
+
+async def test_one_book_rebuilt_and_one_failed_answers_partial_instead_of_success():
+    """Отказ английской книги не должен звучать так же, как успех обеих."""
+    response, _ = await _rebuild(
+        "?lang=both", outcomes={"en": IndexingOutcome.parse_failed("shcntx_root.hbk")}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "partial"
+    assert body["languages"]["ru"]["status"] == "success"
+    assert body["languages"]["en"]["status"] == "failed"
+    assert body["languages"]["en"]["message"]
+
+
+async def test_a_book_absent_next_to_a_rebuilt_one_also_answers_partial():
+    """Пропущенная книга — тоже не успех: запрошены две, собрана одна."""
+    response, _ = await _rebuild(
+        "?lang=both", missing_books=(settings.data.hbk_filename_en,)
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "partial"
+    assert body["languages"]["ru"]["status"] == "success"
+    assert body["languages"]["en"]["status"] == "skipped"
 
 
 async def test_an_unknown_lang_is_rejected_instead_of_silently_meaning_russian():
