@@ -207,3 +207,21 @@ async def test_health_reports_the_article_books_missing_from_each_language(tmp_p
 
     assert body["missing_article_books"] == ["shquery", "shclang", "dcsui"]
     assert body["missing_article_books_en"] == ["shquery", "shclang", "dcsui"]
+
+
+async def test_health_reports_the_article_books_present_but_unreadable_for_each_language(tmp_path, monkeypatch):
+    """unreadable_article_books/_en идут через настоящий обработчик, а не мимо него."""
+    ru_dir, en_dir = tmp_path / "ru", tmp_path / "en"
+    ru_dir.mkdir()
+    en_dir.mkdir()
+    (ru_dir / "shlang_ru.hbk").write_bytes(b"\x00" * 64)
+    (en_dir / "shlang_root.hbk").write_bytes(b"\x00" * 64)
+    monkeypatch.setattr(settings, "hbk_directory", str(ru_dir))
+    monkeypatch.setattr(settings, "hbk_directory_en", str(en_dir))
+
+    body = await get_json(make_app(make_client(), make_manager()), "/health")
+
+    assert body["unreadable_article_books"] == ["shlang"]
+    assert body["unreadable_article_books_en"] == ["shlang"]
+    assert body["missing_article_books"] == ["shquery", "shclang", "dcsui"]
+    assert body["missing_article_books_en"] == ["shquery", "shclang", "dcsui"]

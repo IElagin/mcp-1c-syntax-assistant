@@ -239,7 +239,8 @@ RU_STRINGS = UiStrings(
         "shlang_ru.hbk, shquery_ru.hbk, shclang_ru.hbk и dcsui_ru.hbk должны "
         "лежать в data/hbk, а индекс — строиться после того, как они там "
         "появились. Каких книг не хватает, показывает поле "
-        "missing_article_books в /health. Это не значит, что статьи по "
+        "missing_article_books в /health, а какие лежат на месте, но не "
+        "читаются — unreadable_article_books. Это не значит, что статьи по "
         "запросу отсутствуют."
     ),
     no_similar_objects="подходящих не найдено",
@@ -411,7 +412,9 @@ EN_STRINGS = UiStrings(
         "shquery_root.hbk, shclang_root.hbk and dcsui_root.hbk must be in "
         "data/hbk-en, and the index must be built after they appear there. "
         "The missing_article_books_en field of /health names the books that "
-        "are absent. This does not mean no article matches the query."
+        "are absent, and unreadable_article_books_en names the ones that "
+        "are present but cannot be read. This does not mean no article "
+        "matches the query."
     ),
     no_similar_objects="none found",
     object_missing_for_element=(
