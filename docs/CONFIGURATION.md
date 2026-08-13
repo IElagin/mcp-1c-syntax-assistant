@@ -236,6 +236,9 @@ curl -X POST http://localhost:8000/index/rebuild
 Invoke-RestMethod http://localhost:8000/index/status
 ```
 
+До первого завершения индексации на этом сервере блок `indexing` несёт только
+сырой прогресс, без исхода:
+
 ```json
 {
   "elasticsearch_connected": true,
@@ -252,13 +255,35 @@ Invoke-RestMethod http://localhost:8000/index/status
     "end_time": null,
     "error_message": null,
     "file_path": null,
+    "outcome": null,
     "duration_seconds": null
   }
 }
 ```
 
+Как только фоновая индексация — при старте сервера или через
+`/index/rebuild` — заканчивается, `outcome` называет вид исхода (`indexed`,
+`parse_failed`, `nothing_to_index`, `page_loss_too_high`,
+`index_write_failed` или `error`), а блок получает `message` — тот же
+человекочитаемый текст, что видит оператор при ручной переиндексации. При
+успехе `error_message` остаётся `null`; при отказе он дублирует `message`:
+
+```json
+{
+  "indexing": {
+    "is_active": false,
+    "status": "completed",
+    "error_message": null,
+    "file_path": "data/hbk/shcntx_ru.hbk",
+    "outcome": "indexed",
+    "message": "Индексация завершена: документов 23125, из них статей 366."
+  }
+}
+```
+
 Индексация закончена, когда `is_active` равно `false`, а `documents_count`
-перестал расти. При сбое причина попадает в `error_message`.
+перестал расти. Причина отказа читается из `message` (и дублируется в
+`error_message`).
 
 ## Замена файла справки
 

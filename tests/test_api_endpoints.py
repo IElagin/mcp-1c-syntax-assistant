@@ -10,6 +10,7 @@
 поймал бы: bool сериализуется правильно и без обёртки в коде.
 """
 
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -18,10 +19,12 @@ from elastic_transport import ApiResponseMeta, HeadApiResponse, HttpHeaders, Nod
 from fastapi import FastAPI
 
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
+from src.api.indexing_messages import describe_outcome
 from src.api.routes.health import router as health_router
 from src.api.routes.index import router as index_router
 from src.core.config import settings
 from src.models.index_status import IndexingStatus, IndexProgressInfo
+from src.models.indexing_outcome import IndexingOutcome
 from tests.conftest import write_book
 
 
@@ -71,11 +74,11 @@ def make_client(
     return client
 
 
-def make_manager(active: bool = False) -> MagicMock:
+def make_manager(active: bool = False, outcome: Optional[IndexingOutcome] = None) -> MagicMock:
     manager = MagicMock()
     manager.get_status = AsyncMock(return_value=IndexProgressInfo(
         status=IndexingStatus.COMPLETED, total_documents=23125,
-        indexed_documents=23125,
+        indexed_documents=23125, outcome=outcome,
     ))
     manager.is_indexing = MagicMock(return_value=active)
     return manager
@@ -165,6 +168,29 @@ async def test_index_status_carries_the_background_indexing_block():
 
     assert body["indexing"]["is_active"] is True
     assert body["indexing"]["status"] == IndexingStatus.COMPLETED.value
+
+
+async def test_index_status_puts_a_failed_outcomes_words_in_error_and_message():
+    """Отказ индексации: describe_outcome попадает и в error_message, и в message."""
+    outcome = IndexingOutcome.parse_failed("data/hbk/shcntx_ru.hbk")
+
+    body = await get_json(make_app(make_client(), make_manager(outcome=outcome)),
+                          "/index/status")
+
+    expected = describe_outcome(outcome)
+    assert body["indexing"]["error_message"] == expected
+    assert body["indexing"]["message"] == expected
+
+
+async def test_index_status_puts_a_successful_outcomes_words_in_message_only():
+    """Успешная индексация: слова идут в message, а error_message остаётся None."""
+    outcome = IndexingOutcome.indexed(documents=23125, articles=366)
+
+    body = await get_json(make_app(make_client(), make_manager(outcome=outcome)),
+                          "/index/status")
+
+    assert body["indexing"]["message"] == describe_outcome(outcome)
+    assert body["indexing"]["error_message"] is None
 
 
 async def test_health_reports_the_article_books_missing_from_each_language(tmp_path, monkeypatch):
