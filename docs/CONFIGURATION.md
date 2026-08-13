@@ -112,6 +112,13 @@ docker compose exec mcp-server printenv | Select-String 'ELASTICSEARCH|LOG_LEVEL
 Индекс строится один раз при первом старте. Переиндексация нужна, когда вы
 заменили книгу справки или обновили парсер.
 
+**Обновление до 2.4.0 требует переиндексации только ради пробелов после запятых
+и двоеточий.** Описания вида «следующих действий:открытие панели ввода» теперь
+читаются как текст; правка живёт в разобранном тексте, поэтому на уже собранном
+индексе не видна. Остальные изменения версии — исходы индексации, параметр
+`lang` у `/index/rebuild` и новые поля `/health` — переиндексации не требуют:
+ничего из хранимого они не меняют.
+
 **Обновление до 2.3.3 требует переиндексации, если статьи уже
 проиндексированы.** Перевод строки внутри ячейки таблицы больше не теряется, и
 примеры кода в статьях снова печатаются построчно. Текст статьи хранится в
@@ -229,9 +236,9 @@ curl -X POST http://localhost:8000/index/rebuild
   "languages": {
     "ru": {
       "status": "success",
-      "message": "Индексация завершена: документов 23125, из них статей 366.",
+      "message": "Индексация завершена: документов 23491, из них статей 366.",
       "file": "data/hbk/shcntx_ru.hbk",
-      "documents_count": 23125
+      "documents_count": 23491
     }
   }
 }
@@ -253,9 +260,9 @@ curl -X POST "http://localhost:8000/index/rebuild?lang=en"
   "languages": {
     "en": {
       "status": "success",
-      "message": "Индексация завершена: документов 6210, из них статей 367.",
+      "message": "Индексация завершена: документов 23471, из них статей 367.",
       "file": "data/hbk-en/shcntx_root.hbk",
-      "documents_count": 6210
+      "documents_count": 23471
     }
   }
 }
@@ -282,7 +289,7 @@ Invoke-RestMethod http://localhost:8000/index/status
 {
   "elasticsearch_connected": true,
   "index_exists": true,
-  "documents_count": 23125,
+  "documents_count": 23491,
   "index_name": "help1c_docs",
   "indexing": {
     "is_active": false,
@@ -300,25 +307,41 @@ Invoke-RestMethod http://localhost:8000/index/status
 }
 ```
 
-Как только фоновая индексация — при старте сервера или через
-`/index/rebuild` — заканчивается, `outcome` называет вид исхода (`indexed`,
-`parse_failed`, `nothing_to_index`, `page_loss_too_high`,
-`index_write_failed` или `error`), а блок получает `message` — тот же
-человекочитаемый текст, что видит оператор при ручной переиндексации. При
-успехе `error_message` остаётся `null`; при отказе он дублирует `message`:
+Как только фоновая индексация при старте сервера заканчивается, `outcome`
+называет вид исхода (`indexed`, `parse_failed`, `nothing_to_index`,
+`page_loss_too_high`, `index_write_failed` или `error`), а блок получает
+`message` — тот же человекочитаемый текст, что видит и вызывающий
+`POST /index/rebuild` в своём ответе. При успехе `error_message` остаётся
+`null`; при отказе он дублирует `message`:
 
 ```json
 {
+  "elasticsearch_connected": true,
+  "index_exists": true,
+  "documents_count": 23491,
+  "index_name": "help1c_docs",
   "indexing": {
     "is_active": false,
     "status": "completed",
+    "progress_percent": 100.0,
+    "total_documents": 23471,
+    "indexed_documents": 23471,
+    "start_time": "2026-08-13T14:25:13.321180",
+    "end_time": "2026-08-13T14:26:06.338705",
     "error_message": null,
-    "file_path": "data/hbk/shcntx_ru.hbk",
+    "file_path": "data/hbk-en/shcntx_root.hbk",
     "outcome": "indexed",
-    "message": "Индексация завершена: документов 23125, из них статей 366."
+    "duration_seconds": 53.02,
+    "message": "Индексация завершена: документов 23471, из них статей 367."
   }
 }
 ```
+
+Этот блок отражает только фоновую индексацию при старте сервера — она одна
+пишет в `indexing_manager`, который `/index/status` и читает. Ручной
+`POST /index/rebuild` идёт другим путём: ответ синхронный и несёт исход
+на каждый язык сам (см. выше), а `/index/status` после такого вызова не
+меняется.
 
 Индексация закончена, когда `is_active` равно `false`, а `documents_count`
 перестал расти. Причина отказа читается из `message` (и дублируется в

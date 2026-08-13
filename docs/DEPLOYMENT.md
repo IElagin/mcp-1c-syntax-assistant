@@ -197,9 +197,9 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 ```json
 {"status":"healthy","elasticsearch":true,"index_exists":true,
  "documents_count":23491,"indexing_status":"idle","indexing_active":false,
- "index_en_exists":true,"documents_count_en":23104,
+ "index_en_exists":true,"documents_count_en":23471,
  "missing_article_books":[],"missing_article_books_en":[],
- "unreadable_article_books":[],"unreadable_article_books_en":[],"version":"2.3.3"}
+ "unreadable_article_books":[],"unreadable_article_books_en":[],"version":"2.4.0"}
 ```
 
 `index_en_exists`/`documents_count_en` — то же самое для необязательной
