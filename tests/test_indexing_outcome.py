@@ -89,11 +89,16 @@ async def test_an_escaping_exception_carries_its_text():
 
 async def test_five_refusals_are_five_different_kinds():
     """Один и тот же ответ на пять разных причин — это и был дефект."""
+    with patch("src.parsers.hbk_parser.HBKParser.parse_file",
+               side_effect=MemoryError("не хватило памяти")):
+        broken = await index_hbk_file(BOOK, AsyncMock(), index="ignored")
+
     kinds = {
         (await _outcome_of(None)).kind,
         (await _outcome_of(_parsed(documents=0))).kind,
         (await _outcome_of(_parsed(documents=1, attempted=100, parsed_pages=90))).kind,
         (await _outcome_of(_parsed(), reindex=False)).kind,
+        broken.kind,
     }
 
-    assert len(kinds) == 4
+    assert len(kinds) == 5
