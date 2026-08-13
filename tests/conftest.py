@@ -242,7 +242,7 @@ def mock_parsed_hbk():
 
     # Создаём статистику
     stats = {
-        'html_files': 5,
+        'object_pages': 5,
         'processed_html': 5,
         'total_docs': 5,
         'by_type': 5
@@ -452,20 +452,39 @@ async def isolated_index():
 
 @pytest.fixture(autouse=True)
 def refuse_writes_to_the_production_index(monkeypatch):
-    """Читать боевой индекс тест вправе, перестраивать — нет."""
+    """Читать боевой индекс тест вправе, писать в него — нет."""
     from src.core.config import settings
+    from src.core.elasticsearch import ElasticsearchClient
     from src.parsers.indexer import ElasticsearchIndexer
 
-    original = ElasticsearchIndexer.reindex_all
+    production = (None, settings.elasticsearch_index, settings.elasticsearch_index_en)
 
-    async def guarded(self, *args, **kwargs):
-        if self.index in (None, settings.elasticsearch_index, settings.elasticsearch_index_en):
-            pytest.fail(
-                f"тест перестраивает боевой индекс "
-                f"{self.index or settings.elasticsearch_index}; "
-                f"возьмите свой через фикстуру isolated_index",
-                pytrace=False,
-            )
-        return await original(self, *args, **kwargs)
+    def refuse(index):
+        pytest.fail(
+            f"тест пишет в боевой индекс {index or settings.elasticsearch_index}; "
+            f"возьмите свой через фикстуру isolated_index",
+            pytrace=False,
+        )
 
-    monkeypatch.setattr(ElasticsearchIndexer, "reindex_all", guarded)
+    original_reindex = ElasticsearchIndexer.reindex_all
+    original_index_documentation = ElasticsearchIndexer.index_documentation
+    original_write = ElasticsearchClient.index_document
+
+    async def guarded_reindex(self, *args, **kwargs):
+        if self.index in production:
+            refuse(self.index)
+        return await original_reindex(self, *args, **kwargs)
+
+    async def guarded_index_documentation(self, *args, **kwargs):
+        if self.index in production:
+            refuse(self.index)
+        return await original_index_documentation(self, *args, **kwargs)
+
+    async def guarded_write(self, document, index=None):
+        if index in production:
+            refuse(index)
+        return await original_write(self, document, index=index)
+
+    monkeypatch.setattr(ElasticsearchIndexer, "reindex_all", guarded_reindex)
+    monkeypatch.setattr(ElasticsearchIndexer, "index_documentation", guarded_index_documentation)
+    monkeypatch.setattr(ElasticsearchClient, "index_document", guarded_write)

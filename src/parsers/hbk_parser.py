@@ -163,7 +163,7 @@ class HBKParser:
         result.pages_attempted = len(object_pages)
         result.pages_parsed = processed
         result.stats = {
-            "html_files": result.pages_attempted,
+            "object_pages": result.pages_attempted,
             "processed_html": result.pages_parsed,
             "st_files": st_files,
             "category_files": category_files,

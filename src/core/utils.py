@@ -4,11 +4,8 @@
 
 from pathlib import Path
 from typing import List, Optional
-import logging
 
 from src.core.errors import FilePathError
-
-logger = logging.getLogger(__name__)
 
 
 def validate_file_path(file_path: Path, allowed_extensions: Optional[List[str]] = None) -> bool:

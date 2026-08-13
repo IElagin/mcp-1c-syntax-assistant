@@ -141,10 +141,9 @@ def test_all_stubs_collision_keeps_both_with_distinct_ids():
 def test_disambiguation_is_deterministic_regardless_of_input_order():
     """Порядок документов на входе не должен менять итоговое распределение id.
 
-    Разбор идёт батчами, и порядок обработки страниц зависит от того, как
-    7zip перечислил архив — сортировка по source_file внутри столкнувшейся
-    группы не зависит от этого порядка, поэтому переиндексация той же книги
-    даёт те же id каждый раз.
+    Разбор идёт батчами, и порядок страниц задаёт архив книги; сортировка по
+    source_file внутри столкнувшейся группы от него не зависит, поэтому
+    переиндексация той же книги даёт те же id каждый раз.
     """
     form_items = make_object("objects/catalog1649/catalog1890/FormItems.html", description="A")
     controls = make_object("objects/catalog56/catalog246/Controls.html", description="B")

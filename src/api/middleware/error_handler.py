@@ -4,7 +4,6 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from src.core.errors import ValidationError
-from src.parsers.hbk_parser import HBKParserError
 from src.core.metrics import get_metrics_collector
 from src.core.logging import get_logger
 
@@ -20,20 +19,6 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
         status_code=400,
         content={
             "error": "Validation error",
-            "message": str(exc)
-        }
-    )
-
-
-async def parser_exception_handler(request: Request, exc: HBKParserError):
-    """Обработчик ошибок парсера."""
-    metrics = get_metrics_collector()
-    await metrics.increment("errors.parser")
-    
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Parser error", 
             "message": str(exc)
         }
     )

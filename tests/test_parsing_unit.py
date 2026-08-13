@@ -98,11 +98,11 @@ def test_parsed_hbk_stats(mock_parsed_hbk):
     """Тест статистики парсинга."""
     stats = mock_parsed_hbk.stats
     
-    assert 'html_files' in stats
+    assert 'object_pages' in stats
     assert 'processed_html' in stats
-    
+
     # Проверяем что статистика не пустая
-    assert stats['html_files'] > 0
+    assert stats['object_pages'] > 0
     assert stats['processed_html'] > 0
     assert isinstance(stats, dict)
 

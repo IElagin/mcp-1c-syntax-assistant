@@ -12,9 +12,24 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.core.config import settings
-from src.core.elasticsearch import es_client
 from src.parsers.name_backfill import _fields_to_fill, _both_separators, backfill_english_names
+
+
+@pytest.fixture
+async def own_index_pair(isolated_index):
+    """Пара индексов под достройку имён: русский и английский, оба свои."""
+    from src.core.elasticsearch import ElasticsearchClient
+
+    ru_index, en_index = isolated_index, f"{isolated_index}_en"
+    client = ElasticsearchClient()
+    assert await client.connect(), "Elasticsearch недоступен"
+    await client.create_index(index=ru_index)
+    await client.create_index(index=en_index)
+    try:
+        yield client, ru_index, en_index
+    finally:
+        await client.delete_index(index=en_index)
+        await client.disconnect()
 
 
 def _page_query(source_file: str) -> dict:
@@ -33,151 +48,99 @@ def _page_query(source_file: str) -> dict:
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
-@pytest.mark.real_index
-async def test_global_context_gets_its_english_name():
+async def test_global_context_gets_its_english_name(own_index_pair):
     """У «Глобальный контекст» в норме нет ни name_en, ни object_en.
 
     Ключ склейки — внутрикнижный путь страницы: он одинаков в обеих книгах,
-    измерено на всём корпусе (48 682 файла). Одинаков сам путь, но не его
-    запись: разделитель зависит от платформы, на которой собирали индекс, —
-    поэтому и код, и этот тест приводят путь к канонической форме, а не
-    сравнивают строки как есть.
-
-    Индекс персистентный: на живом индексе, где предыдущий прогон уже
-    достроил этот документ, «updated > 0» стало бы ложным без вины кода —
-    достраивать уже нечего. Тест сам откатывает документ в состояние «имени
-    не хватает» перед прогоном, поэтому проходит одинаково на свежем индексе
-    и на уже достроенном, локально и в CI, при первом запуске и при сотом.
+    но не его запись — разделитель зависит от платформы, на которой собирали
+    индекс, — поэтому и код, и этот тест приводят путь к канонической форме,
+    а не сравнивают строки как есть.
     """
-    assert await es_client.connect(), "Elasticsearch недоступен"
-    ru_index = settings.elasticsearch_index
-    try:
-        found = await es_client.search(
-            {"query": _page_query("objects/Global context.html")},
-            index=ru_index,
-        )
-        doc_id = found["hits"]["hits"][0]["_id"]
+    client, ru_index, en_index = own_index_pair
+    source_file = "objects/Global context.html"
 
-        await es_client._client.update(
-            index=ru_index, id=doc_id, doc={"name_en": "", "object_en": None}, refresh=True
-        )
+    await client.index_document(
+        {"name_en": "", "object_en": None, "source_file": source_file}, index=ru_index
+    )
+    await client.index_document(
+        {"name": "Global context", "source_file": source_file}, index=en_index
+    )
+    await client.refresh_index(index=ru_index)
+    await client.refresh_index(index=en_index)
 
-        updated = await backfill_english_names(
-            es_client, ru_index, settings.elasticsearch_index_en
-        )
-        assert updated > 0
+    updated = await backfill_english_names(client, ru_index, en_index)
+    assert updated > 0
 
-        response = await es_client.search(
-            {"query": _page_query("objects/Global context.html")},
-            index=ru_index,
-        )
-        source = response["hits"]["hits"][0]["_source"]
-        assert source["name_en"] == "Global context"
-    finally:
-        await es_client.disconnect()
+    response = await client.search(
+        {"query": _page_query(source_file)},
+        index=ru_index,
+    )
+    source = response["hits"]["hits"][0]["_source"]
+    assert source["name_en"] == "Global context"
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
-@pytest.mark.real_index
-async def test_backfill_is_exhaustive_in_one_pass_and_idempotent_after():
-    """Один вызов обязан достроить всё достижимое, второй — ничего не менять.
+async def test_backfill_is_exhaustive_in_one_pass_and_idempotent_after(own_index_pair):
+    """Один вызов обязан достроить всё достижимое, второй — ничего не менять."""
+    client, ru_index, en_index = own_index_pair
+    source_file = "objects/Global context.html"
 
-    Прежняя версия теста звала достройку дважды на живом индексе и проверяла
-    только «второй раз ноль». На уже достроенном индексе кандидатов остаётся
-    два десятка, и все нерешаемые, поэтому ноль возвращал уже ПЕРВЫЙ вызов —
-    утверждение удовлетворяла бы и достройка, не делающая ничего вообще,
-    включая сломанную ровно так, как предупреждает докстринг
-    _english_by_source_file (terms по несуществующему под-полю).
+    await client.index_document(
+        {"name_en": "", "object_en": None, "source_file": source_file}, index=ru_index
+    )
+    await client.index_document(
+        {"name": "Global context", "source_file": source_file}, index=en_index
+    )
+    await client.refresh_index(index=ru_index)
+    await client.refresh_index(index=en_index)
 
-    Здесь документ сначала откатывается в состояние «имён не хватает», поэтому
-    первому вызову есть что делать, и проверяются оба свойства сразу:
-    исчерпывающесть одного прохода и отсутствие работы у следующего.
-    """
-    assert await es_client.connect(), "Elasticsearch недоступен"
-    ru_index = settings.elasticsearch_index
-    en_index = settings.elasticsearch_index_en
-    try:
-        found = await es_client.search(
-            {"query": _page_query("objects/Global context.html")},
-            index=ru_index,
-        )
-        doc_id = found["hits"]["hits"][0]["_id"]
+    first = await backfill_english_names(client, ru_index, en_index)
+    assert first > 0, "первому проходу было что достроить — он обязан это сделать"
 
-        await es_client._client.update(
-            index=ru_index, id=doc_id, doc={"name_en": "", "object_en": None}, refresh=True
-        )
-
-        first = await backfill_english_names(es_client, ru_index, en_index)
-        assert first > 0, "первому проходу было что достроить — он обязан это сделать"
-
-        second = await backfill_english_names(es_client, ru_index, en_index)
-        assert second == 0, (
-            "всё достижимое достраивается за один вызов; второму проходу "
-            "работы не остаётся"
-        )
-    finally:
-        await es_client.disconnect()
+    second = await backfill_english_names(client, ru_index, en_index)
+    assert second == 0, (
+        "всё достижимое достраивается за один вызов; второму проходу "
+        "работы не остаётся"
+    )
 
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
-@pytest.mark.real_index
-async def test_already_parsed_name_en_is_not_overwritten():
-    """object_en бывает пуст у страниц, чьё name_en уже разобрано задачей 11.
-
-    В русской книге составной заголовок вида «Массив (Array)» разбирается
-    точнее, чем сырой заголовок английской страницы. Если достройка при
-    случае докладки object_en заодно перепишет и name_en значением из
-    английского индекса — она отменит результат задачи 11 молча. Документ
-    заводится и удаляется тестом, чтобы не зависеть от того, какие именно
-    707 страниц сейчас пусты в живом индексе (это меняется от прогона к
-    прогону).
-    """
-    assert await es_client.connect(), "Elasticsearch недоступен"
-    ru_index = settings.elasticsearch_index
-    en_index = settings.elasticsearch_index_en
-    doc_id = "test_name_backfill_probe_ru"
-    en_doc_id = "test_name_backfill_probe_en"
+async def test_already_parsed_name_en_is_not_overwritten(own_index_pair):
+    """Достройка object_en не переписывает уже заполненный name_en."""
+    client, ru_index, en_index = own_index_pair
     source_file = "test/name_backfill_probe.html"
-    try:
-        await es_client._client.index(
-            index=ru_index,
-            id=doc_id,
-            document={
-                "id": doc_id,
-                "type": "object_property",
-                "name_en": "AlreadyParsedName",
-                "object_en": None,
-                "source_file": source_file,
-            },
-            refresh=True,
-        )
-        await es_client._client.index(
-            index=en_index,
-            id=en_doc_id,
-            document={
-                "name": "RawEnglishTitle",
-                "object": "SomeObject",
-                "source_file": source_file,
-            },
-            refresh=True,
-        )
 
-        await backfill_english_names(es_client, ru_index, en_index)
+    await client.index_document(
+        {
+            "type": "object_property",
+            "name_en": "AlreadyParsedName",
+            "object_en": None,
+            "source_file": source_file,
+        },
+        index=ru_index,
+    )
+    await client.index_document(
+        {
+            "name": "RawEnglishTitle",
+            "object": "SomeObject",
+            "source_file": source_file,
+        },
+        index=en_index,
+    )
+    await client.refresh_index(index=ru_index)
+    await client.refresh_index(index=en_index)
 
-        after = await es_client._client.get(index=ru_index, id=doc_id)
-        assert after["_source"]["name_en"] == "AlreadyParsedName"
-        assert after["_source"]["object_en"] == "SomeObject"
-    finally:
-        from elasticsearch.exceptions import NotFoundError
+    await backfill_english_names(client, ru_index, en_index)
 
-        for index, _id in ((ru_index, doc_id), (en_index, en_doc_id)):
-            try:
-                await es_client._client.delete(index=index, id=_id, refresh=True)
-            except NotFoundError:
-                pass
-        await es_client.disconnect()
+    after = await client.search(
+        {"query": {"term": {"source_file": source_file}}},
+        index=ru_index,
+    )
+    source = after["hits"]["hits"][0]["_source"]
+    assert source["name_en"] == "AlreadyParsedName"
+    assert source["object_en"] == "SomeObject"
 
 
 @pytest.mark.unit

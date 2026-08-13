@@ -1,5 +1,8 @@
 """Index management endpoints."""
 
+from enum import Enum
+from typing import Dict
+
 from fastapi import APIRouter, HTTPException, Depends
 
 from src.core.config import settings
@@ -7,6 +10,7 @@ from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.infrastructure.indexing import index_hbk_file, resolve_hbk_file
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
+from src.api.indexing_messages import describe_outcome
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 from src.parsers.name_backfill import backfill_english_names
 
@@ -33,7 +37,13 @@ async def index_status(
     docs_count = await es_client.get_documents_count() if index_exists else 0
     
     progress = await indexing_manager.get_status()
-    
+    reported = progress.to_dict()
+    if progress.outcome is not None:
+        reported["error_message"] = (
+            None if progress.outcome.ok else describe_outcome(progress.outcome)
+        )
+        reported["message"] = describe_outcome(progress.outcome)
+
     return {
         "elasticsearch_connected": es_connected,
         "index_exists": index_exists,
@@ -41,42 +51,95 @@ async def index_status(
         "index_name": settings.elasticsearch.index_name,
         "indexing": {
             "is_active": indexing_manager.is_indexing(),
-            **progress.to_dict()
+            **reported,
         }
     }
 
 
+class RebuildLang(str, Enum):
+    """Какие книги перестраивать. Значения совпадают с Lang плюс «обе»."""
+
+    RU = "ru"
+    EN = "en"
+    BOTH = "both"
+
+
+_BOOKS = {
+    "ru": lambda: (settings.data.hbk_directory, settings.data.hbk_filename, None),
+    "en": lambda: (
+        settings.data.hbk_directory_en,
+        settings.data.hbk_filename_en,
+        settings.elasticsearch_index_en,
+    ),
+}
+
+
+def _requested_languages(lang: RebuildLang) -> list:
+    return ["ru", "en"] if lang is RebuildLang.BOTH else [lang.value]
+
+
+def _overall_status(reported: Dict[str, dict]) -> str:
+    """Итог вызова целиком: собраны все запрошенные книги, часть или ни одной."""
+    verdicts = {report["status"] for report in reported.values()}
+    if verdicts == {"success"}:
+        return "success"
+    return "partial" if "success" in verdicts else "failed"
+
+
 @router.post("/rebuild")
 async def rebuild_index(
-    es_client: ElasticsearchClient = Depends(get_elasticsearch_client)
+    lang: RebuildLang = RebuildLang.RU,
+    es_client: ElasticsearchClient = Depends(get_elasticsearch_client),
 ):
-    """Переиндексация документации из .hbk файла."""
+    """Переиндексация книг справки: русской, английской или обеих.
+
+    Отдаёт исход по каждому запрошенному языку и итог вызова целиком —
+    success, partial или failed.
+    """
     try:
-        hbk_file = resolve_hbk_file(
-            settings.data.hbk_directory, settings.data.hbk_filename
-        )
-        if hbk_file is None:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Книга справки {settings.data.hbk_filename} не найдена "
-                    f"в {settings.data.hbk_directory}"
-                )
+        languages = _requested_languages(lang)
+        reported: Dict[str, dict] = {}
+        resolved: Dict[str, tuple] = {}
+
+        for language in languages:
+            directory, filename, index = _BOOKS[language]()
+            hbk_file = resolve_hbk_file(directory, filename)
+            if hbk_file is None:
+                reported[language] = {
+                    "status": "skipped",
+                    "message": f"Книга справки {filename} не найдена в {directory}",
+                }
+            else:
+                resolved[language] = (hbk_file, index)
+
+        if not resolved:
+            detail = (
+                reported[languages[0]]["message"]
+                if len(languages) == 1
+                else {"languages": reported}
             )
+            raise HTTPException(status_code=400, detail=detail)
 
         if not await es_client.is_connected():
-            raise HTTPException(
-                status_code=503,
-                detail="Elasticsearch недоступен"
-            )
+            raise HTTPException(status_code=503, detail="Elasticsearch недоступен")
 
-        logger.info(f"Начинаем переиндексацию файла: {hbk_file}")
-        
-        success = await index_hbk_file(str(hbk_file), es_client)
+        for language, (hbk_file, index) in resolved.items():
+            logger.info(f"Начинаем переиндексацию ({language}): {hbk_file}")
+            outcome = await index_hbk_file(str(hbk_file), es_client, index=index, lang=language)
+            reported[language] = {
+                "status": "success" if outcome.ok else "failed",
+                "message": describe_outcome(outcome),
+                "file": str(hbk_file),
+            }
+            if outcome.ok:
+                reported[language]["documents_count"] = await es_client.get_documents_count(
+                    index=index
+                )
 
-        if success:
-            docs_count = await es_client.get_documents_count()
+        any_success = any(report["status"] == "success" for report in reported.values())
+        overall_status = _overall_status(reported)
 
+        if any_success:
             try:
                 updated = await backfill_english_names(
                     es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
@@ -86,18 +149,14 @@ async def rebuild_index(
             except Exception as e:
                 logger.error(f"Ошибка достройки английских имён после переиндексации: {e}")
 
-            return {
-                "status": "success",
-                "message": "Переиндексация завершена успешно",
-                "file": str(hbk_file),
-                "documents_count": docs_count
-            }
-        else:
+        if not any_success:
             raise HTTPException(
                 status_code=500,
-                detail="Ошибка переиндексации"
+                detail={"status": overall_status, "languages": reported},
             )
-            
+
+        return {"status": overall_status, "languages": reported}
+
     except HTTPException:
         raise
     except Exception as e:

@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector, get_system_monitor
-from src.app.dependency_injection import setup_dependencies
 from src.infrastructure.indexing import auto_index_on_startup
 from src.infrastructure.background.indexing_manager import setup_indexing_manager, get_indexing_manager
 
@@ -24,9 +23,7 @@ async def startup(app: FastAPI):
     
     metrics = get_metrics_collector()
     monitor = get_system_monitor()
-    
-    setup_dependencies()
-    
+
     indexing_manager = setup_indexing_manager(
         shutdown_timeout=30,
         progress_log_interval=500

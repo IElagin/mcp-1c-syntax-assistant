@@ -83,7 +83,7 @@ async def test_index_hbk_file_still_indexes_the_card_book_despite_one_bad_articl
             str(main_book_path_for_its_parent_directory_only), AsyncMock(), index="ignored"
         )
 
-    assert result is True
+    assert result.ok, result
     reindex.assert_awaited_once()
     indexed = reindex.call_args.args[0]
     assert indexed.documentation[0].id == "card"

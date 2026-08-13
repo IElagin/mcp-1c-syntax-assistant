@@ -43,6 +43,11 @@ def _page_limit(data: bytes) -> int:
 
 def _read_block(data: bytes, offset: int) -> bytes:
     data_size, page_size, next_page = _block_header(data, offset)
+    if data_size > len(data):
+        raise HelpBookArchiveError(
+            f"Блок по смещению {offset} объявляет {data_size} байт — больше файла "
+            f"({len(data)})"
+        )
     body = bytearray()
     start = offset + BLOCK_HEADER_SIZE
     pages_left = _page_limit(data)

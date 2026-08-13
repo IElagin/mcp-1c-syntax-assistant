@@ -13,7 +13,7 @@ from src.core.logging import get_logger
 from src.parsers.dialects import Chapter, HelpDialect, RU_DIALECT
 from src.parsers.indexer import split_name_ru_en
 from src.parsers.text_utils import (
-    split_type_and_note, normalize_whitespace, clean_description, text_from_html,
+    split_type_and_note, normalize_whitespace, clean_prose, text_from_html,
 )
 
 logger = get_logger(__name__)
@@ -441,7 +441,7 @@ class HTMLParser:
                             description_parts.append(text)
 
                 if description_parts:
-                    doc.description = clean_description(' '.join(description_parts))
+                    doc.description = clean_prose(' '.join(description_parts))
                     break
     
     def _chapters(self, soup: BeautifulSoup):
@@ -468,7 +468,7 @@ class HTMLParser:
             if chapter is Chapter.AVAILABILITY:
                 doc.availability = self._parse_availability(html)
             elif chapter is Chapter.NOTE:
-                doc.note = clean_description(text_from_html(html))
+                doc.note = clean_prose(text_from_html(html))
             elif chapter is Chapter.USAGE:
                 # USAGE, а не VERSION: «Использование в версии:» говорит о
                 # версии платформы и в доступ к свойству не годится.
@@ -613,7 +613,7 @@ class HTMLParser:
                 variant.return_type, variant.return_description = \
                     split_type_and_note(html, self.dialect.type_label)
             elif chapter is Chapter.VARIANT_DESCRIPTION:
-                take_current().description = clean_description(text_from_html(html))
+                take_current().description = clean_prose(text_from_html(html))
 
         if doc.type == DocumentType.OBJECT_CONSTRUCTOR:
             # У конструкторов варианты разложены по отдельным страницам справки,

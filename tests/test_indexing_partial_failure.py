@@ -43,7 +43,7 @@ async def test_a_book_that_lost_a_small_share_of_pages_is_still_indexed(tmp_path
         with caplog.at_level(logging.WARNING):
             result = await index_hbk_file(str(tmp_path / "book.hbk"), AsyncMock(), index="ignored")
 
-    assert result is True
+    assert result.ok, result
     reindex.assert_awaited_once()
     assert any("потеряно страниц" in message for message in caplog.messages)
 
@@ -62,7 +62,7 @@ async def test_a_book_that_lost_most_of_its_pages_is_refused_and_the_index_is_le
         with caplog.at_level(logging.ERROR):
             result = await index_hbk_file(str(tmp_path / "book.hbk"), AsyncMock(), index="ignored")
 
-    assert result is False
+    assert not result.ok, result
     reindex.assert_not_awaited()
     assert any("отклонена" in message for message in caplog.messages)
 
@@ -77,5 +77,5 @@ async def test_a_book_that_produced_no_documentation_is_refused_without_indexing
          ) as reindex:
         result = await index_hbk_file(str(tmp_path / "book.hbk"), AsyncMock(), index="ignored")
 
-    assert result is False
+    assert not result.ok, result
     reindex.assert_not_awaited()

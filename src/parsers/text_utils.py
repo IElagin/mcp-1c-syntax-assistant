@@ -14,6 +14,18 @@ from bs4 import BeautifulSoup
 _PERIOD_WITHOUT_SPACE = re.compile(r'([а-яёa-z0-9])\.([А-ЯЁA-Z])')
 _BLANK_LINE_RUN = re.compile(r'\n{3,}')
 
+_LETTER = "а-яёА-ЯЁa-zA-Z"
+_COMMA_WITHOUT_SPACE = re.compile(rf'([{_LETTER})]),([{_LETTER}])')
+_COLON_WITHOUT_SPACE = re.compile(rf'([{_LETTER}]{{2}}):([{_LETTER}])')
+_COLON_BETWEEN_FORMAT_TOKENS = re.compile(rf'([{_LETTER}])\1:([{_LETTER}])\2')
+
+
+def _spaced_colon(match: re.Match) -> str:
+    """Двоеточие с пробелом после него; внутри формата даты — как было."""
+    if _COLON_BETWEEN_FORMAT_TOKENS.match(match.string, match.start()):
+        return match.group(0)
+    return f"{match.group(1)}: {match.group(2)}"
+
 
 def normalize_whitespace(text: str) -> str:
     """Неразрывные пробелы — обычными, кратные пробелы — одинарными.
@@ -29,9 +41,24 @@ def restore_space_after_period(text: str) -> str:
     return _PERIOD_WITHOUT_SPACE.sub(r'\1. \2', text or "")
 
 
+def restore_space_after_punctuation(text: str) -> str:
+    """Ставит пробел после запятой и двоеточия там, где вёрстка его потеряла.
+
+    Двоеточие остаётся на месте там, где оно часть значения: в имени
+    «1С:Предприятие» перед ним цифра, в формате «ЧЧ:ММ:СС» — повтор буквы.
+    """
+    spaced = _COMMA_WITHOUT_SPACE.sub(r'\1, \2', text or "")
+    return _COLON_WITHOUT_SPACE.sub(_spaced_colon, spaced)
+
+
 def clean_description(text: str) -> str:
     """Полная чистка текста описания."""
     return restore_space_after_period(normalize_whitespace(text))
+
+
+def clean_prose(text: str) -> str:
+    """Чистка связного текста: пробелы, точка, запятая и двоеточие."""
+    return restore_space_after_punctuation(clean_description(text))
 
 
 def normalize_lines(text: str) -> str:
@@ -68,7 +95,7 @@ def split_type_and_note(html: str, type_label: str = "Тип:") -> Tuple[str, st
     """
     text = text_from_html(html).strip()
     if not text.startswith(type_label):
-        return "", clean_description(text)
+        return "", clean_prose(text)
 
     rest = text[len(type_label):].strip()
     boundaries = [p for p in (rest.find('.'), rest.find('\n')) if p != -1]
@@ -77,5 +104,5 @@ def split_type_and_note(html: str, type_label: str = "Тип:") -> Tuple[str, st
 
     boundary = min(boundaries)
     value_type = normalize_whitespace(rest[:boundary])
-    note = clean_description(rest[boundary + 1:])
+    note = clean_prose(rest[boundary + 1:])
     return value_type, note
