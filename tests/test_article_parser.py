@@ -32,6 +32,11 @@ CODE_EXAMPLE = """<HTML><BODY>
 <BLOCKQUOTE><P><FONT face="Courier New">ВЫБРАТЬ Док.Товар, Док.Ссылка.Номер<BR>ИЗ Документ.РасхНакл.Состав КАК Док</FONT></P></BLOCKQUOTE>
 </BODY></HTML>"""
 
+CODE_EXAMPLE_IN_CELL = """<HTML><BODY>
+<H1 class="">Расчет общих итогов</H1>
+<TABLE width="100%" bgColor="#f7f7f7"><TBODY><TR><TD><FONT face="Courier New">ВЫБРАТЬ<BR>&nbsp;&nbsp;&nbsp;&nbsp;Состав.Номенклатура<BR>ИЗ<BR>&nbsp;&nbsp;&nbsp;&nbsp;Документ.РасхНакл.Состав КАК Состав</FONT></TD></TR></TBODY></TABLE>
+</BODY></HTML>"""
+
 ANCHORED = """<html><body>
 <h1>Работа с выражениями</h1>
 <blockquote><a href="#calculate">Вычислить</a> <br><a href="#EvalExpression">ВычислитьВыражение</a></blockquote>
@@ -165,6 +170,22 @@ def test_each_table_row_is_its_own_line():
     article = parse_article_file("shquery", "UNIONSection", TABLE_LAYOUT)[0]
     assert "<Объединение запросов>" in article.description.splitlines()
     assert "ОБЪЕДИНИТЬ [ВСЕ] <Описание запроса>" in article.description.splitlines()
+
+
+def test_a_line_break_inside_a_table_cell_still_breaks_the_line():
+    """Пример кода книга кладёт в ячейку таблицы, и <BR> в нём — перевод строки.
+
+    Прежнее правило считало ячейку поводом склеить строку: пример статьи
+    shlang/root_New печатал два оператора в одной строке.
+    """
+    article = parse_article_file("shquery", "overall_totals.html", CODE_EXAMPLE_IN_CELL)[0]
+
+    assert article.description.splitlines() == [
+        "ВЫБРАТЬ",
+        "Состав.Номенклатура",
+        "ИЗ",
+        "Документ.РасхНакл.Состав КАК Состав",
+    ]
 
 
 def test_dotted_names_inside_a_code_example_keep_their_dots():
