@@ -218,6 +218,13 @@ class ElasticsearchClient:
         )
         return response
 
+    async def index_document(self, document: Dict[str, Any], index: Optional[str] = None) -> bool:
+        """Пишет один документ; имя индекса разрешается так же, как в search()."""
+        if not self._client:
+            return False
+        await self._client.index(index=self._index(index), document=document)
+        return True
+
 
 def create_elasticsearch_client() -> ElasticsearchClient:
     """Создаёт новый экземпляр ElasticsearchClient."""
