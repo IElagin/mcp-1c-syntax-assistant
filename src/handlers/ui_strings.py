@@ -235,9 +235,12 @@ RU_STRINGS = UiStrings(
         "объект — посмотреть его состав через list_1c_object_members."
     ),
     articles_not_indexed=(
-        "Статьи не проиндексированы: книг shlang_ru.hbk, shquery_ru.hbk, "
-        "shclang_ru.hbk и dcsui_ru.hbk нет в каталоге data/hbk. "
-        "Это не значит, что статьи по запросу отсутствуют."
+        "Статьи не проиндексированы: в индексе нет ни одной. Книги "
+        "shlang_ru.hbk, shquery_ru.hbk, shclang_ru.hbk и dcsui_ru.hbk должны "
+        "лежать в data/hbk, а индекс — строиться после того, как они там "
+        "появились. Каких книг не хватает, показывает поле "
+        "missing_article_books в /health. Это не значит, что статьи по "
+        "запросу отсутствуют."
     ),
     no_similar_objects="подходящих не найдено",
     object_missing_for_element=(
@@ -404,9 +407,11 @@ EN_STRINGS = UiStrings(
         "you know the object, look at its member list via list_1c_object_members."
     ),
     articles_not_indexed=(
-        "Articles are not indexed: shlang_root.hbk, shquery_root.hbk, "
-        "shclang_root.hbk and dcsui_root.hbk are absent from data/hbk-en. "
-        "This does not mean no article matches the query."
+        "Articles are not indexed: the index holds none. shlang_root.hbk, "
+        "shquery_root.hbk, shclang_root.hbk and dcsui_root.hbk must be in "
+        "data/hbk-en, and the index must be built after they appear there. "
+        "The missing_article_books_en field of /health names the books that "
+        "are absent. This does not mean no article matches the query."
     ),
     no_similar_objects="none found",
     object_missing_for_element=(

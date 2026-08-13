@@ -3,7 +3,7 @@
 import pytest
 
 from src.handlers.element_card import render_article
-from src.handlers.ui_strings import RU_STRINGS
+from src.handlers.ui_strings import EN_STRINGS, RU_STRINGS
 from src.models.mcp_models import Get1CArticleRequest, MCPToolType
 
 ARTICLE = {
@@ -101,3 +101,16 @@ async def test_book_narrows_an_ambiguous_title():
 
     body = client.search.await_args.args[0]
     assert {"term": {"book": "shlang"}} in body["query"]["bool"]["filter"]
+
+
+def test_not_indexed_message_does_not_claim_the_books_are_missing():
+    """Проверялся индекс, а не каталог: утверждать про файлы сервер не вправе.
+
+    Английские книги статей могут лежать на диске, а в индексе их не быть —
+    именно так и было на рабочем контуре, а сообщение заявляло, что книг нет.
+    """
+    for strings in (RU_STRINGS, EN_STRINGS):
+        message = strings.articles_not_indexed
+        assert "нет в каталоге" not in message
+        assert "are absent from" not in message
+        assert "missing_article_books" in message
