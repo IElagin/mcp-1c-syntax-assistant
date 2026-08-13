@@ -1,6 +1,6 @@
 # Тесты
 
-407 тестов. Настройки pytest — в `pytest.ini` в корне репозитория, общие
+431 тест. Настройки pytest — в `pytest.ini` в корне репозитория, общие
 фикстуры и заглушки — в `conftest.py`, тестовые данные — в `fixtures/`.
 
 ## Как запускать
@@ -22,10 +22,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python -m pytest -q
 ```
 
-Срез без Elasticsearch — тот же, что гоняет CI:
+Срез, который гоняет CI:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python -m pytest -m "not elasticsearch and not slow" -q
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-server python -m pytest -m "not real_book and not real_index and not live_server" -q
 ```
 
 Один файл или один тест:
@@ -45,12 +45,14 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-serve
 
 | Маркер | Что помечает | Тестов |
 |---|---|---|
-| `unit` | Быстрые тесты на заглушках, без внешних зависимостей | 243 |
-| `integration` | Тесты с настоящими компонентами — Elasticsearch, файл справки | 55 |
-| `slow` | Тесты дольше десятка секунд: полный разбор или полная индексация | 13 |
-| `elasticsearch` | Требуют поднятого Elasticsearch с построенным индексом | 52 |
-| `parser` | Разбор `.hbk` и HTML справки | 87 |
-| `indexer` | Индексация в Elasticsearch | 24 |
+| `unit` | Быстрые тесты на заглушках, без внешних зависимостей | 248 |
+| `integration` | Тесты с настоящими компонентами — Elasticsearch, файл справки | 58 |
+| `elasticsearch` | Требует поднятого Elasticsearch | 41 |
+| `real_book` | Требует настоящую поставку 1С в `data/` — в репозиторий она не входит | 13 |
+| `real_index` | Требует заполненный боевой индекс `help1c_docs` | 49 |
+| `live_server` | Требует сервер, отвечающий на `localhost:8000` | 14 |
+| `parser` | Разбор `.hbk` и HTML справки | 89 |
+| `indexer` | Индексация в Elasticsearch | 27 |
 | `search` | Поиск и ранжирование | 6 |
 | `background` | Фоновые задачи | 0 |
 | `retry` | Механизмы повторов | 0 |
@@ -60,7 +62,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-serve
 используются. Маркер новому тесту ставится обязательно: `--strict-markers`
 превращает опечатку в ошибку, а не в молчаливо пропущенный фильтр.
 
-Сумма по `unit` и `integration` (243 + 55 = 298) меньше 407: часть тестов не
+Сумма по `unit` и `integration` (248 + 58 = 306) меньше 431: часть тестов не
 помечена ни тем, ни другим — среди них разбор статей (`test_article_parser.py`),
 он проверяется как чистая функция строки и маркера не несёт.
 
@@ -71,7 +73,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-serve
 `tests/test_article_model.py`, `tests/test_article_indexing.py`,
 `tests/test_article_index_write.py`, `tests/test_article_search.py`,
 `tests/test_get_article.py`, `tests/test_article_books_real_corruption.py`,
-`tests/test_article_book_isolation.py`).
+`tests/test_article_book_isolation.py`, `tests/test_article_fixture_books.py`,
+`tests/test_article_answer_shape.py`,
+`tests/test_card_and_article_in_one_index.py`).
 `tests/test_indexing_partial_failure.py` и `tests/test_page_loss_accounting.py`
 покрывают `MAX_TOLERATED_PAGE_LOSS_SHARE` — книгу, потерявшую при разборе
 больше 5% страниц, и способы потерять страницу.
@@ -80,9 +84,11 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-serve
 
 ## Тесты, которым нужен Elasticsearch
 
-52 теста с маркером `elasticsearch` работают против живого кластера и
-построенного индекса. Без поднятого контура они падают, а не пропускаются:
-зелёный прогон на пустом индексе был бы хуже красного.
+41 тест с маркером `elasticsearch` требует живого кластера. Из них 35 несут
+ещё и `real_index` — им нужен не пустой кластер, а заполненный `help1c_docs`,
+и без него они падают, а не пропускаются: зелёный прогон на пустом индексе был
+бы хуже красного. Оставшиеся 6 строят собственный изолированный индекс и
+проходят на пустом кластере так же, как на любом другом.
 
 Проверить, что контур готов:
 
@@ -94,9 +100,10 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 равно `false`. Как построить и как переиндексировать —
 [docs/CONFIGURATION.md](../docs/CONFIGURATION.md#переиндексация).
 
-CI кластер не поднимает: держать Elasticsearch ради 65 тестов (`elasticsearch`
-и `slow`) дорого, а оставшиеся 342 покрывают парсер, карточку и контракт
-инструментов.
+CI поднимает Elasticsearch сервисным контейнером и гоняет всё, чему достаточно
+кластера. Вне CI остаётся то, что кластером не решить: настоящая поставка 1С в
+`data/` (`real_book`), заполненный боевой индекс (`real_index`) и сервер,
+отвечающий на `localhost:8000` (`live_server`).
 
 ## Соглашения
 

@@ -29,6 +29,7 @@ def names(results):
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.search
 @pytest.mark.asyncio
 async def test_dotted_query_finds_exactly_that_method():
@@ -55,6 +56,7 @@ async def test_dotted_query_finds_exactly_that_method():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.search
 @pytest.mark.asyncio
 async def test_dotted_query_admits_no_foreign_objects():
@@ -78,6 +80,7 @@ async def test_dotted_query_admits_no_foreign_objects():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.search
 @pytest.mark.asyncio
 async def test_exact_name_ranks_above_partial():
@@ -105,6 +108,7 @@ async def test_exact_name_ranks_above_partial():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.search
 @pytest.mark.asyncio
 async def test_search_by_english_name_is_exact():

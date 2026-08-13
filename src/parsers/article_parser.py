@@ -17,8 +17,9 @@ SECTION_HEADINGS = ("h2", "h3", "h4", "h5", "h6")
 PAGE_TITLE_HEADING = "h1"
 PAGE_HEADER_CLASS = "V8SH_title"
 FOOTER_SEPARATOR = "hr"
-LINE_BREAK_TAGS = frozenset({
-    "br", "p", "div", "li", "tr", "table", "pre", "blockquote",
+LINE_BREAK_TAG = "br"
+BLOCK_TAGS = frozenset({
+    "p", "div", "li", "tr", "table", "pre", "blockquote",
     "h1", "h2", "h3", "h4", "h5", "h6",
 })
 CELL_TAGS = frozenset({"td", "th"})
@@ -140,12 +141,9 @@ def _text_fragment(text: NavigableString) -> str:
 
 
 def _text_of_nodes(nodes: Iterable, stop: Optional[Tag] = None) -> str:
-    """Текст узлов до stop; абзацы, строки таблиц и <br> дают перевод строки.
+    """Текст узлов до stop; <br> переводит строку, блочный тег — вне ячейки.
 
-    Куски склеиваются без разделителя: собственные пробелы у разметки уже есть,
-    а добавленный разбивает «<Описание запроса>» на «< Описание запроса >».
-    Пробел после точки восстанавливается только в прозе — в коде точка
-    разделяет части составного имени, и «Документ.РасхНакл» ею не кончается.
+    Форма текста статьи описана в docs/MCP_TOOLS.md, раздел «get_1c_article».
     """
     collected = []
     for node in nodes:
@@ -155,7 +153,9 @@ def _text_of_nodes(nodes: Iterable, stop: Optional[Tag] = None) -> str:
             continue
         if isinstance(node, NavigableString):
             collected.append(_text_fragment(node))
-        elif node.name in LINE_BREAK_TAGS:
+        elif node.name == LINE_BREAK_TAG:
+            collected.append("\n")
+        elif node.name in BLOCK_TAGS:
             collected.append(" " if _has_ancestor(node, CELL_TAGS) else "\n")
         elif node.name in CELL_TAGS:
             collected.append(" ")

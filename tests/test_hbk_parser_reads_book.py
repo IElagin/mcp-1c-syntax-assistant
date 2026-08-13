@@ -9,7 +9,7 @@ from src.parsers.hbk_parser import HBKParser
 REAL_BOOK = Path(__file__).resolve().parents[1] / "data" / "hbk" / "shcntx_ru.hbk"
 
 
-@pytest.mark.slow
+@pytest.mark.real_book
 def test_parser_produces_the_same_document_count_as_before():
     """Смена извлечения не меняет состав книги: 23 125 документов."""
     if not REAL_BOOK.exists():
@@ -20,7 +20,7 @@ def test_parser_produces_the_same_document_count_as_before():
     assert len(parsed.documentation) == 23125
 
 
-@pytest.mark.slow
+@pytest.mark.real_book
 def test_parser_page_paths_use_forward_slashes():
     """Разделитель больше не зависит от платформы сборки."""
     if not REAL_BOOK.exists():

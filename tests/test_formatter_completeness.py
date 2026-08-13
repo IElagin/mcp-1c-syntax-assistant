@@ -230,6 +230,7 @@ def test_hint_about_fetching_the_rest_promises_nothing_impossible():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_total_is_real_when_limit_truncates():
     """total отражает число элементов в индексе, а не размер вернувшегося куска."""
@@ -248,6 +249,7 @@ async def test_total_is_real_when_limit_truncates():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_existing_object_without_requested_kind_is_not_reported_missing():
     """total=0 при members="events" у ТаблицаЗначений — но объект есть.
@@ -272,6 +274,7 @@ async def test_existing_object_without_requested_kind_is_not_reported_missing():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_nonexistent_object_is_really_not_found():
     """Настоящее отсутствие объекта по-прежнему отличимо от «нет элементов
@@ -292,6 +295,7 @@ async def test_nonexistent_object_is_really_not_found():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_object_without_real_members_does_not_catch_itself_on_all():
     """members="all" раньше фильтровал только по object, без ограничения по
@@ -316,6 +320,7 @@ async def test_object_without_real_members_does_not_catch_itself_on_all():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_all_counter_equals_sum_by_kinds_without_extra_document():
     """total для all обязан равняться сумме total по methods+properties+events,
@@ -343,6 +348,7 @@ async def test_all_counter_equals_sum_by_kinds_without_extra_document():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_methods_past_the_twentieth_are_visible():
     """Методы из хвоста алфавита доходят до вывода — и со строкой вызова."""

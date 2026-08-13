@@ -410,6 +410,31 @@ def hbk_fixture_archive(tmp_path):
     return write_book(tmp_path / "fixture_book.hbk", pages)
 
 
+FIXTURES_ARTICLES = Path(__file__).parent / "fixtures" / "articles"
+
+ARTICLE_PAGES_RU = {
+    "shlang": ("struct_for.html", "array_article.html"),
+    "shquery": ("union_section.html", "overall_totals.html"),
+    "dcsui": ("functions_group.html", "saving_settings.html"),
+}
+
+
+@pytest.fixture
+def article_books_directory(tmp_path):
+    """Каталог книг статей из фикстурных страниц; книги shclang в нём нет."""
+    from src.core.constants import ARTICLE_BOOKS
+
+    directory = tmp_path / "hbk"
+    directory.mkdir()
+    for book in ARTICLE_BOOKS:
+        pages = ARTICLE_PAGES_RU.get(book.key)
+        if pages:
+            write_book(directory / book.ru, {
+                page: (FIXTURES_ARTICLES / page).read_bytes() for page in pages
+            })
+    return directory
+
+
 @pytest.fixture
 async def isolated_index():
     """Имя индекса, который тест вправе перестраивать, и уборка за ним."""

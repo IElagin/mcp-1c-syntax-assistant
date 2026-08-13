@@ -20,6 +20,7 @@ from src.search.search_service import SearchService
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_object_filter_narrows_selection():
     """Фильтр по объекту обязан сужать выдачу.
@@ -45,6 +46,7 @@ async def test_object_filter_narrows_selection():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_dotted_path_finds_its_own_document():
     """Точечный путь из справки обязан находить документ, чей это путь.
@@ -81,6 +83,7 @@ async def test_dotted_path_finds_its_own_document():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 @pytest.mark.asyncio
 async def test_free_text_with_a_period_is_not_read_as_an_object():
     """Точка в предложении — не обращение к элементу объекта.

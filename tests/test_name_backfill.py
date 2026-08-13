@@ -33,6 +33,7 @@ def _page_query(source_file: str) -> dict:
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 async def test_global_context_gets_its_english_name():
     """У «Глобальный контекст» в норме нет ни name_en, ни object_en.
 
@@ -78,6 +79,7 @@ async def test_global_context_gets_its_english_name():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 async def test_backfill_is_exhaustive_in_one_pass_and_idempotent_after():
     """Один вызов обязан достроить всё достижимое, второй — ничего не менять.
 
@@ -120,6 +122,7 @@ async def test_backfill_is_exhaustive_in_one_pass_and_idempotent_after():
 
 @pytest.mark.integration
 @pytest.mark.elasticsearch
+@pytest.mark.real_index
 async def test_already_parsed_name_en_is_not_overwritten():
     """object_en бывает пуст у страниц, чьё name_en уже разобрано задачей 11.
 

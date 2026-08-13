@@ -111,7 +111,8 @@ def test_schema_and_model_share_one_search_limit_ceiling():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_error_is_marked_as_error():
     """isError обязан отражать реальность, иначе агент примет отказ за успех."""
@@ -129,7 +130,8 @@ async def test_error_is_marked_as_error():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_card_arrives_as_text():
     import httpx
@@ -239,7 +241,8 @@ async def test_error_kind_becomes_an_error_not_a_quiet_answer(monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_initialize_promises_no_extra_capabilities():
     """resources/prompts/roots/sampling убраны: заявленное, но не работающее
@@ -256,7 +259,8 @@ async def test_initialize_promises_no_extra_capabilities():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_prompts_list_honestly_returns_method_not_found():
     """prompts/list раньше отдавал пустой список при неснятой capability —
@@ -272,7 +276,8 @@ async def test_prompts_list_honestly_returns_method_not_found():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_member_list_does_not_deny_object_over_one_missing_kind():
     """У ТаблицаЗначений нет событий, но сама она есть — инструмент не должен
@@ -292,7 +297,8 @@ async def test_member_list_does_not_deny_object_over_one_missing_kind():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_object_without_members_promises_no_phantom_element_on_all():
     """members="all" — значение по умолчанию, основной путь. У JSON нет ни
@@ -317,7 +323,8 @@ async def test_object_without_members_promises_no_phantom_element_on_all():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_hint_in_homonym_card_is_executable():
     """Совет "вызовите find_1c_help с limit=N" обязан укладываться в тот же
@@ -350,7 +357,8 @@ async def test_hint_in_homonym_card_is_executable():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_old_param_name_gives_error_not_silent_drop():
     """object_name — упразднённое имя параметра get_1c_element (актуальное —
@@ -370,7 +378,8 @@ async def test_old_param_name_gives_error_not_silent_drop():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_empty_search_result_distinguishes_no_element_from_no_object():
     """find_1c_help с object= обязан отличать «нет элемента» от «нет объекта».
@@ -398,7 +407,8 @@ async def test_empty_search_result_distinguishes_no_element_from_no_object():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_empty_search_result_names_the_kind_filter():
     """Если выдачу обнулил фильтр kind, об этом сказано прямо."""
@@ -417,7 +427,8 @@ async def test_empty_search_result_names_the_kind_filter():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_paging_hint_promises_nothing_impossible():
     """«Повторите с limit=200 за остальными» вернёт те же первые 200.
@@ -439,7 +450,8 @@ async def test_paging_hint_promises_nothing_impossible():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_object_card_hint_is_executable():
     """Карточка объекта советует list_1c_object_members — совет обязан работать.
@@ -473,7 +485,8 @@ async def test_object_card_hint_is_executable():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_unknown_tool_is_a_call_error_not_a_server_failure():
     """Промах по имени инструмента обязан читаться как промах вызывающего.
@@ -506,7 +519,8 @@ async def test_unknown_tool_is_a_call_error_not_a_server_failure():
 
 
 @pytest.mark.integration
-@pytest.mark.elasticsearch
+@pytest.mark.real_index
+@pytest.mark.live_server
 @pytest.mark.asyncio
 async def test_non_object_arguments_are_also_a_call_error():
     """arguments строкой вместо объекта — тот же класс: виноват вызов."""
