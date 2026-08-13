@@ -73,3 +73,26 @@ async def test_an_unknown_lang_is_rejected_instead_of_silently_meaning_russian()
 
     assert response.status_code == 422
     assert calls == []
+
+
+async def test_lang_both_with_neither_book_present_reports_a_skipped_verdict_for_each():
+    """Ни одной книги нет на диске — 400 с исходом на каждый язык, а не общей фразой."""
+    from src.main import app
+
+    client = AsyncMock()
+    client.is_connected = AsyncMock(return_value=True)
+
+    with patch("src.api.routes.index.resolve_hbk_file", return_value=None), \
+         patch("src.api.dependencies.get_elasticsearch_client", return_value=client):
+        app.dependency_overrides.clear()
+        from src.api.dependencies import get_elasticsearch_client
+        app.dependency_overrides[get_elasticsearch_client] = lambda: client
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+            response = await http.post("/index/rebuild?lang=both")
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    languages = response.json()["detail"]["languages"]
+    assert languages["ru"]["status"] == "skipped"
+    assert languages["en"]["status"] == "skipped"

@@ -84,51 +84,68 @@ async def rebuild_index(
     es_client: ElasticsearchClient = Depends(get_elasticsearch_client),
 ):
     """Переиндексация книг справки: русской, английской или обеих."""
-    languages = _requested_languages(lang)
-    reported: Dict[str, dict] = {}
-    resolved: Dict[str, tuple] = {}
+    try:
+        languages = _requested_languages(lang)
+        reported: Dict[str, dict] = {}
+        resolved: Dict[str, tuple] = {}
 
-    for language in languages:
-        directory, filename, index = _BOOKS[language]()
-        hbk_file = resolve_hbk_file(directory, filename)
-        if hbk_file is None:
-            reported[language] = {
-                "status": "skipped",
-                "message": f"Книга справки {filename} не найдена в {directory}",
-            }
-        else:
-            resolved[language] = (hbk_file, index)
+        for language in languages:
+            directory, filename, index = _BOOKS[language]()
+            hbk_file = resolve_hbk_file(directory, filename)
+            if hbk_file is None:
+                reported[language] = {
+                    "status": "skipped",
+                    "message": f"Книга справки {filename} не найдена в {directory}",
+                }
+            else:
+                resolved[language] = (hbk_file, index)
 
-    if not resolved:
-        detail = reported[languages[0]]["message"] if len(languages) == 1 else {"languages": reported}
-        raise HTTPException(status_code=400, detail=detail)
-
-    if not await es_client.is_connected():
-        raise HTTPException(status_code=503, detail="Elasticsearch недоступен")
-
-    for language, (hbk_file, index) in resolved.items():
-        logger.info(f"Начинаем переиндексацию ({language}): {hbk_file}")
-        outcome = await index_hbk_file(str(hbk_file), es_client, index=index, lang=language)
-        reported[language] = {
-            "status": "success" if outcome.ok else "failed",
-            "message": describe_outcome(outcome),
-            "file": str(hbk_file),
-            "documents_count": await es_client.get_documents_count(index=index),
-        }
-
-    any_success = any(report["status"] == "success" for report in reported.values())
-
-    if any_success:
-        try:
-            updated = await backfill_english_names(
-                es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
+        if not resolved:
+            detail = (
+                reported[languages[0]]["message"]
+                if len(languages) == 1
+                else {"languages": reported}
             )
-            if updated:
-                logger.info(f"Достроено английских имён после переиндексации: {updated}")
-        except Exception as e:
-            logger.error(f"Ошибка достройки английских имён после переиндексации: {e}")
+            raise HTTPException(status_code=400, detail=detail)
 
-    if not any_success:
-        raise HTTPException(status_code=500, detail={"languages": reported})
+        if not await es_client.is_connected():
+            raise HTTPException(status_code=503, detail="Elasticsearch недоступен")
 
-    return {"status": "success", "languages": reported}
+        for language, (hbk_file, index) in resolved.items():
+            logger.info(f"Начинаем переиндексацию ({language}): {hbk_file}")
+            outcome = await index_hbk_file(str(hbk_file), es_client, index=index, lang=language)
+            reported[language] = {
+                "status": "success" if outcome.ok else "failed",
+                "message": describe_outcome(outcome),
+                "file": str(hbk_file),
+            }
+            if outcome.ok:
+                reported[language]["documents_count"] = await es_client.get_documents_count(
+                    index=index
+                )
+
+        any_success = any(report["status"] == "success" for report in reported.values())
+
+        if any_success:
+            try:
+                updated = await backfill_english_names(
+                    es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
+                )
+                if updated:
+                    logger.info(f"Достроено английских имён после переиндексации: {updated}")
+            except Exception as e:
+                logger.error(f"Ошибка достройки английских имён после переиндексации: {e}")
+
+        if not any_success:
+            raise HTTPException(status_code=500, detail={"languages": reported})
+
+        return {"status": "success", "languages": reported}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка переиндексации: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка: {str(e)}"
+        )
