@@ -202,7 +202,11 @@ REINDEX_ON_STARTUP=true
 
 ### 3. Эндпоинт `POST /index/rebuild`
 
-Переиндексация работающего сервера, без перезапуска контейнеров:
+Переиндексация работающего сервера, без перезапуска контейнеров. Параметр
+`lang` выбирает книгу: `ru` (умолчание, прежнее поведение без параметра),
+`en` или `both` — обе книги за один вызов. Так английский индекс
+перестраивается по запросу, без `REINDEX_ON_STARTUP=true` и без перезапуска
+контейнера.
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri http://localhost:8000/index/rebuild
@@ -216,19 +220,51 @@ curl -X POST http://localhost:8000/index/rebuild
 таймаут клиента. Если ответа не дождались, проверяйте результат через
 `GET /index/status`, а не повторяйте вызов вслепую.
 
-Успешный ответ:
+Успешный ответ несёт исход на каждый запрошенный язык — «русский собран,
+английской книги нет» — два факта, а не один статус:
 
 ```json
 {
   "status": "success",
-  "message": "Переиндексация завершена успешно",
-  "file": "data/hbk/shcntx_ru.hbk",
-  "documents_count": 23125
+  "languages": {
+    "ru": {
+      "status": "success",
+      "message": "Индексация завершена: документов 23125, из них статей 366.",
+      "file": "data/hbk/shcntx_ru.hbk",
+      "documents_count": 23125
+    }
+  }
 }
 ```
 
-Если книги нет в каталоге, эндпоинт отвечает 400 с именем файла, которого не
-хватает; если недоступен Elasticsearch — 503.
+Переиндексация только английской книги:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://localhost:8000/index/rebuild?lang=en"
+```
+
+```bash
+curl -X POST "http://localhost:8000/index/rebuild?lang=en"
+```
+
+```json
+{
+  "status": "success",
+  "languages": {
+    "en": {
+      "status": "success",
+      "message": "Индексация завершена: документов 6210, из них статей 367.",
+      "file": "data/hbk-en/shcntx_root.hbk",
+      "documents_count": 6210
+    }
+  }
+}
+```
+
+Неизвестное значение `lang` отклоняется с 422. Если ни одной из запрошенных
+книг нет в каталоге — 400; если недоступен Elasticsearch — 503; если
+переиндексация не удалась для всех запрошенных языков — 500, с тем же
+объектом `languages` в `detail`, где у каждого языка свой исход.
 
 ### Как следить за ходом
 
@@ -334,8 +370,8 @@ C:\Program Files\1cv8\<версия>\bin\shcntx_root.hbk
 # 1. Скопировать книгу в отдельный каталог
 Copy-Item "C:\Program Files\1cv8\8.3.24.1234\bin\shcntx_root.hbk" data\hbk-en\
 
-# 2. Перезапустить контейнер сервера — новый файл подхватится при старте
-docker compose restart mcp-server
+# 2. Проиндексировать книгу — без перезапуска контейнера
+Invoke-RestMethod -Method Post -Uri "http://localhost:8000/index/rebuild?lang=en"
 
 # 3. Проверить готовность
 Invoke-RestMethod http://localhost:8000/health
@@ -345,32 +381,18 @@ Invoke-RestMethod http://localhost:8000/health
 объявлен в `docker-compose.yml`, добавлять его самостоятельно не нужно.
 Русская и английская книги индексируются при старте независимо друг от
 друга: у каждой свой каталог, свой индекс и своё решение «нужна ли
-(пере)индексация» (`src/infrastructure/indexing.py`, `auto_index_on_startup`), поэтому
-добавление английской книги не трогает уже готовый русский индекс. Готовность
-видна в `/health` по полям `index_en_exists`/`documents_count_en` — так же,
-как `index_exists`/`documents_count` для русской.
+(пере)индексация» (`src/infrastructure/indexing.py`, `auto_index_on_startup`).
+Это касается только автоиндексации на старте: `POST /index/rebuild?lang=en`
+перестраивает английский индекс по запросу в любой момент и не трогает
+русский. Готовность видна в `/health` по полям
+`index_en_exists`/`documents_count_en` — так же, как
+`index_exists`/`documents_count` для русской.
 
 ### Переиндексация только английского индекса
 
-У `POST /index/rebuild` нет параметра языка: эндпоинт всегда переиндексирует
-русскую книгу (`HBK_FILENAME`) в русский индекс (`src/api/routes/index.py`).
-Отдельного эндпоинта для одной только английской книги в сервере нет.
-
-Переиндексировать одну только английскую книгу можно перезапуском: удалите
-индекс `help1c_docs_en` в самом Elasticsearch и перезапустите контейнер
-`mcp-server`. Автоиндексация при старте решает по каждой книге отдельно
-(`_needs_indexing` в `src/infrastructure/indexing.py`): если индекс уже существует и не
-пуст, книга пропускается — так русский индекс останется нетронутым; если
-индекса нет, книга индексируется заново.
-
-```powershell
-Invoke-RestMethod -Method Delete -Uri http://127.0.0.1:9200/help1c_docs_en
-docker compose restart mcp-server
-```
-
-`REINDEX_ON_STARTUP=true` для этой цели не подходит: он не различает книги и
-форсирует переиндексацию обеих при каждом старте контейнера, а не только
-английской.
+`POST /index/rebuild?lang=en` переиндексирует только английский индекс — см.
+[«Эндпоинт `POST /index/rebuild`»](#3-эндпоинт-post-indexrebuild) выше в этом
+файле, там же формат ответа и `lang=both` для обеих книг разом.
 
 ### Достройка английских имён объектов
 
