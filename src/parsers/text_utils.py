@@ -17,6 +17,14 @@ _BLANK_LINE_RUN = re.compile(r'\n{3,}')
 _LETTER = "а-яёА-ЯЁa-zA-Z"
 _COMMA_WITHOUT_SPACE = re.compile(rf'([{_LETTER})]),([{_LETTER}])')
 _COLON_WITHOUT_SPACE = re.compile(rf'([{_LETTER}]{{2}}):([{_LETTER}])')
+_COLON_BETWEEN_FORMAT_TOKENS = re.compile(rf'([{_LETTER}])\1:([{_LETTER}])\2')
+
+
+def _spaced_colon(match: re.Match) -> str:
+    """Двоеточие с пробелом после него; внутри формата даты — как было."""
+    if _COLON_BETWEEN_FORMAT_TOKENS.match(match.string, match.start()):
+        return match.group(0)
+    return f"{match.group(1)}: {match.group(2)}"
 
 
 def normalize_whitespace(text: str) -> str:
@@ -36,11 +44,11 @@ def restore_space_after_period(text: str) -> str:
 def restore_space_after_punctuation(text: str) -> str:
     """Ставит пробел после запятой и двоеточия там, где вёрстка его потеряла.
 
-    Двоеточие требует двух букв перед собой: в «1С:Предприятие» и
-    «1C:Enterprise» на этом месте цифра, и имя продукта остаётся именем.
+    Двоеточие остаётся на месте там, где оно часть значения: в имени
+    «1С:Предприятие» перед ним цифра, в формате «ЧЧ:ММ:СС» — повтор буквы.
     """
     spaced = _COMMA_WITHOUT_SPACE.sub(r'\1, \2', text or "")
-    return _COLON_WITHOUT_SPACE.sub(r'\1: \2', spaced)
+    return _COLON_WITHOUT_SPACE.sub(_spaced_colon, spaced)
 
 
 def clean_description(text: str) -> str:
