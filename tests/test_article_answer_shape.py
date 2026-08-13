@@ -5,12 +5,16 @@
   struct_for.html        — заголовок печатался трижды; строки склеивались
                            в одну; подвал за <hr> утекал в текст
   union_section.html     — строка таблицы печаталась по ячейке на строку;
-                           «<Описание запроса>» разрывалось пробелами
+                           «<Описание запроса>» разрывалось пробелами; перевод
+                           строки в разметке считался значимым
   overall_totals.html    — точка в «Документ.РасхНакл.Состав» принималась
                            за конец предложения; <BR> в ячейке терялся
   functions_group.html   — раздел повторял собственный заголовок
   saving_settings.html   — закомментированная разметка печаталась как текст
   array_article.html     — заголовок статьи совпадает с именем карточки
+
+Золотой файл руками не правят: когда форма ответа меняется намеренно, новый
+текст берут из вывода этого же теста.
 """
 
 from pathlib import Path
@@ -43,6 +47,7 @@ def _whole_answer(directory) -> str:
 
 
 def test_every_fixture_article_reads_exactly_as_recorded(article_books_directory):
-    assert _whole_answer(article_books_directory) == EXPECTED_ANSWERS.read_text(
-        encoding="utf-8"
-    )
+    produced = _whole_answer(article_books_directory)
+    expected = EXPECTED_ANSWERS.read_text(encoding="utf-8")
+
+    assert produced.splitlines(keepends=True) == expected.splitlines(keepends=True)

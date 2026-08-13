@@ -47,7 +47,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mcp-serve
 |---|---|---|
 | `unit` | Быстрые тесты на заглушках, без внешних зависимостей | 248 |
 | `integration` | Тесты с настоящими компонентами — Elasticsearch, файл справки | 58 |
-| `elasticsearch` | Требует поднятого Elasticsearch; данные тест готовит сам | 41 |
+| `elasticsearch` | Требует поднятого Elasticsearch | 41 |
 | `real_book` | Требует настоящую поставку 1С в `data/` — в репозиторий она не входит | 13 |
 | `real_index` | Требует заполненный боевой индекс `help1c_docs` | 49 |
 | `live_server` | Требует сервер, отвечающий на `localhost:8000` | 14 |

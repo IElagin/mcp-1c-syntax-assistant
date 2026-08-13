@@ -58,7 +58,7 @@ async def test_the_card_tool_answers_with_the_card_not_the_article(client_on_a_m
     )
 
     text = _text(response)
-    assert f"{COLLIDING_NAME} — объект" in text, text
+    assert text.splitlines()[0] == f"{COLLIDING_NAME} — {RU_STRINGS.object_word}", text
     assert "хранит значения по индексу" not in text, text
 
 
