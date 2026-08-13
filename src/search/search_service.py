@@ -78,6 +78,10 @@ def _name_filter(name: str) -> Dict[str, Any]:
     ])
 
 
+_IS_ARTICLE = {"term": {"type": DocumentType.ARTICLE.value}}
+_IS_CARD = {"bool": {"must_not": _IS_ARTICLE}}
+
+
 def _article_name_filter(name: str) -> Dict[str, Any]:
     """Заголовок статьи на любом языке либо её ключ."""
     return _any_of([
@@ -350,8 +354,8 @@ class SearchService:
                     "similar": await self.similar_objects(object_name),
                 }
 
-            name_filter = _name_filter(name)
-            filters = [name_filter]
+            by_name = [_name_filter(name), _IS_CARD]
+            filters = list(by_name)
             if object_name:
                 filters.append(_object_filter(object_name))
 
@@ -362,7 +366,7 @@ class SearchService:
             documents = sources_of(response)
 
             if not documents:
-                return await self._nothing_matched(name, object_name, name_filter)
+                return await self._nothing_matched(name, object_name, by_name)
 
             if len(documents) > 1:
                 return await self._ambiguous(name, filters, total_of(response))
@@ -374,13 +378,13 @@ class SearchService:
             return {"kind": "error", "name": name, "error": str(e)}
 
     async def _nothing_matched(
-        self, name: str, object_name: Optional[str], name_filter: Dict[str, Any]
+        self, name: str, object_name: Optional[str], by_name: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Почему точного совпадения нет: у объекта или во всей справке."""
         if object_name:
-            total = await self._count([name_filter])
+            total = await self._count(by_name)
             if total:
-                candidates = await self._order_candidates([name_filter], total)
+                candidates = await self._order_candidates(by_name, total)
                 return {
                     "kind": "not_in_object",
                     "name": name,
@@ -394,7 +398,12 @@ class SearchService:
             "kind": "not_found",
             "name": name,
             "similar": await self._similar_members(name),
+            "article_exists": await self._article_exists(name),
         }
+
+    async def _article_exists(self, name: str) -> bool:
+        """Есть ли статья ровно с таким заголовком: карточки у неё нет и не будет."""
+        return await self._count([_article_name_filter(name), _IS_ARTICLE]) > 0
 
     async def _ambiguous(
         self, name: str, filters: List[Dict[str, Any]], total: int
@@ -504,9 +513,16 @@ class SearchService:
         return found
 
     async def _similar_members(self, name: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Элементы с близким именем для ответа «точного совпадения нет»."""
+        """Элементы с близким именем для ответа «точного совпадения нет».
+
+        Только карточки: get_1c_element статью не отдаёт, и предлагать её здесь
+        значит советовать вызов, который снова ничего не вернёт.
+        """
         return sources_of(await self._search({
-            "query": {"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}},
+            "query": {"bool": {
+                "must": [{"match": {"name_ru": {"query": name, "fuzziness": "AUTO"}}}],
+                "filter": [_IS_CARD],
+            }},
             "size": limit,
         }))
 

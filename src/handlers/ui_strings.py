@@ -101,6 +101,7 @@ class UiStrings:
     single_variant_no_name: str
 
     element_not_found: str
+    element_is_an_article: str
     similar_by_name: str
     no_similar: str
 
@@ -115,6 +116,7 @@ class UiStrings:
 
     found_count: str
     full_card_hint_generic: str
+    full_article_hint_generic: str
 
     english_index_missing: str
     russian_name_in_english_book: str
@@ -248,6 +250,9 @@ RU_STRINGS = UiStrings(
     ),
     single_variant_no_name="вариант единственный и без имени",
     element_not_found='Элемент с точным именем «{name}» в справке не найден.',
+    element_is_an_article=(
+        'Зато под этим заголовком есть статья: get_1c_article(name="{name}").'
+    ),
     similar_by_name="Похожие по имени:",
     no_similar="Похожих по имени тоже нет — проверьте написание.",
     element_not_in_object=(
@@ -284,6 +289,7 @@ RU_STRINGS = UiStrings(
     ),
     found_count="Найдено {total} элементов по запросу «{query}».",
     full_card_hint_generic="Полная карточка: get_1c_element(name=…, object=…)",
+    full_article_hint_generic='Полный текст статьи: get_1c_article(name="…")',
     search_failed="Ошибка выполнения поиска",
     search_error_title="Ошибка поиска",
     internal_search_error_title="Внутренняя ошибка поиска",
@@ -413,6 +419,9 @@ EN_STRINGS = UiStrings(
     ),
     single_variant_no_name="there is only one variant, and it has no name",
     element_not_found='No element with the exact name "{name}" was found in the reference.',
+    element_is_an_article=(
+        'There is an article under that title: get_1c_article(name="{name}").'
+    ),
     similar_by_name="Similar by name:",
     no_similar="There is nothing similar by name either — check the spelling.",
     element_not_in_object=(
@@ -453,6 +462,7 @@ EN_STRINGS = UiStrings(
     ),
     found_count='Found {total} elements for the query "{query}".',
     full_card_hint_generic="Full card: get_1c_element(name=…, object=…)",
+    full_article_hint_generic='Full article text: get_1c_article(name="…")',
     search_failed="The search request failed",
     search_error_title="Search error",
     internal_search_error_title="Internal search error",

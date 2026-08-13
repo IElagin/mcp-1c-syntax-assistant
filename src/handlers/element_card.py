@@ -246,6 +246,11 @@ def _composition(counts: Dict[str, int], key: str, strings: UiStrings) -> List[s
     return lines
 
 
+def is_article_document(doc: Dict[str, Any]) -> bool:
+    """Документ — статья книги, а не карточка элемента."""
+    return (doc.get("type") or "") == DocumentType.ARTICLE.value
+
+
 def article_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
     """Одна строка на статью: заголовок, вид и книга."""
     parts = [doc.get("name") or doc.get("name_ru") or ""]
@@ -289,7 +294,7 @@ def article_candidate_list(
 
 def list_line(doc: Dict[str, Any], strings: UiStrings = RU_STRINGS) -> str:
     """Одна строка на элемент — для выдачи поиска и состава объекта."""
-    if (doc.get("type") or "") == DocumentType.ARTICLE.value:
+    if is_article_document(doc):
         return article_line(doc, strings)
 
     path = doc.get("full_path") or doc.get("name_ru") or ""

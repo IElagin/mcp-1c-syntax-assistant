@@ -10,9 +10,27 @@ from src.parsers.article_parser import (
 WHOLE_FILE = """<html><head><meta charset="utf-8"></head><body>
 <h1 class="V8SH_pagetitle">Для&nbsp;(For)</h1>
 <div class="V8SH_title">Для&nbsp;(For)</div>
-<p class="Usual"><b>Синтаксис:<br></b>Для &lt;Имя переменной&gt; = &lt;Выражение 1&gt; По &lt;Выражение 2&gt; Цикл</p>
+<p class="Usual"><b>Синтаксис:<br></b>Для &lt;Имя переменной&gt; = &lt;Выражение 1&gt; По &lt;Выражение 2&gt; Цикл<br>// Операторы<br>[Прервать;]<br>КонецЦикла;</p>
 <p class="Usual"><b>Описание:<br></b>Оператор цикла Для предназначен для циклического повторения операторов.</p>
+<hr>
+<p>&nbsp;<a href="http://www.1centerprise.com/devlinks">Методическая информация</a></p>
 </body></html>"""
+
+TABLE_LAYOUT = """<HTML><BODY>
+<H1 class="">Секция ОБЪЕДИНИТЬ</H1>
+<P>Объединение запросов описывается по следующему правилу:</P>
+<TABLE class=SimplyTable><TBODY>
+<TR><TD><P class=Usual>&lt;Объединение запросов&gt;</P></TD></TR>
+<TR><TD><P class=Usual>ОБЪЕДИНИТЬ [ВСЕ]</P></TD><TD><P class=Usual>&lt;Описание запроса&gt;</P></TD></TR>
+</TBODY></TABLE>
+</BODY></HTML>"""
+
+CODE_EXAMPLE = """<HTML><BODY>
+<H1 class="">Расчет общих итогов</H1>
+<P>Для расчета итогов по всей таблице указывается ключевое слово.В этом случае считаются все записи.</P>
+<H4 class="">Пример:</H4>
+<BLOCKQUOTE><P><FONT face="Courier New">ВЫБРАТЬ Док.Товар, Док.Ссылка.Номер<BR>ИЗ Документ.РасхНакл.Состав КАК Док</FONT></P></BLOCKQUOTE>
+</BODY></HTML>"""
 
 ANCHORED = """<html><body>
 <h1>Работа с выражениями</h1>
@@ -110,9 +128,55 @@ def test_lead_that_is_only_a_link_list_produces_no_article():
     assert [a.name for a in articles] == ["Лев (Left)"]
 
 
-def test_article_text_carries_its_own_heading():
+def test_article_text_does_not_repeat_its_own_heading():
     articles = parse_article_file("dcsui", "SKD_Functions_Expressions", ANCHORED)
-    assert articles[0].description.startswith("Вычислить (Eval)")
+    assert articles[0].name == "Вычислить (Eval)"
+    assert articles[0].description == (
+        "Функция Вычислить предназначена для вычисления выражения в контексте "
+        "некоторой группировки."
+    )
+
+
+def test_article_text_does_not_repeat_the_page_title():
+    article = parse_article_file("shlang", "struct_For", WHOLE_FILE)[0]
+    assert article.name == "Для (For)"
+    assert "Для (For)" not in article.description
+    assert article.description.startswith("Синтаксис:")
+
+
+def test_line_breaks_of_the_syntax_block_survive():
+    article = parse_article_file("shlang", "struct_For", WHOLE_FILE)[0]
+    assert article.description.splitlines()[:5] == [
+        "Синтаксис:",
+        "Для <Имя переменной> = <Выражение 1> По <Выражение 2> Цикл",
+        "// Операторы",
+        "[Прервать;]",
+        "КонецЦикла;",
+    ]
+
+
+def test_page_footer_after_the_horizontal_rule_is_dropped():
+    article = parse_article_file("shlang", "struct_For", WHOLE_FILE)[0]
+    assert "Методическая информация" not in article.description
+
+
+def test_each_table_row_is_its_own_line():
+    """Строку таблицы разбивает строка, а не абзацы внутри её ячеек."""
+    article = parse_article_file("shquery", "UNIONSection", TABLE_LAYOUT)[0]
+    assert "<Объединение запросов>" in article.description.splitlines()
+    assert "ОБЪЕДИНИТЬ [ВСЕ] <Описание запроса>" in article.description.splitlines()
+
+
+def test_dotted_names_inside_a_code_example_keep_their_dots():
+    """«Документ. РасхНакл. Состав» — синтаксическая ошибка, а не запрос."""
+    article = parse_article_file("shquery", "overall_totals.html", CODE_EXAMPLE)[0]
+    assert "ВЫБРАТЬ Док.Товар, Док.Ссылка.Номер" in article.description
+    assert "ИЗ Документ.РасхНакл.Состав КАК Док" in article.description
+
+
+def test_the_missing_space_is_still_restored_in_prose():
+    article = parse_article_file("shquery", "overall_totals.html", CODE_EXAMPLE)[0]
+    assert "ключевое слово. В этом случае" in article.description
 
 
 def test_article_leaves_card_only_fields_empty():
@@ -140,3 +204,45 @@ def test_only_article_files_are_taken_from_a_book(book, name, expected):
 
 def test_article_text_survives_the_utf8_bom():
     assert decode_article("\ufeff<h1>Для</h1>".encode("utf-8")) == "\ufeff<h1>Для</h1>".lstrip("\ufeff")
+
+
+INLINE_MARKUP = """<HTML><BODY>
+<H1 class="">Секция ОБЪЕДИНИТЬ</H1>
+<P>Правило: <STRONG>ОБЪЕДИНИТЬ [ВСЕ]</STRONG> &lt;<A href="v8help://q/SELECT">Описание запроса</A>&gt; — далее ключевое слово <STRONG>ВСЕ</STRONG>.</P>
+</BODY></HTML>"""
+
+
+def test_inline_markup_does_not_add_spaces_inside_a_placeholder():
+    """«< Описание запроса >» — не то, что агент может вставить в запрос."""
+    article = parse_article_file("shquery", "UNIONSection", INLINE_MARKUP)[0]
+    assert "<Описание запроса>" in article.description
+    assert article.description.endswith("ключевое слово ВСЕ.")
+
+
+COMMENTED_OUT_MARKUP = """<HTML><BODY>
+<H1 class="">Сохранение настроек</H1>
+<P>Настройки печати для веб-клиента по умолчанию.</P>
+<!-- <tr><td class="WideColumn"><p class="Usual">Черновик строки</p></td></tr> -->
+</BODY></HTML>"""
+
+
+def test_commented_out_markup_does_not_leak_into_the_article():
+    """Комментарий — не текст страницы: его разметка попадала в ответ как есть."""
+    article = parse_article_file("shlang", "SavingSettings", COMMENTED_OUT_MARKUP)[0]
+    assert "WideColumn" not in article.description
+    assert "Черновик строки" not in article.description
+    assert article.description == "Настройки печати для веб-клиента по умолчанию."
+
+
+HEADER_WORDED_DIFFERENTLY = """<html><body>
+<h1 class="V8SH_pagetitle">Для&nbsp;Каждого&nbsp;(For Each)</h1>
+<div class="V8SH_title">Для каждого</div>
+<p class="Usual"><b>Синтаксис:<br></b>Для Каждого &lt;Имя&gt; Из &lt;Коллекция&gt; Цикл</p>
+</body></html>"""
+
+
+def test_page_header_is_dropped_even_when_worded_differently():
+    """Шапку помечает класс книги, а не совпадение её текста с заголовком."""
+    article = parse_article_file("shlang", "struct_ForEach", HEADER_WORDED_DIFFERENTLY)[0]
+    assert article.name == "Для Каждого (For Each)"
+    assert article.description.startswith("Синтаксис:")

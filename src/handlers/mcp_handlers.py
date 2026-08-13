@@ -10,7 +10,7 @@ from src.core.logging import get_logger
 from src.handlers.element_card import (
     render_element_card, render_object_card, hint_about_remainder, member_list,
     candidate_list, elsewhere_list, list_line, render_article,
-    article_candidate_list, article_line,
+    article_candidate_list, article_line, is_article_document,
 )
 from src.handlers.mcp_formatter import mcp_formatter
 from src.handlers.ui_strings import RU_STRINGS, UiStrings, strings_for
@@ -164,7 +164,7 @@ async def handle_find_1c_help(
         lines.append("")
         lines.extend(list_line(doc, strings) for doc in found)
         lines.append("")
-        lines.append(strings.full_card_hint_generic)
+        lines.extend(_next_step_hints(found, strings))
 
         return _text_response("\n".join(lines))
     except Exception as e:
@@ -172,6 +172,17 @@ async def handle_find_1c_help(
         return mcp_formatter.create_error_response(
             strings.internal_search_error_title, str(e)
         )
+
+
+def _next_step_hints(found: List[dict], strings: UiStrings) -> List[str]:
+    """Куда идти за полным текстом — по тем видам, что действительно нашлись."""
+    articles = [doc for doc in found if is_article_document(doc)]
+    hints = []
+    if len(articles) < len(found):
+        hints.append(strings.full_card_hint_generic)
+    if articles:
+        hints.append(strings.full_article_hint_generic)
+    return hints
 
 
 def _search_call_template(request: Find1CHelpRequest) -> str:
@@ -265,6 +276,8 @@ def _element_missing(
 ) -> str:
     similar = answer.get("similar") or []
     lines = [strings.element_not_found.format(name=request.name)]
+    if answer.get("article_exists"):
+        lines.append(strings.element_is_an_article.format(name=request.name))
     if similar:
         lines.append(strings.similar_by_name)
         lines.extend(f"  {list_line(doc, strings)}" for doc in similar)
