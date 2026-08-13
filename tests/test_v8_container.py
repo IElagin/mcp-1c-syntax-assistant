@@ -73,7 +73,7 @@ def _container_with_a_self_referencing_block(data_size: int, page_size: int) -> 
 def test_archive_refuses_a_block_that_declares_a_zero_length_page(tmp_path):
     """Страница нулевой длины не добавляет байтов — раньше чтение крутилось вечно."""
     path = tmp_path / "zero_page_ru.hbk"
-    path.write_bytes(_container_with_a_self_referencing_block(data_size=100, page_size=0))
+    path.write_bytes(_container_with_a_self_referencing_block(data_size=20, page_size=0))
     with pytest.raises(HelpBookArchiveError, match="нулевого размера"):
         HelpBookArchive(path)
 
@@ -81,9 +81,23 @@ def test_archive_refuses_a_block_that_declares_a_zero_length_page(tmp_path):
 def test_archive_refuses_a_page_chain_that_never_ends(tmp_path):
     """Цепочка страниц, замкнутая на себя, обязана кончиться ошибкой, а не зависанием."""
     path = tmp_path / "looping_ru.hbk"
-    path.write_bytes(_container_with_a_self_referencing_block(data_size=100, page_size=64))
+    path.write_bytes(_container_with_a_self_referencing_block(data_size=20, page_size=64))
     with pytest.raises(HelpBookArchiveError, match="не кончается"):
         HelpBookArchive(path)
+
+
+def test_archive_refuses_a_block_that_declares_more_bytes_than_the_file_holds(tmp_path):
+    """Размер объявляет тот же файл, чью целость мы и проверяем."""
+    path = tmp_path / "huge_ru.hbk"
+    page_size = 512
+    declared = 1 << 31
+    header = struct.pack("<IIII", NO_PAGE, page_size, 1, 0)
+    block = b"\r\n%08x %08x %08x \r\n" % (declared, page_size, NO_PAGE)
+    path.write_bytes(header + block + b"\x00" * page_size)
+
+    with pytest.raises(HelpBookArchiveError, match="больше файла"):
+        with HelpBookArchive(path) as archive:
+            archive.names()
 
 
 def test_archive_refuses_a_file_bigger_than_the_size_limit(book, monkeypatch):

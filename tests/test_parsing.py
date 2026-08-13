@@ -43,7 +43,7 @@ async def test_configured_book_parses_into_known_document_types():
         
         print(f"✅ Парсинг завершен:")
         print(f"   • Записей в архиве: {parsed_hbk.file_info.entries_count}")
-        print(f"   • Всего HTML файлов: {parsed_hbk.stats.get('html_files', 0)}")
+        print(f"   • Всего HTML файлов: {parsed_hbk.stats.get('object_pages', 0)}")
         print(f"   • Файлов методов: {parsed_hbk.stats.get('global_methods_files', 0)}")
         print(f"   • Файлов событий: {parsed_hbk.stats.get('global_events_files', 0)}")
         print(f"   • Файлов Global context: {parsed_hbk.stats.get('global_context_files', 0)}")

@@ -242,7 +242,7 @@ def mock_parsed_hbk():
 
     # Создаём статистику
     stats = {
-        'html_files': 5,
+        'object_pages': 5,
         'processed_html': 5,
         'total_docs': 5,
         'by_type': 5
