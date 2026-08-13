@@ -9,6 +9,7 @@ from src.core.constants import SUPPORTED_ENCODINGS
 from src.models.doc_models import Documentation, DocumentType
 from src.parsers.text_utils import (
     clean_description, normalize_lines, restore_space_after_period,
+    restore_space_after_punctuation,
 )
 
 ARTICLE_KIND = "статья"
@@ -137,7 +138,9 @@ def _text_fragment(text: NavigableString) -> str:
     if _has_ancestor(text, PREFORMATTED_TAGS):
         return str(text)
     flat = str(text).replace("\n", " ")
-    return flat if _is_code(text) else restore_space_after_period(flat)
+    if _is_code(text):
+        return flat
+    return restore_space_after_punctuation(restore_space_after_period(flat))
 
 
 def _text_of_nodes(nodes: Iterable, stop: Optional[Tag] = None) -> str:

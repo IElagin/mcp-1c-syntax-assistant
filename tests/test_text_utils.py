@@ -12,6 +12,8 @@ from src.parsers.text_utils import (
     normalize_whitespace,
     clean_description,
     normalize_lines,
+    clean_prose,
+    restore_space_after_punctuation,
 )
 
 
@@ -78,3 +80,46 @@ def test_line_normalization_collapses_a_run_of_blank_lines():
 def test_line_normalization_still_squeezes_spaces_inside_a_line():
     assert normalize_lines("Отбор\xa0=\xa0Новый\n   Структура ( ) ;") == \
         "Отбор = Новый\nСтруктура ( ) ;"
+
+
+def test_a_lost_space_after_a_colon_is_restored():
+    assert restore_space_after_punctuation(
+        "следующих действий:открытие панели"
+    ) == "следующих действий: открытие панели"
+
+
+def test_a_lost_space_after_a_comma_is_restored():
+    assert restore_space_after_punctuation(
+        "панели ввода,отображение клавиатуры"
+    ) == "панели ввода, отображение клавиатуры"
+
+
+def test_the_product_name_keeps_its_colon():
+    """«1С:Предприятие» — имя, а не потерянный пробел; так же и «1C:Enterprise»."""
+    for name in ("режимов запуска 1С:Предприятия", "the 1C:Enterprise server"):
+        assert restore_space_after_punctuation(name) == name
+
+
+def test_a_decimal_number_is_not_split():
+    assert restore_space_after_punctuation("точность 1,5 знака") == "точность 1,5 знака"
+
+
+def test_a_time_is_not_split():
+    assert restore_space_after_punctuation("в 12:30 по расписанию") == "в 12:30 по расписанию"
+
+
+def test_a_url_is_not_split():
+    text = "см. http://v8.1c.ru/8.1/data/core"
+    assert restore_space_after_punctuation(text) == text
+
+
+def test_a_closing_bracket_before_the_comma_still_counts():
+    assert restore_space_after_punctuation(
+        "ПанельРазделов (SectionsPanel),ПанельИзбранного"
+    ) == "ПанельРазделов (SectionsPanel), ПанельИзбранного"
+
+
+def test_prose_cleaning_restores_both_the_period_and_the_comma():
+    assert clean_prose(
+        "типов:Строка,Число.Значение произвольно"
+    ) == "типов: Строка, Число. Значение произвольно"
