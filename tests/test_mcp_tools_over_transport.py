@@ -40,8 +40,8 @@ async def _transport_over(parsed, index, monkeypatch):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
             yield http
-        app.dependency_overrides.clear()
     finally:
+        app.dependency_overrides.clear()
         await client.disconnect()
 
 
@@ -104,7 +104,7 @@ async def transport_on_an_english_index(
 
 @pytest.mark.parametrize("article_books_directory", ["en"], indirect=True)
 async def test_an_english_article_travels_the_whole_path(transport_on_an_english_index):
-    """Английская книга, английский индекс, английские подписи — до ответа агенту."""
+    """Английская книга, английские подписи и транспорт — до ответа агенту."""
     result = await _call(
         transport_on_an_english_index, "get_1c_article",
         {"name": "Array", "lang": "en"},

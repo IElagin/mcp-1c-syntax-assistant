@@ -83,8 +83,6 @@ async def test_a_single_document_write_to_the_english_index_is_refused():
 
 async def test_a_bulk_write_to_the_production_index_is_refused():
     """Достройка имён ходила в боевой индекс через сырой клиент, мимо сторожа."""
-    from src.core.elasticsearch import ElasticsearchClient
-
     client = ElasticsearchClient()
     client._client = AsyncMock()
 
@@ -96,8 +94,7 @@ async def test_a_bulk_write_to_the_production_index_is_refused():
 
 
 async def test_a_bulk_write_to_the_english_production_index_is_refused():
-    from src.core.elasticsearch import ElasticsearchClient
-
+    """Тот же путь, что и русский боевой индекс, но именем английского."""
     client = ElasticsearchClient()
     client._client = AsyncMock()
 
@@ -110,8 +107,6 @@ async def test_a_bulk_write_to_the_english_production_index_is_refused():
 
 async def test_a_bulk_operation_without_an_index_is_refused():
     """Без _index операция метит в индекс по умолчанию, а он боевой."""
-    from src.core.elasticsearch import ElasticsearchClient
-
     client = ElasticsearchClient()
     client._client = AsyncMock()
 
@@ -124,8 +119,6 @@ async def test_a_bulk_operation_without_an_index_is_refused():
 
 async def test_a_bulk_write_to_its_own_index_goes_through():
     """Сторож закрывает боевые индексы, а не запись вообще."""
-    from src.core.elasticsearch import ElasticsearchClient
-
     client = ElasticsearchClient()
     client._client = AsyncMock()
     client._client.bulk = AsyncMock(return_value={"items": []})
@@ -136,3 +129,19 @@ async def test_a_bulk_write_to_its_own_index_goes_through():
     ])
 
     assert result == {"items": []}
+
+
+async def test_a_delete_of_the_configured_index_is_refused():
+    client = ElasticsearchClient()
+    client._client = AsyncMock()
+
+    with pytest.raises(pytest.fail.Exception, match="боевой индекс"):
+        await client.delete_index()
+
+
+async def test_a_delete_of_the_production_index_is_refused_when_named_explicitly():
+    client = ElasticsearchClient()
+    client._client = AsyncMock()
+
+    with pytest.raises(pytest.fail.Exception, match="боевой индекс"):
+        await client.delete_index(index=settings.elasticsearch_index)

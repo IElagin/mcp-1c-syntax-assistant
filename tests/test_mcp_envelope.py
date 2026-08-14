@@ -60,7 +60,6 @@ async def test_an_unknown_method_is_method_not_found():
 
 
 async def test_malformed_json_is_a_parse_error_that_still_looks_like_a_response():
-    """Ответ без jsonrpc и id строгий клиент читает как поломку транспорта."""
     response = await _rpc(content=b"{ not json")
 
     body = response.json()

@@ -443,6 +443,25 @@ def build_article_books(directory: Path, lang: str) -> Path:
     return directory
 
 
+def whole_article_answer(directory: Path, lang: str, strings) -> str:
+    """Все статьи фикстурных книг так, как их печатает инструмент."""
+    from src.handlers.element_card import render_article
+    from src.parsers.article_books import parse_article_books
+    from src.parsers.indexer import ElasticsearchIndexer
+
+    articles, _ = parse_article_books(str(directory), lang)
+    indexer = ElasticsearchIndexer(None)
+    documents = sorted(
+        (indexer._prepare_document(article) for article in articles),
+        key=lambda document: document["id"],
+    )
+    blocks = [
+        f"### {document['id']}\n{render_article(document, strings)}"
+        for document in documents
+    ]
+    return "\n\n".join(blocks) + "\n"
+
+
 @pytest.fixture
 def article_books_directory(request, tmp_path):
     """Каталог книг статей из фикстурных страниц; язык задаётся параметром."""
@@ -484,6 +503,7 @@ def refuse_writes_to_the_production_index(monkeypatch):
     original_index_documentation = ElasticsearchIndexer.index_documentation
     original_write = ElasticsearchClient.index_document
     original_bulk = ElasticsearchClient.bulk_update
+    original_delete = ElasticsearchClient.delete_index
 
     async def guarded_reindex(self, *args, **kwargs):
         if self.index in production:
@@ -508,7 +528,13 @@ def refuse_writes_to_the_production_index(monkeypatch):
                     refuse(target.get("_index"))
         return await original_bulk(self, operations)
 
+    async def guarded_delete(self, index=None):
+        if index in production:
+            refuse(index)
+        return await original_delete(self, index=index)
+
     monkeypatch.setattr(ElasticsearchIndexer, "reindex_all", guarded_reindex)
     monkeypatch.setattr(ElasticsearchIndexer, "index_documentation", guarded_index_documentation)
     monkeypatch.setattr(ElasticsearchClient, "index_document", guarded_write)
     monkeypatch.setattr(ElasticsearchClient, "bulk_update", guarded_bulk)
+    monkeypatch.setattr(ElasticsearchClient, "delete_index", guarded_delete)
