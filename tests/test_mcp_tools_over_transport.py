@@ -5,6 +5,8 @@
 до роутера дотягивается ASGI — сервер не нужен.
 """
 
+from contextlib import asynccontextmanager
+
 import httpx
 import pytest
 
@@ -19,23 +21,16 @@ from src.parsers.indexer import ElasticsearchIndexer
 pytestmark = [pytest.mark.integration, pytest.mark.elasticsearch]
 
 
-@pytest.fixture
-async def transport_on_a_fixture_index(
-    hbk_fixture_archive, article_books_directory, isolated_index, monkeypatch
-):
-    """Клиент к /mcp, за которым лежат фикстурные карточки и статьи."""
-    parsed = HBKParser().parse_file(str(hbk_fixture_archive))
-    assert parsed is not None, "парсер не открыл фикстурную книгу карточек"
-    articles, _ = parse_article_books(str(article_books_directory), "ru")
-    parsed.documentation.extend(articles)
-
+@asynccontextmanager
+async def _transport_over(parsed, index, monkeypatch):
+    """/mcp поверх parsed, переиндексированного в index — общий хвост фикстур."""
     client = ElasticsearchClient()
     assert await client.connect(), "Elasticsearch недоступен"
     try:
-        assert await ElasticsearchIndexer(client, index=isolated_index).reindex_all(parsed)
-        await client.refresh_index(index=isolated_index)
+        assert await ElasticsearchIndexer(client, index=index).reindex_all(parsed)
+        await client.refresh_index(index=index)
         monkeypatch.setattr(
-            "src.handlers.mcp_handlers.index_for", lambda lang: isolated_index
+            "src.handlers.mcp_handlers.index_for", lambda lang: index
         )
 
         from src.main import app
@@ -48,6 +43,20 @@ async def transport_on_a_fixture_index(
         app.dependency_overrides.clear()
     finally:
         await client.disconnect()
+
+
+@pytest.fixture
+async def transport_on_a_fixture_index(
+    hbk_fixture_archive, article_books_directory, isolated_index, monkeypatch
+):
+    """Клиент к /mcp, за которым лежат фикстурные карточки и статьи."""
+    parsed = HBKParser().parse_file(str(hbk_fixture_archive))
+    assert parsed is not None, "парсер не открыл фикстурную книгу карточек"
+    articles, _ = parse_article_books(str(article_books_directory), "ru")
+    parsed.documentation.extend(articles)
+
+    async with _transport_over(parsed, isolated_index, monkeypatch) as http:
+        yield http
 
 
 async def _call(http, tool: str, arguments: dict, request_id: int = 1):
@@ -89,25 +98,8 @@ async def transport_on_an_english_index(
         documentation=articles,
     )
 
-    client = ElasticsearchClient()
-    assert await client.connect(), "Elasticsearch недоступен"
-    try:
-        assert await ElasticsearchIndexer(client, index=isolated_index).reindex_all(parsed)
-        await client.refresh_index(index=isolated_index)
-        monkeypatch.setattr(
-            "src.handlers.mcp_handlers.index_for", lambda lang: isolated_index
-        )
-
-        from src.main import app
-
-        app.dependency_overrides.clear()
-        app.dependency_overrides[get_elasticsearch_client] = lambda: client
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
-            yield http
-        app.dependency_overrides.clear()
-    finally:
-        await client.disconnect()
+    async with _transport_over(parsed, isolated_index, monkeypatch) as http:
+        yield http
 
 
 @pytest.mark.parametrize("article_books_directory", ["en"], indirect=True)
