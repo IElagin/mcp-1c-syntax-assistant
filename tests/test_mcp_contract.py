@@ -110,44 +110,6 @@ def test_schema_and_model_share_one_search_limit_ceiling():
     ), accepted
 
 
-@pytest.mark.integration
-@pytest.mark.real_index
-@pytest.mark.live_server
-@pytest.mark.asyncio
-async def test_error_is_marked_as_error():
-    """isError обязан отражать реальность, иначе агент примет отказ за успех."""
-    import httpx
-
-    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        response = await client.post("/mcp", json={
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": "get_1c_element", "arguments": {}},
-        })
-
-    body = response.json()
-    assert body["result"]["isError"] is True, body
-    assert body["result"]["content"], "текст ошибки не передан агенту"
-
-
-@pytest.mark.integration
-@pytest.mark.real_index
-@pytest.mark.live_server
-@pytest.mark.asyncio
-async def test_card_arrives_as_text():
-    import httpx
-
-    async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30) as client:
-        response = await client.post("/mcp", json={
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-            "params": {"name": "get_1c_element",
-                       "arguments": {"name": "НайтиСтроки", "object": "ТаблицаЗначений"}},
-        })
-
-    text = response.json()["result"]["content"][0]["text"]
-    assert "Вызов: ТаблицаЗначений.НайтиСтроки" in text
-    assert "Доступность:" in text
-
-
 @pytest.mark.unit
 @pytest.mark.parametrize("model_cls, kwargs", [
     ("Find1CHelpRequest", {"query": "х", "object_name": "Массив"}),

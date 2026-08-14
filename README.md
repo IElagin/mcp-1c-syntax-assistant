@@ -94,7 +94,7 @@ background. `/health` reports its progress:
  "documents_count":23491,"indexing_status":"idle","indexing_active":false,
  "index_en_exists":true,"documents_count_en":23471,
  "missing_article_books":[],"missing_article_books_en":[],
- "unreadable_article_books":[],"unreadable_article_books_en":[],"version":"2.4.0"}
+ "unreadable_article_books":[],"unreadable_article_books_en":[],"version":"2.4.1"}
 ```
 
 The server is ready when `indexing_active` is `false` and `documents_count`

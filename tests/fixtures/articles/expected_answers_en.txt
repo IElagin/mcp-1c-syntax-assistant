@@ -1,0 +1,24 @@
+### shlang/array_article.html
+Array
+Book: 1C language
+
+An array of the built-in language stores values by index and grows as they are added.
+
+### shlang/struct_for.html
+For Each
+Book: 1C language
+
+Syntax:
+For Each <Variable name 1> In <Variable name 2> Do
+// Operators
+[Break;]
+[Continue;]
+EndDo;
+Description:
+The For Each operator traverses a collection.
+
+### shquery/union_section.html
+UNION
+Book: query language
+
+Combines the results of two query descriptions. UNION [ALL] <query description>

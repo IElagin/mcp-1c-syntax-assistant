@@ -418,21 +418,54 @@ ARTICLE_PAGES_RU = {
     "dcsui": ("functions_group.html", "saving_settings.html"),
 }
 
+ARTICLE_PAGES_EN = {
+    "shlang": ("array_article.html", "struct_for.html"),
+    "shquery": ("union_section.html",),
+}
 
-@pytest.fixture
-def article_books_directory(tmp_path):
-    """Каталог книг статей из фикстурных страниц; книги shclang в нём нет."""
+ARTICLE_PAGES = {"ru": ARTICLE_PAGES_RU, "en": ARTICLE_PAGES_EN}
+
+
+def build_article_books(directory: Path, lang: str) -> Path:
+    """Книги статей нужного языка из фикстурных страниц."""
     from src.core.constants import ARTICLE_BOOKS
 
-    directory = tmp_path / "hbk"
-    directory.mkdir()
+    pages_by_book = ARTICLE_PAGES[lang]
+    source = FIXTURES_ARTICLES if lang == "ru" else FIXTURES_ARTICLES / lang
+
+    directory.mkdir(parents=True, exist_ok=True)
     for book in ARTICLE_BOOKS:
-        pages = ARTICLE_PAGES_RU.get(book.key)
+        pages = pages_by_book.get(book.key)
         if pages:
-            write_book(directory / book.ru, {
-                page: (FIXTURES_ARTICLES / page).read_bytes() for page in pages
+            write_book(directory / getattr(book, lang), {
+                page: (source / page).read_bytes() for page in pages
             })
     return directory
+
+
+def whole_article_answer(directory: Path, lang: str, strings) -> str:
+    """Все статьи фикстурных книг так, как их печатает инструмент."""
+    from src.handlers.element_card import render_article
+    from src.parsers.article_books import parse_article_books
+    from src.parsers.indexer import ElasticsearchIndexer
+
+    articles, _ = parse_article_books(str(directory), lang)
+    indexer = ElasticsearchIndexer(None)
+    documents = sorted(
+        (indexer._prepare_document(article) for article in articles),
+        key=lambda document: document["id"],
+    )
+    blocks = [
+        f"### {document['id']}\n{render_article(document, strings)}"
+        for document in documents
+    ]
+    return "\n\n".join(blocks) + "\n"
+
+
+@pytest.fixture
+def article_books_directory(request, tmp_path):
+    """Каталог книг статей из фикстурных страниц; язык задаётся параметром."""
+    return build_article_books(tmp_path / "hbk", getattr(request, "param", "ru"))
 
 
 @pytest.fixture
@@ -469,6 +502,8 @@ def refuse_writes_to_the_production_index(monkeypatch):
     original_reindex = ElasticsearchIndexer.reindex_all
     original_index_documentation = ElasticsearchIndexer.index_documentation
     original_write = ElasticsearchClient.index_document
+    original_bulk = ElasticsearchClient.bulk_update
+    original_delete = ElasticsearchClient.delete_index
 
     async def guarded_reindex(self, *args, **kwargs):
         if self.index in production:
@@ -485,6 +520,21 @@ def refuse_writes_to_the_production_index(monkeypatch):
             refuse(index)
         return await original_write(self, document, index=index)
 
+    async def guarded_bulk(self, operations):
+        for operation in operations:
+            for action in ("update", "index", "create", "delete"):
+                target = operation.get(action)
+                if isinstance(target, dict) and target.get("_index") in production:
+                    refuse(target.get("_index"))
+        return await original_bulk(self, operations)
+
+    async def guarded_delete(self, index=None):
+        if index in production:
+            refuse(index)
+        return await original_delete(self, index=index)
+
     monkeypatch.setattr(ElasticsearchIndexer, "reindex_all", guarded_reindex)
     monkeypatch.setattr(ElasticsearchIndexer, "index_documentation", guarded_index_documentation)
     monkeypatch.setattr(ElasticsearchClient, "index_document", guarded_write)
+    monkeypatch.setattr(ElasticsearchClient, "bulk_update", guarded_bulk)
+    monkeypatch.setattr(ElasticsearchClient, "delete_index", guarded_delete)

@@ -25,3 +25,19 @@ def test_three_books_are_read_and_the_fourth_is_reported_absent(article_books_di
 
     assert sorted(article.id for article in articles) == EVERY_FIXTURE_ARTICLE
     assert absent == ["shclang"]
+
+
+EVERY_ENGLISH_FIXTURE_ARTICLE = [
+    "shlang/array_article.html",
+    "shlang/struct_for.html",
+    "shquery/union_section.html",
+]
+
+
+@pytest.mark.parametrize("article_books_directory", ["en"], indirect=True)
+def test_english_books_are_found_by_their_own_file_names(article_books_directory):
+    """Английские книги зовутся *_root.hbk — по русским именам их не найти."""
+    articles, absent = parse_article_books(str(article_books_directory), "en")
+
+    assert sorted(article.id for article in articles) == EVERY_ENGLISH_FIXTURE_ARTICLE
+    assert sorted(absent) == ["dcsui", "shclang"]

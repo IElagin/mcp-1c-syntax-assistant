@@ -179,7 +179,7 @@ async def backfill_english_names(
         return 0
 
     doc_ids, operations = updates
-    response = await es_client._client.bulk(body=operations)
+    response = await es_client.bulk_update(operations)
     updated = _count_written(doc_ids, response.get("items", []))
 
     if updated:

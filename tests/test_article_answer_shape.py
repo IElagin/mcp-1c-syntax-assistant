@@ -21,33 +21,16 @@ from pathlib import Path
 
 import pytest
 
-from src.handlers.element_card import render_article
 from src.handlers.ui_strings import RU_STRINGS
-from src.parsers.article_books import parse_article_books
-from src.parsers.indexer import ElasticsearchIndexer
+from tests.conftest import whole_article_answer
 
 pytestmark = [pytest.mark.unit, pytest.mark.parser]
 
 EXPECTED_ANSWERS = Path(__file__).parent / "fixtures" / "articles" / "expected_answers.txt"
 
 
-def _whole_answer(directory) -> str:
-    """Все статьи фикстурных книг так, как их печатает инструмент."""
-    articles, _ = parse_article_books(str(directory), "ru")
-    indexer = ElasticsearchIndexer(None)
-    documents = sorted(
-        (indexer._prepare_document(article) for article in articles),
-        key=lambda document: document["id"],
-    )
-    blocks = [
-        f"### {document['id']}\n{render_article(document, RU_STRINGS)}"
-        for document in documents
-    ]
-    return "\n\n".join(blocks) + "\n"
-
-
 def test_every_fixture_article_reads_exactly_as_recorded(article_books_directory):
-    produced = _whole_answer(article_books_directory)
+    produced = whole_article_answer(article_books_directory, "ru", RU_STRINGS)
     expected = EXPECTED_ANSWERS.read_text(encoding="utf-8")
 
     assert produced.splitlines(keepends=True) == expected.splitlines(keepends=True)

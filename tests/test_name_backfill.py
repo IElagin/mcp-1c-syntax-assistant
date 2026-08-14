@@ -189,7 +189,7 @@ async def test_join_survives_books_indexed_on_different_platforms():
             }]}},
         ]
     )
-    mock_client._client.bulk = AsyncMock(
+    mock_client.bulk_update = AsyncMock(
         return_value={"errors": False, "items": [{"update": {"_id": "ru1", "result": "updated"}}]}
     )
     mock_client.refresh_index = AsyncMock(return_value=True)
@@ -197,7 +197,7 @@ async def test_join_survives_books_indexed_on_different_platforms():
     updated = await backfill_english_names(mock_client, "help1c_docs", "help1c_docs_en")
 
     assert updated == 1, "пути одной и той же страницы обязаны сойтись"
-    written = mock_client._client.bulk.await_args.kwargs["body"][1]["doc"]
+    written = mock_client.bulk_update.await_args.args[0][1]["doc"]
     assert written == {"name_en": "Add", "object_en": "Array"}
 
     # В terms уходят обе записи пути: индекс мог быть собран любой из платформ,
@@ -257,7 +257,7 @@ async def test_bulk_partial_failure_is_not_reported_as_success():
             },
         ]
     )
-    mock_client._client.bulk = AsyncMock(
+    mock_client.bulk_update = AsyncMock(
         return_value={
             "errors": True,
             "items": [

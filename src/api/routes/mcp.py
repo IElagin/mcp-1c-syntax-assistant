@@ -80,7 +80,11 @@ async def mcp_jsonrpc_endpoint(
         if data.get("jsonrpc") != "2.0":
             return JSONResponse(
                 status_code=400,
-                content={"error": {"code": -32600, "message": "Invalid Request"}}
+                content={
+                    "jsonrpc": "2.0",
+                    "id": data.get("id"),
+                    "error": {"code": -32600, "message": "Invalid Request"},
+                }
             )
 
         method = data.get("method")
@@ -159,7 +163,11 @@ async def mcp_jsonrpc_endpoint(
     except json.JSONDecodeError:
         return JSONResponse(
             status_code=400,
-            content={"error": {"code": -32700, "message": "Parse error"}}
+            content={
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": "Parse error"},
+            }
         )
     except Exception as e:
         logger.error(f"Ошибка в MCP JSON-RPC endpoint: {e}")
