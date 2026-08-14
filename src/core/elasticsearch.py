@@ -225,6 +225,12 @@ class ElasticsearchClient:
         await self._client.index(index=self._index(index), document=document)
         return True
 
+    async def bulk_update(self, operations: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Пакетная запись; индекс каждой операции лежит в ней самой."""
+        if not self._client:
+            raise ConnectionFailedError("No connection to Elasticsearch")
+        return await self._client.bulk(body=operations)
+
 
 def create_elasticsearch_client() -> ElasticsearchClient:
     """Создаёт новый экземпляр ElasticsearchClient."""
