@@ -15,7 +15,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
  "documents_count":23491,"indexing_status":"idle","indexing_active":false,
  "index_en_exists":true,"documents_count_en":23471,
  "missing_article_books":[],"missing_article_books_en":[],
- "unreadable_article_books":[],"unreadable_article_books_en":[],"version":"2.4.0"}
+ "unreadable_article_books":[],"unreadable_article_books_en":[],"version":"2.4.1"}
 ```
 
 Пока `indexing_active` равно `true`, инструменты уже отвечают, но справка ещё
@@ -39,7 +39,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/mcp `
 ```json
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18",
  "capabilities":{"tools":{}},
- "serverInfo":{"name":"1c-syntax-helper-mcp","version":"2.4.0"}}}
+ "serverInfo":{"name":"1c-syntax-helper-mcp","version":"2.4.1"}}}
 ```
 
 Перечень инструментов:
