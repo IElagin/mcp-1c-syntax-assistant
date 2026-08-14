@@ -418,21 +418,35 @@ ARTICLE_PAGES_RU = {
     "dcsui": ("functions_group.html", "saving_settings.html"),
 }
 
+ARTICLE_PAGES_EN = {
+    "shlang": ("array_article.html", "struct_for.html"),
+    "shquery": ("union_section.html",),
+}
 
-@pytest.fixture
-def article_books_directory(tmp_path):
-    """Каталог книг статей из фикстурных страниц; книги shclang в нём нет."""
+ARTICLE_PAGES = {"ru": ARTICLE_PAGES_RU, "en": ARTICLE_PAGES_EN}
+
+
+def build_article_books(directory: Path, lang: str) -> Path:
+    """Книги статей нужного языка из фикстурных страниц."""
     from src.core.constants import ARTICLE_BOOKS
 
-    directory = tmp_path / "hbk"
-    directory.mkdir()
+    pages_by_book = ARTICLE_PAGES[lang]
+    source = FIXTURES_ARTICLES if lang == "ru" else FIXTURES_ARTICLES / lang
+
+    directory.mkdir(parents=True, exist_ok=True)
     for book in ARTICLE_BOOKS:
-        pages = ARTICLE_PAGES_RU.get(book.key)
+        pages = pages_by_book.get(book.key)
         if pages:
-            write_book(directory / book.ru, {
-                page: (FIXTURES_ARTICLES / page).read_bytes() for page in pages
+            write_book(directory / getattr(book, lang), {
+                page: (source / page).read_bytes() for page in pages
             })
     return directory
+
+
+@pytest.fixture
+def article_books_directory(request, tmp_path):
+    """Каталог книг статей из фикстурных страниц; язык задаётся параметром."""
+    return build_article_books(tmp_path / "hbk", getattr(request, "param", "ru"))
 
 
 @pytest.fixture
