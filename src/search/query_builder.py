@@ -1,12 +1,68 @@
 """Тела запросов Elasticsearch."""
 
 from typing import Dict, Any, List, Optional, Tuple
+import re
 
 BY_RELEVANCE = [{"_score": {"order": "desc"}}]
 
 SINGLE_WORD_MAX_LENGTH = 30
 SEMANTIC_MIN_WORDS = 3
 SEMANTIC_MIN_LENGTH = 50
+TERM_COVERAGE_BOOST = 20.0
+FUZZY_PREFIX_LENGTH = 2
+FUZZY_MAX_EXPANSIONS = 10
+CONVERSION_PHRASE_BOOST = 40.0
+CONVERSION_PHRASE_SLOP = 1
+CONVERSION_PHRASE = re.compile(
+    r'\b(?:преобраз\w*|конверт\w*|convert\w*)\s+'
+    r'(?P<relation>(?P<left>[^\W\d_]+)\s+(?P<direction>в|из|into|to|from)\s+'
+    r'(?P<right>[^\W\d_]+))(?=[\s?!.;]*$)',
+    re.IGNORECASE,
+)
+CONVERSION_TYPES = {
+    alias: names
+    for names, aliases in (
+        (("Строка", "String"), ("строка", "строку", "строки", "строке", "строкой", "string")),
+        (("Число", "Number"), ("число", "числа", "числу", "числом", "числе", "number")),
+        (("Дата", "Date"), ("дата", "дату", "даты", "дате", "датой", "date")),
+        (("Булево", "Boolean"), ("булево", "boolean", "bool")),
+    )
+    for alias in aliases
+}
+
+
+def _conversion_queries(query: str) -> List[Dict[str, Any]]:
+    clauses = []
+    for match in CONVERSION_PHRASE.finditer(query):
+        destination = 'left' if match.group('direction').lower() in ('из', 'from') else 'right'
+        types = CONVERSION_TYPES.get(match.group(destination).lower())
+        if not types:
+            continue
+        clauses.append({"constant_score": {
+            "filter": {"bool": {"filter": [
+                {"terms": {"variants.return_type": list(types)}},
+                {"match_phrase": {"description": {
+                    "query": match.group('relation'), "slop": CONVERSION_PHRASE_SLOP,
+                }}},
+            ]}},
+            "boost": CONVERSION_PHRASE_BOOST,
+        }})
+    return clauses
+
+
+def _term_coverage(query: str) -> Dict[str, Any]:
+    return {"constant_score": {
+        "filter": {"combined_fields": {
+            "query": query,
+            "fields": [
+                "name", "description", "note",
+                "variants.description", "variants.parameters.description",
+                "variants.return_description",
+            ],
+            "operator": "and",
+        }},
+        "boost": TERM_COVERAGE_BOOST,
+    }}
 
 
 def _scored(conditions: Dict[str, Any], limit: int) -> Dict[str, Any]:
@@ -135,10 +191,14 @@ class QueryBuilder:
                     ],
                     "type": "best_fields",
                     "fuzziness": "AUTO",
+                    "prefix_length": FUZZY_PREFIX_LENGTH,
+                    "max_expansions": FUZZY_MAX_EXPANSIONS,
                 }
             },
             "should": [
+                _term_coverage(query),
                 {"match_phrase": {"name": {"query": query, "boost": 2.0}}},
+                *_conversion_queries(query),
                 {"prefix": {"name": {"value": query, "boost": 1.5}}},
             ],
         }, limit)
@@ -159,15 +219,22 @@ class QueryBuilder:
     def _build_semantic_search(self, query: str, limit: int) -> Dict[str, Any]:
         return _scored({
             "should": [
+                _term_coverage(query),
                 {"multi_match": {
                     "query": query,
                     "fields": [
                         "description^3", "name^2", "full_path^2",
                         "syntax_all^1.5", "examples^1", "note^1",
+                        "variants.description", "variants.parameters.description",
+                        "variants.return_description",
                     ],
                     "type": "most_fields",
                     "minimum_should_match": "50%",
+                    "fuzziness": "AUTO",
+                    "prefix_length": FUZZY_PREFIX_LENGTH,
+                    "max_expansions": FUZZY_MAX_EXPANSIONS,
                 }},
+                *_conversion_queries(query),
                 {"match_phrase": {
                     "description": {"query": query, "boost": 2.0, "slop": 3}
                 }},

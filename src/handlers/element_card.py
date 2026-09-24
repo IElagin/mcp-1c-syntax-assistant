@@ -134,7 +134,10 @@ def _availability_and_description(
 ) -> List[str]:
     """Хвост, общий у карточки элемента и карточки объекта."""
     lines = [_availability(doc, strings)]
-    if doc.get("version_from"):
+    if doc.get("version_notes"):
+        lines.append(strings.version_notes)
+        lines.extend(f"  {note}" for note in doc["version_notes"])
+    elif doc.get("version_from"):
         lines.append(strings.available_since.format(version=doc["version_from"]))
     lines.append("")
     lines.append(strings.description.format(

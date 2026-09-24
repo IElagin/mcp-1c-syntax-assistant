@@ -690,25 +690,18 @@ class HTMLParser:
             break
     
     def _extract_version(self, soup: BeautifulSoup, doc: Documentation):
-        """Извлекает информацию о версии."""
-        # Ищем элементы с классом V8SH_versionInfo
-        version_elements = soup.find_all('p', class_='V8SH_versionInfo')
-        
-        for elem in version_elements:
-            version_text = elem.get_text(strip=True)
-            
-            # Ищем версию типа "8.3.24" или "8.0"
-            version_match = re.search(r'8\.\d+(?:\.\d+)?', version_text)
+        """Сохраняет полные оговорки версии и отдельно версию появления."""
+        for elem in soup.find_all('p', class_='V8SH_versionInfo'):
+            version_text = normalize_whitespace(elem.get_text(" ", strip=True))
+            if not version_text:
+                continue
+            if version_text not in doc.version_notes:
+                doc.version_notes.append(version_text)
+            if doc.version_from or not self.dialect.is_version_available(version_text):
+                continue
+            version_match = re.search(r'8\.\d+(?:\.\d+)*', version_text)
             if version_match:
-                version = version_match.group(0)
-                
-                # Определяем тип версии по контексту
-                if self.dialect.is_version_available(version_text):
-                    doc.version_from = version
-                elif self.dialect.is_version_changed(version_text):
-                    # Это версия изменения, можно сохранить как дополнительную информацию
-                    if not doc.version_from:
-                        doc.version_from = version
+                doc.version_from = version_match.group(0)
     
     def _extract_object_methods(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает методы объекта."""

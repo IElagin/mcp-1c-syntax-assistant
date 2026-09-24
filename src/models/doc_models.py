@@ -91,6 +91,7 @@ class Documentation(BaseModel):
     availability: List[str] = []    # контексты исполнения в нижнем регистре
     note: str = ""                  # раздел «Примечание»
     version_from: Optional[str] = None
+    version_notes: List[str] = Field(default_factory=list)
     examples: List[str] = []
     source_file: str = ""
     book: str = ""

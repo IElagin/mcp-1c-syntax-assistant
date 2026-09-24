@@ -43,6 +43,7 @@ class UiStrings:
     availability: str
     availability_unknown: str
     available_since: str
+    version_notes: str
 
     not_in_help: str
     description: str
@@ -156,6 +157,7 @@ RU_STRINGS = UiStrings(
     availability="Доступность: {items}",
     availability_unknown="Доступность: в справке не указана",
     available_since="Доступно с: {version}",
+    version_notes="Условия использования и изменения версий:",
     not_in_help="в справке не указано",
     description="Описание: {text}",
     description_missing="в справке отсутствует",
@@ -329,6 +331,7 @@ EN_STRINGS = UiStrings(
     availability="Availability: {items}",
     availability_unknown="Availability: not stated in the reference",
     available_since="Available since: {version}",
+    version_notes="Version availability and changes:",
     not_in_help="not stated in the reference",
     description="Description: {text}",
     description_missing="absent from the reference",

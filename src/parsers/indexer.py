@@ -186,6 +186,7 @@ class ElasticsearchIndexer:
             "description": doc.description,
             "note": doc.note,
             "version_from": doc.version_from,
+            "version_notes": doc.version_notes,
             "examples": doc.examples,
             "source_file": doc.source_file,
             "book": doc.book,
