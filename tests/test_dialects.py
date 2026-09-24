@@ -78,7 +78,7 @@ def test_english_parameter_flags():
 
 def test_english_version_markers():
     assert EN_DIALECT.is_version_available("Available since version 8.0.")
-    assert EN_DIALECT.is_version_available(
+    assert not EN_DIALECT.is_version_available(
         "It is not recommended to use since version 8.3.10."
     )
     assert EN_DIALECT.is_version_changed("Description changed in version 8.3.20.")

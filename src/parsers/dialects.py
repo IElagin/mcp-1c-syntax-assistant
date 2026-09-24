@@ -101,7 +101,7 @@ class HelpDialect:
 
     def is_version_available(self, text: str) -> bool:
         lowered = (text or "").lower()
-        return any(marker in lowered for marker in self.version_available_markers)
+        return lowered.startswith(self.version_available_markers)
 
     def is_version_changed(self, text: str) -> bool:
         lowered = (text or "").lower()
@@ -134,7 +134,7 @@ RU_DIALECT = HelpDialect(
     type_label="Тип:",
     required_flag="обязательный",
     optional_flag="необязательный",
-    version_available_markers=("доступен", "начиная"),
+    version_available_markers=("доступен",),
     version_changed_markers=("изменен", "описание"),
     global_context_name="Глобальный контекст",
 )
@@ -168,10 +168,7 @@ EN_DIALECT = HelpDialect(
     type_label="Type:",
     required_flag="required",
     optional_flag="optional",
-    # «since version» покрывает и «Available since version», и «It is not
-    # recommended to use since version» — ровно как русское «начиная» покрывает
-    # оба соответствующих случая.
-    version_available_markers=("since version",),
+    version_available_markers=("available since version",),
     version_changed_markers=("changed in version",),
     global_context_name="Global context",
 )

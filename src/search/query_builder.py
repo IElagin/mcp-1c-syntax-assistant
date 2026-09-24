@@ -7,6 +7,20 @@ BY_RELEVANCE = [{"_score": {"order": "desc"}}]
 SINGLE_WORD_MAX_LENGTH = 30
 SEMANTIC_MIN_WORDS = 3
 SEMANTIC_MIN_LENGTH = 50
+TERM_COVERAGE_BOOST = 6.0
+
+
+def _term_coverage(query: str) -> Dict[str, Any]:
+    return {"combined_fields": {
+        "query": query,
+        "fields": [
+            "name^2", "description", "note",
+            "variants.description", "variants.parameters.description",
+            "variants.return_description",
+        ],
+        "operator": "and",
+        "boost": TERM_COVERAGE_BOOST,
+    }}
 
 
 def _scored(conditions: Dict[str, Any], limit: int) -> Dict[str, Any]:
@@ -138,6 +152,7 @@ class QueryBuilder:
                 }
             },
             "should": [
+                _term_coverage(query),
                 {"match_phrase": {"name": {"query": query, "boost": 2.0}}},
                 {"prefix": {"name": {"value": query, "boost": 1.5}}},
             ],
@@ -159,14 +174,18 @@ class QueryBuilder:
     def _build_semantic_search(self, query: str, limit: int) -> Dict[str, Any]:
         return _scored({
             "should": [
+                _term_coverage(query),
                 {"multi_match": {
                     "query": query,
                     "fields": [
                         "description^3", "name^2", "full_path^2",
                         "syntax_all^1.5", "examples^1", "note^1",
+                        "variants.description", "variants.parameters.description",
+                        "variants.return_description",
                     ],
                     "type": "most_fields",
                     "minimum_should_match": "50%",
+                    "fuzziness": "AUTO",
                 }},
                 {"match_phrase": {
                     "description": {"query": query, "boost": 2.0, "slop": 3}

@@ -156,6 +156,7 @@ class ElasticsearchClient:
                     "note": {"type": "text", "analyzer": "russian"},
                     "description": {"type": "text", "analyzer": "russian"},
                     "version_from": {"type": "keyword"},
+                    "version_notes": {"type": "text", "index": False},
                     "examples": {"type": "text", "analyzer": "russian"},
                     "source_file": {"type": "keyword"},
                     "book": {"type": "keyword"},

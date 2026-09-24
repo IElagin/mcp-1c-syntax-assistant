@@ -152,7 +152,9 @@ def test_queries_do_not_reference_removed_fields():
 
     text = json.dumps(queries, ensure_ascii=False)
     for field in ("syntax_ru", "syntax_en", "parameters.name", "parameters.description"):
-        assert field not in text, f"запрос ссылается на удалённое поле {field}"
+        assert f'"{field}"' not in text and f'"{field}^' not in text, (
+            f"запрос ссылается на удалённое поле {field}"
+        )
 
     assert "syntax_all" in text, "поисковое поле синтаксиса не используется"
 
