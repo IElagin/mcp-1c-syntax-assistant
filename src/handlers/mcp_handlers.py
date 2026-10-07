@@ -281,6 +281,8 @@ def _element_missing(
     if similar:
         lines.append(strings.similar_by_name)
         lines.extend(f"  {list_line(doc, strings)}" for doc in similar)
+    elif answer.get("help_version"):
+        lines.append(strings.no_similar_in_version.format(version=answer["help_version"]))
     else:
         lines.append(strings.no_similar)
     return "\n".join(lines)
@@ -366,6 +368,7 @@ async def handle_list_1c_object_members(
             result["total"],
             MEMBERS_LIMIT_MAX,
             strings,
+            constructors=result.get("constructors", []),
         ))
     except Exception as e:
         logger.error(f"list_1c_object_members: {e}")

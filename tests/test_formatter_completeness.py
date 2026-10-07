@@ -336,8 +336,11 @@ async def test_all_counter_equals_sum_by_kinds_without_extra_document():
         methods = await service.get_object_members_list("ТаблицаЗначений", "methods", limit=1)
         properties = await service.get_object_members_list("ТаблицаЗначений", "properties", limit=1)
         events = await service.get_object_members_list("ТаблицаЗначений", "events", limit=1)
+        constructors = await service.get_object_members_list(
+            "ТаблицаЗначений", "constructors", limit=1)
 
-        expected = methods["total"] + properties["total"] + events["total"]
+        expected = (methods["total"] + properties["total"] + events["total"]
+                    + constructors["total"])
         assert all_members["total"] == expected, (
             f"all={all_members['total']}, сумма по видам={expected} — "
             "документ объекта снова считается членом"

@@ -402,14 +402,16 @@ def member_list(
     total: int,
     tool_limit: int,
     strings: UiStrings = RU_STRINGS,
+    constructors: List[Dict[str, Any]] = (),
 ) -> str:
     """Состав объекта: та же строка списка, что и в выдаче поиска."""
     methods_label = strings.constructors_word if kind == "constructors" \
         else strings.methods_word
-    shown = len(methods) + len(properties) + len(events)
+    shown = len(constructors) + len(methods) + len(properties) + len(events)
 
     lines = [strings.members_header.format(obj=obj), ""]
     for heading, elements in (
+        (strings.constructors_word, constructors),
         (methods_label, methods),
         (strings.properties_word, properties),
         (strings.events_word, events),

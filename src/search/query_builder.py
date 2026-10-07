@@ -13,10 +13,11 @@ FUZZY_PREFIX_LENGTH = 2
 FUZZY_MAX_EXPANSIONS = 10
 CONVERSION_PHRASE_BOOST = 40.0
 CONVERSION_PHRASE_SLOP = 1
+CONVERSION_WORDS = r'[^\W\d_]+(?:\s+[^\W\d_]+){0,2}'
 CONVERSION_PHRASE = re.compile(
     r'\b(?:преобраз\w*|конверт\w*|convert\w*)\s+'
-    r'(?P<relation>(?P<left>[^\W\d_]+)\s+(?P<direction>в|из|into|to|from)\s+'
-    r'(?P<right>[^\W\d_]+))(?=[\s?!.;]*$)',
+    r'(?P<relation>(?P<left>' + CONVERSION_WORDS + r')\s+(?P<direction>в|из|into|to|from)\s+'
+    r'(?P<right>[^\W\d_]+))(?=(?:\s+\w+){0,2}[\s?!.;]*$)',
     re.IGNORECASE,
 )
 CONVERSION_TYPES = {
@@ -35,7 +36,7 @@ def _conversion_queries(query: str) -> List[Dict[str, Any]]:
     clauses = []
     for match in CONVERSION_PHRASE.finditer(query):
         destination = 'left' if match.group('direction').lower() in ('из', 'from') else 'right'
-        types = CONVERSION_TYPES.get(match.group(destination).lower())
+        types = CONVERSION_TYPES.get(match.group(destination).split()[-1].lower())
         if not types:
             continue
         clauses.append({"constant_score": {
@@ -55,7 +56,7 @@ def _term_coverage(query: str) -> Dict[str, Any]:
         "filter": {"combined_fields": {
             "query": query,
             "fields": [
-                "name", "description", "note",
+                "name", "name_words", "description", "note",
                 "variants.description", "variants.parameters.description",
                 "variants.return_description",
             ],
@@ -223,7 +224,7 @@ class QueryBuilder:
                 {"multi_match": {
                     "query": query,
                     "fields": [
-                        "description^3", "name^2", "full_path^2",
+                        "description^3", "name_words^2", "name^2", "full_path^2",
                         "syntax_all^1.5", "examples^1", "note^1",
                         "variants.description", "variants.parameters.description",
                         "variants.return_description",
