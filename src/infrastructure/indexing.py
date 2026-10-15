@@ -2,12 +2,13 @@
 
 import asyncio
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from src.core.config import settings
 from src.core.constants import MAX_TOLERATED_PAGE_LOSS_SHARE
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
+from src.core.versions import UNVERSIONED, all_versions
 from src.infrastructure.background.indexing_manager import get_indexing_manager
 from src.models.doc_models import ParsedHBK
 from src.models.indexing_outcome import IndexingOutcome
@@ -17,6 +18,7 @@ from src.parsers.name_backfill import backfill_english_names
 logger = get_logger(__name__)
 
 ProgressCallback = Callable[[int, int], None]
+VersionedBook = Tuple[Path, str]
 
 
 def _book_lost_too_many_pages(parsed_hbk: ParsedHBK) -> bool:
@@ -104,12 +106,15 @@ async def auto_index_on_startup(es_client: ElasticsearchClient):
         es_client: Подключённый клиент Elasticsearch
     """
     try:
-        ru_file = await _needs_indexing(
-            es_client,
-            settings.data.hbk_directory,
-            settings.data.hbk_filename,
-            index=None,  # None -> settings.elasticsearch_index, как раньше
-        )
+        ru_file = None
+        versioned = await _versioned_books_to_index(es_client)
+        if all_versions()[0].name == UNVERSIONED:
+            ru_file = await _needs_indexing(
+                es_client,
+                settings.data.hbk_directory,
+                settings.data.hbk_filename,
+                index=None,  # None -> settings.elasticsearch_index, как раньше
+            )
         en_file = await _needs_indexing(
             es_client,
             settings.data.hbk_directory_en,
@@ -117,17 +122,37 @@ async def auto_index_on_startup(es_client: ElasticsearchClient):
             index=settings.elasticsearch_index_en,
         )
 
-        if ru_file is not None or en_file is not None:
-            logger.info(f"Запланирована фоновая индексация: ru={ru_file}, en={en_file}")
-            asyncio.create_task(_delayed_indexing_and_backfill(es_client, ru_file, en_file))
+        if ru_file is not None or en_file is not None or versioned:
+            logger.info(
+                f"Запланирована фоновая индексация: ru={ru_file}, en={en_file}, "
+                f"версии={[str(path) for path, _ in versioned]}"
+            )
+            asyncio.create_task(
+                _delayed_indexing_and_backfill(es_client, ru_file, en_file, versioned)
+            )
     except Exception as e:
         logger.error(f"Ошибка при планировании автоиндексации: {e}")
+
+
+async def _versioned_books_to_index(es_client: ElasticsearchClient) -> List[VersionedBook]:
+    """Книги версий платформы (HELP_VERSIONS), которым нужна индексация, с их индексами."""
+    books = []
+    for version in all_versions():
+        if version.name == UNVERSIONED:
+            continue
+        hbk_file = await _needs_indexing(
+            es_client, version.hbk_directory, settings.data.hbk_filename, index=version.index
+        )
+        if hbk_file is not None:
+            books.append((hbk_file, version.index))
+    return books
 
 
 async def _delayed_indexing_and_backfill(
     es_client: ElasticsearchClient,
     ru_file: Optional[Path],
     en_file: Optional[Path],
+    versioned: Sequence[VersionedBook] = (),
 ) -> None:
     """Даёт приложению 5 секунд на полный запуск, затем индексирует и достраивает имена.
 
@@ -136,13 +161,14 @@ async def _delayed_indexing_and_backfill(
     ожидания (см. tests/test_startup_backfill.py).
     """
     await asyncio.sleep(5)
-    await _run_queue_then_backfill(es_client, ru_file, en_file)
+    await _run_queue_then_backfill(es_client, ru_file, en_file, versioned)
 
 
 async def _run_queue_then_backfill(
     es_client: ElasticsearchClient,
     ru_file: Optional[Path],
     en_file: Optional[Path],
+    versioned: Sequence[VersionedBook] = (),
 ) -> None:
     """
     Индексирует обе книги (какие есть) через очередь менеджера, затем достраивает имена.
@@ -165,6 +191,9 @@ async def _run_queue_then_backfill(
         if ru_file is not None:
             logger.info(f"Начинаем фоновую индексацию (ru): {ru_file}")
             await manager.start_indexing(str(ru_file), es_client, index=None, lang="ru")
+        for hbk_file, index in versioned:
+            logger.info(f"Начинаем фоновую индексацию (ru, {index}): {hbk_file}")
+            await manager.start_indexing(str(hbk_file), es_client, index=index, lang="ru")
         if en_file is not None:
             logger.info(f"Начинаем фоновую индексацию (en): {en_file}")
             await manager.start_indexing(
@@ -179,14 +208,15 @@ async def _run_queue_then_backfill(
     while manager.is_indexing():
         await asyncio.sleep(0.5)
 
-    try:
-        updated = await backfill_english_names(
-            es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
-        )
-        if updated:
-            logger.info(f"Достроено английских имён при старте: {updated}")
-    except Exception as e:
-        logger.error(f"Ошибка при достройке английских имён: {e}")
+    for russian_index in [version.index for version in all_versions()]:
+        try:
+            updated = await backfill_english_names(
+                es_client, russian_index, settings.elasticsearch_index_en
+            )
+            if updated:
+                logger.info(f"Достроено английских имён при старте ({russian_index}): {updated}")
+        except Exception as e:
+            logger.error(f"Ошибка при достройке английских имён ({russian_index}): {e}")
 
 
 async def index_hbk_file(

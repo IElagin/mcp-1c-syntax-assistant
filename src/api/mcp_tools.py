@@ -11,6 +11,7 @@
 """
 
 from src.core.config import settings
+from src.core.versions import configured_versions, default_version
 from src.core.constants import (
     MEMBERS_LIMIT_DEFAULT,
     MEMBERS_LIMIT_MAX,
@@ -27,6 +28,24 @@ LANG_DESCRIPTION = (
     "можно передать на любом языке. Передавайте en, если "
     "пользователь работает по-английски."
 )
+
+VERSION_DESCRIPTION = (
+    "Версия платформы 1С, по справке которой отвечать (например 8.3.27.2342). "
+    "Не указана — версия по умолчанию сервера. Передавайте версию платформы "
+    "базы, для которой пишете код: состав API между версиями различается. "
+    "Список версий — list_1c_versions."
+)
+
+
+def version_schema() -> dict:
+    """Схема параметра version: перечень и умолчание — из HELP_VERSIONS."""
+    schema = {"type": "string", "minLength": 1, "description": VERSION_DESCRIPTION}
+    versions = configured_versions()
+    if versions:
+        schema["enum"] = versions
+        schema["default"] = default_version()
+    return schema
+
 
 TOOLS = [
     {
@@ -84,6 +103,7 @@ TOOLS = [
                     "default": DEFAULT_LANG,
                     "description": LANG_DESCRIPTION,
                 },
+                "version": version_schema(),
             },
             "required": ["query"],
             "additionalProperties": False,
@@ -131,6 +151,7 @@ TOOLS = [
                     "default": DEFAULT_LANG,
                     "description": LANG_DESCRIPTION,
                 },
+                "version": version_schema(),
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -173,6 +194,7 @@ TOOLS = [
                     "default": DEFAULT_LANG,
                     "description": LANG_DESCRIPTION,
                 },
+                "version": version_schema(),
             },
             "required": ["object"],
             "additionalProperties": False,
@@ -213,8 +235,29 @@ TOOLS = [
                     "default": DEFAULT_LANG,
                     "description": LANG_DESCRIPTION,
                 },
+                "version": version_schema(),
             },
             "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_1c_versions",
+        "description": (
+            "Версии платформы 1С, по которым у сервера есть справка, и какая из них "
+            "по умолчанию. Вызывайте, чтобы выбрать version для остальных "
+            "инструментов: версия — платформы базы, для которой пишется код."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "lang": {
+                    "type": "string",
+                    "enum": ["ru", "en"],
+                    "default": DEFAULT_LANG,
+                    "description": LANG_DESCRIPTION,
+                },
+            },
             "additionalProperties": False,
         },
     },

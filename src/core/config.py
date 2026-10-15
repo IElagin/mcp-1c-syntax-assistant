@@ -1,9 +1,17 @@
 """Конфигурация приложения."""
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import List, Optional
 import os
+import re
+
+PLATFORM_VERSION = re.compile(r"\d+\.\d+\.\d+\.\d+")
+
+
+def split_versions(value: str) -> List[str]:
+    """HELP_VERSIONS списком, без пустых и пробелов."""
+    return [part.strip() for part in value.split(",") if part.strip()]
 
 
 class ElasticsearchConfig(BaseModel):
@@ -66,6 +74,9 @@ class Settings(BaseSettings):
 
     default_help_lang: str = "ru"
 
+    help_versions: str = ""
+    default_help_version: str = ""
+
     reindex_on_startup: str = "false"
 
     debug: bool = False
@@ -99,6 +110,25 @@ class Settings(BaseSettings):
                 f"DEFAULT_HELP_LANG={value!r}: допустимы только 'ru' и 'en'"
             )
         return normalized
+
+    @field_validator("help_versions")
+    @classmethod
+    def _versions_are_platform_numbers(cls, value: str) -> str:
+        """Версии — номера платформы через запятую; опечатка роняет старт, а не ответы."""
+        for version in split_versions(value):
+            if not PLATFORM_VERSION.fullmatch(version):
+                raise ValueError(f"HELP_VERSIONS: {version!r} — не номер платформы вида 8.3.27.2342")
+        return value
+
+    @model_validator(mode="after")
+    def _default_version_is_configured(self) -> "Settings":
+        """Версия по умолчанию — одна из HELP_VERSIONS."""
+        default = self.default_help_version.strip()
+        if default and default not in split_versions(self.help_versions):
+            raise ValueError(
+                f"DEFAULT_HELP_VERSION={default!r} нет в HELP_VERSIONS={self.help_versions!r}"
+            )
+        return self
 
     @property
     def elasticsearch(self) -> ElasticsearchConfig:

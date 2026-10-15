@@ -93,7 +93,7 @@ Invoke-RestMethod http://localhost:8000/health
  "documents_count":23491,"indexing_status":"idle","indexing_active":false,
  "index_en_exists":true,"documents_count_en":23471,
  "missing_article_books":[],"missing_article_books_en":[],
- "unreadable_article_books":[],"unreadable_article_books_en":[],"version":"2.4.4"}
+ "unreadable_article_books":[],"unreadable_article_books_en":[],"help_versions":[],"version":"2.5.0"}
 ```
 
 Сервер готов, когда `indexing_active` равно `false`, а `documents_count`
@@ -113,9 +113,19 @@ Invoke-RestMethod http://localhost:8000/health
 | `get_1c_element` | Полная карточка элемента с известным точным именем; при неуникальном имени вместо карточки приходит перечень кандидатов. |
 | `list_1c_object_members` | Методы, свойства, события и конструкторы одного объекта, по строке на элемент. |
 | `get_1c_article` | Текст статьи целиком — о конструкции языка, языке запросов, общем синтаксисе или выражении СКД. |
+| `list_1c_versions` | Версии платформы, по которым есть справка, и версия по умолчанию. |
 
 Схемы, лимиты и точное поведение при неоднозначном или отсутствующем имени:
 [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md).
+
+## Версии платформы (необязательно)
+
+Сервер может держать справку нескольких версий платформы — например 8.3.20,
+8.3.27 и 8.5 — каждую в своём индексе. Первые четыре инструмента принимают
+параметр `version`, по умолчанию отвечает версия из настройки. Книга каждой
+версии кладётся в `data/hbk/<версия>/`, перечень задаёт `HELP_VERSIONS`:
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md#версии-платформы-1). Без
+`HELP_VERSIONS` сервер работает с одной книгой, как раньше.
 
 ## Книги статей (необязательно)
 

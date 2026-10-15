@@ -7,6 +7,9 @@ from src.core.config import settings
 from src.core.constants import KIND_TO_TYPE, MEMBERS_LIMIT_MAX, SEARCH_LIMIT_MAX
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
+from src.core.versions import (
+    UnknownVersionError, all_versions, default_version, resolve_version, UNVERSIONED,
+)
 from src.handlers.element_card import (
     render_element_card, render_object_card, hint_about_remainder, member_list,
     candidate_list, elsewhere_list, list_line, render_article,
@@ -16,7 +19,7 @@ from src.handlers.mcp_formatter import mcp_formatter
 from src.handlers.ui_strings import RU_STRINGS, UiStrings, strings_for
 from src.models.mcp_models import (
     Find1CHelpRequest, Get1CArticleRequest, Get1CElementRequest,
-    List1CObjectMembersRequest, MCPResponse,
+    List1CObjectMembersRequest, List1CVersionsRequest, MCPResponse,
 )
 from src.search.search_service import SearchService
 
@@ -25,9 +28,25 @@ logger = get_logger(__name__)
 _CYRILLIC = re.compile(r"[а-яёА-ЯЁ]")
 
 
-def index_for(lang: str) -> str:
-    """Индекс по языку ответа: русская и английская книги живут раздельно."""
-    return settings.elasticsearch_index_en if lang == "en" else settings.elasticsearch_index
+def index_for(lang: str, version: Optional[str] = None) -> str:
+    """Индекс по языку и версии: английская книга одна, русские — по версиям платформы."""
+    if lang == "en":
+        return settings.elasticsearch_index_en
+    return resolve_version(version).index
+
+
+def version_refusal(lang: str, version: Optional[str], strings: UiStrings) -> Optional[str]:
+    """Почему по этой версии не ответить, или None."""
+    try:
+        resolved = resolve_version(version)
+    except UnknownVersionError as error:
+        available = ", ".join(error.available) or strings.no_versions_configured
+        return strings.unknown_version.format(version=error.version, available=available)
+    if lang == "en" and version and resolved.name != default_version():
+        return strings.english_only_default_version.format(
+            version=resolved.name, default=default_version()
+        )
+    return None
 
 
 def _text_response(text: str) -> MCPResponse:
@@ -131,11 +150,15 @@ async def handle_find_1c_help(
     lang = request.lang.value
     strings = strings_for(lang)
     try:
+        refusal = version_refusal(lang, request.version, strings)
+        if refusal:
+            return _text_response(refusal)
+
         mismatch = await _language_mismatch(lang, (request.object,), es_client, strings)
         if mismatch:
             return _text_response(mismatch)
 
-        service = SearchService(es_client, index=index_for(lang))
+        service = SearchService(es_client, index=index_for(lang, request.version))
         result = await service.find_help_filtered(
             request.query,
             KIND_TO_TYPE[request.kind.value],
@@ -202,13 +225,17 @@ async def handle_get_1c_element(
     lang = request.lang.value
     strings = strings_for(lang)
     try:
+        refusal = version_refusal(lang, request.version, strings)
+        if refusal:
+            return _text_response(refusal)
+
         mismatch = await _language_mismatch(
             lang, (request.name, request.object), es_client, strings
         )
         if mismatch:
             return _text_response(mismatch)
 
-        service = SearchService(es_client, index=index_for(lang))
+        service = SearchService(es_client, index=index_for(lang, request.version))
         answer = await service.element_card(
             request.name, request.object, request.variant
         )
@@ -296,7 +323,11 @@ async def handle_get_1c_article(
     lang = request.lang.value
     strings = strings_for(lang)
     try:
-        service = SearchService(es_client, index=index_for(lang))
+        refusal = version_refusal(lang, request.version, strings)
+        if refusal:
+            return _text_response(refusal)
+
+        service = SearchService(es_client, index=index_for(lang, request.version))
         answer = await service.article(request.name, request.book)
         kind = answer.get("kind")
 
@@ -342,11 +373,15 @@ async def handle_list_1c_object_members(
     lang = request.lang.value
     strings = strings_for(lang)
     try:
+        refusal = version_refusal(lang, request.version, strings)
+        if refusal:
+            return _text_response(refusal)
+
         mismatch = await _language_mismatch(lang, (request.object,), es_client, strings)
         if mismatch:
             return _text_response(mismatch)
 
-        service = SearchService(es_client, index=index_for(lang))
+        service = SearchService(es_client, index=index_for(lang, request.version))
         result = await service.get_object_members_list(
             request.object, request.members.value, request.limit
         )
@@ -399,3 +434,33 @@ async def _why_no_members(
     similar = ", ".join(await service.similar_objects(request.object)) \
         or strings.no_similar_objects
     return strings.object_missing.format(object=request.object, similar=similar)
+
+
+async def _version_line(version, strings: UiStrings, es_client: ElasticsearchClient) -> str:
+    """Строка перечня версий: число документов или почему индекса нет."""
+    exists = await es_client.index_exists(index=version.index)
+    count = await es_client.get_documents_count(index=version.index) if exists else 0
+    if version.name == UNVERSIONED:
+        return strings.unversioned_line.format(count=count)
+    mark = strings.version_default_mark if version.name == default_version() else ""
+    if count:
+        return strings.version_line.format(version=version.name, mark=mark, count=count)
+    return strings.version_not_indexed.format(
+        version=version.name, mark=mark, file=version.hbk_file.as_posix()
+    )
+
+
+async def handle_list_1c_versions(
+    request: List1CVersionsRequest, es_client: ElasticsearchClient
+) -> MCPResponse:
+    """Версии платформы со справкой и версия по умолчанию."""
+    strings = strings_for(request.lang.value)
+    try:
+        versions = all_versions()
+        lines = [await _version_line(version, strings, es_client) for version in versions]
+        if versions[0].name != UNVERSIONED:
+            lines.insert(0, strings.versions_header)
+        return _text_response("\n".join(lines))
+    except Exception as e:
+        logger.error(f"list_1c_versions: {e}")
+        return mcp_formatter.create_error_response(strings.generic_error_title, str(e))

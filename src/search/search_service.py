@@ -42,6 +42,19 @@ HELP_VERSIONS_CAP = 500
 _HELP_VERSION_BY_INDEX: Dict[str, Optional[str]] = {}
 
 
+NAME_TABLE_PAGE = 5000
+NAME_TABLE_TYPES = (
+    DocumentType.OBJECT.value,
+    DocumentType.GLOBAL_FUNCTION.value,
+    DocumentType.GLOBAL_PROCEDURE.value,
+    DocumentType.OBJECT_CONSTRUCTOR.value,
+    DocumentType.OBJECT_PROPERTY.value,
+    DocumentType.OBJECT_FUNCTION.value,
+    DocumentType.OBJECT_PROCEDURE.value,
+)
+NAME_TABLE_FIELDS = ("type", "name_ru", "name_en", "object", "availability")
+
+
 def _version_key(version: str) -> Tuple[int, ...]:
     parts = version.split(".")
     return tuple(int(part) for part in parts) if all(p.isdigit() for p in parts) else ()
@@ -524,6 +537,26 @@ class SearchService:
             "aggs": {"by_object": {"terms": {"field": "object", "size": len(names)}}},
         })
         return {b["key"]: b["doc_count"] for b in buckets_of(response, "by_object")}
+
+    async def name_table(self) -> List[Dict[str, Any]]:
+        """Имена API платформы: объекты, глобальные методы, конструкторы и члены объектов с доступностью."""
+        query: Dict[str, Any] = {
+            "size": NAME_TABLE_PAGE,
+            "query": {"terms": {"type": list(NAME_TABLE_TYPES)}},
+            "_source": list(NAME_TABLE_FIELDS),
+            "sort": [{"id": "asc"}],
+        }
+        table: List[Dict[str, Any]] = []
+        while True:
+            response = await self.es_client.search(query, index=self.index)
+            hits = hits_of(response)
+            table.extend(
+                {field: hit["_source"].get(field) for field in NAME_TABLE_FIELDS}
+                for hit in hits
+            )
+            if len(hits) < NAME_TABLE_PAGE:
+                return table
+            query["search_after"] = hits[-1]["sort"]
 
     async def articles_indexed(self) -> bool:
         """Есть ли в индексе хоть одна статья."""

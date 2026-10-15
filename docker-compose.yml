@@ -40,6 +40,9 @@ services:
       - ELASTICSEARCH_HOST=elasticsearch
       - ELASTICSEARCH_PORT=9200
       - LOG_LEVEL=INFO
+      # Версии платформы — из окружения docker compose; пусто — одна книга без версии.
+      - HELP_VERSIONS=${HELP_VERSIONS:-}
+      - DEFAULT_HELP_VERSION=${DEFAULT_HELP_VERSION:-}
     restart: unless-stopped
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:8000/health || exit 1" ]

@@ -10,6 +10,7 @@ from src.core.constants import ARTICLE_BOOKS
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector
 from src.core.config import settings
+from src.core.versions import UNVERSIONED, all_versions, default_version
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 from src.parsers.v8_container import HelpBookArchive
@@ -31,6 +32,23 @@ def _article_book_state(directory: str, filename_attr: str) -> Tuple[List[str], 
         except Exception:
             unreadable.append(book.key)
     return missing, unreadable
+
+
+async def _help_versions_state(es_client: ElasticsearchClient, es_connected: bool) -> list:
+    """Индекс каждой версии платформы; книга без версии в перечень не входит."""
+    state = []
+    for version in all_versions():
+        if version.name == UNVERSIONED:
+            continue
+        exists = bool(await es_client.index_exists(index=version.index)) if es_connected else False
+        state.append({
+            "version": version.name,
+            "default": version.name == default_version(),
+            "index": version.index,
+            "index_exists": exists,
+            "documents_count": await es_client.get_documents_count(index=version.index) if exists else None,
+        })
+    return state
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -64,6 +82,7 @@ async def health_check(
         index_en_exists = bool(await es_client.index_exists(index=index_en)) if es_connected else False
         docs_count_en = await es_client.get_documents_count(index=index_en) if index_en_exists else None
 
+        help_versions = await _help_versions_state(es_client, es_connected)
         indexing_progress = await indexing_manager.get_status()
 
     await metrics.increment("health_check.requests")
@@ -81,4 +100,5 @@ async def health_check(
         missing_article_books_en=missing_books_en,
         unreadable_article_books=unreadable_books,
         unreadable_article_books_en=unreadable_books_en,
+        help_versions=help_versions,
     )

@@ -1,18 +1,20 @@
 """Index management endpoints."""
 
 from enum import Enum
-from typing import Dict
+from typing import Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 
 from src.core.config import settings
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
+from src.core.versions import UNVERSIONED, UnknownVersionError, resolve_version
 from src.infrastructure.indexing import index_hbk_file, resolve_hbk_file
 from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
 from src.api.indexing_messages import describe_outcome
 from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 from src.parsers.name_backfill import backfill_english_names
+from src.search.search_service import SearchService
 
 router = APIRouter(prefix="/index", tags=["index"])
 logger = get_logger(__name__)
@@ -64,14 +66,31 @@ class RebuildLang(str, Enum):
     BOTH = "both"
 
 
+def _russian_book(version: Optional[str]) -> tuple:
+    resolved = resolve_version(version)
+    index = None if resolved.name == UNVERSIONED else resolved.index
+    return resolved.hbk_directory, settings.data.hbk_filename, index
+
+
 _BOOKS = {
-    "ru": lambda: (settings.data.hbk_directory, settings.data.hbk_filename, None),
-    "en": lambda: (
+    "ru": _russian_book,
+    "en": lambda version: (
         settings.data.hbk_directory_en,
         settings.data.hbk_filename_en,
         settings.elasticsearch_index_en,
     ),
 }
+
+
+def _version_or_400(version: Optional[str]):
+    """Версия запроса; неизвестная — ответ 400 с перечнем версий."""
+    try:
+        return resolve_version(version)
+    except UnknownVersionError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Версии {error.version} нет. Есть: {', '.join(error.available) or 'версии не настроены'}",
+        ) from None
 
 
 def _requested_languages(lang: RebuildLang) -> list:
@@ -89,6 +108,7 @@ def _overall_status(reported: Dict[str, dict]) -> str:
 @router.post("/rebuild")
 async def rebuild_index(
     lang: RebuildLang = RebuildLang.RU,
+    version: Optional[str] = None,
     es_client: ElasticsearchClient = Depends(get_elasticsearch_client),
 ):
     """Переиндексация книг справки: русской, английской или обеих.
@@ -96,13 +116,14 @@ async def rebuild_index(
     Отдаёт исход по каждому запрошенному языку и итог вызова целиком —
     success, partial или failed.
     """
+    russian_index = _version_or_400(version).index
     try:
         languages = _requested_languages(lang)
         reported: Dict[str, dict] = {}
         resolved: Dict[str, tuple] = {}
 
         for language in languages:
-            directory, filename, index = _BOOKS[language]()
+            directory, filename, index = _BOOKS[language](version)
             hbk_file = resolve_hbk_file(directory, filename)
             if hbk_file is None:
                 reported[language] = {
@@ -142,7 +163,7 @@ async def rebuild_index(
         if any_success:
             try:
                 updated = await backfill_english_names(
-                    es_client, settings.elasticsearch_index, settings.elasticsearch_index_en
+                    es_client, russian_index, settings.elasticsearch_index_en
                 )
                 if updated:
                     logger.info(f"Достроено английских имён после переиндексации: {updated}")
@@ -165,3 +186,21 @@ async def rebuild_index(
             status_code=500,
             detail=f"Внутренняя ошибка: {str(e)}"
         )
+
+
+@router.get("/names")
+async def name_table(
+    version: Optional[str] = None,
+    es_client: ElasticsearchClient = Depends(get_elasticsearch_client),
+):
+    """Имена API платформы версии с доступностью — для внешних линтеров, которым нужен список целиком."""
+    resolved = _version_or_400(version)
+    if not await es_client.is_connected():
+        raise HTTPException(status_code=503, detail="Elasticsearch недоступен")
+    if not await es_client.index_exists(index=resolved.index):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Справка версии {resolved.name or 'без версии'} не проиндексирована",
+        )
+    names = await SearchService(es_client, index=resolved.index).name_table()
+    return {"version": resolved.name, "count": len(names), "names": names}

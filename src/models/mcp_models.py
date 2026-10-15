@@ -20,6 +20,7 @@ class MCPToolType(str, Enum):
     GET_1C_ELEMENT = "get_1c_element"
     LIST_1C_OBJECT_MEMBERS = "list_1c_object_members"
     GET_1C_ARTICLE = "get_1c_article"
+    LIST_1C_VERSIONS = "list_1c_versions"
 
 
 class SearchKind(str, Enum):
@@ -69,6 +70,9 @@ class Find1CHelpRequest(BaseModel):
         default_factory=lambda: Lang(settings.default_help_lang),
         description="Язык ответа",
     )
+    version: Optional[str] = Field(
+        None, min_length=1, description="Версия платформы; не указана — версия по умолчанию"
+    )
 
 
 class Get1CElementRequest(BaseModel):
@@ -82,6 +86,9 @@ class Get1CElementRequest(BaseModel):
         default_factory=lambda: Lang(settings.default_help_lang),
         description="Язык ответа",
     )
+    version: Optional[str] = Field(
+        None, min_length=1, description="Версия платформы; не указана — версия по умолчанию"
+    )
 
 
 class Get1CArticleRequest(BaseModel):
@@ -93,6 +100,9 @@ class Get1CArticleRequest(BaseModel):
     lang: Lang = Field(
         default_factory=lambda: Lang(settings.default_help_lang),
         description="Язык ответа",
+    )
+    version: Optional[str] = Field(
+        None, min_length=1, description="Версия платформы; не указана — версия по умолчанию"
     )
 
 
@@ -106,6 +116,19 @@ class List1CObjectMembersRequest(BaseModel):
         MEMBERS_LIMIT_DEFAULT, ge=1, le=MEMBERS_LIMIT_MAX,
         description="Сколько элементов вернуть",
     )
+    lang: Lang = Field(
+        default_factory=lambda: Lang(settings.default_help_lang),
+        description="Язык ответа",
+    )
+    version: Optional[str] = Field(
+        None, min_length=1, description="Версия платформы; не указана — версия по умолчанию"
+    )
+
+
+class List1CVersionsRequest(BaseModel):
+    """Запрос списка версий платформы, по которым есть справка."""
+    model_config = ConfigDict(extra="forbid")
+
     lang: Lang = Field(
         default_factory=lambda: Lang(settings.default_help_lang),
         description="Язык ответа",
@@ -132,4 +155,5 @@ class HealthResponse(BaseModel):
     missing_article_books_en: List[str] = []
     unreadable_article_books: List[str] = []
     unreadable_article_books_en: List[str] = []
+    help_versions: List[Dict[str, Any]] = []
     version: str = __version__
