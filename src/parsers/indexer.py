@@ -29,6 +29,25 @@ _NAME_RU_EN_RE = re.compile(
 )
 
 
+WORD_BOUNDARY_IN_NAME = re.compile(
+    r"(?<=[a-zа-яё0-9])(?=[A-ZА-ЯЁ])|(?<=[A-ZА-ЯЁ])(?=[A-ZА-ЯЁ][a-zа-яё])"
+)
+
+
+NAME_ABBREVIATIONS = {"Стр": "Строка", "Сокр": "Сократить"}
+
+
+def name_words(*names: Optional[str]) -> str:
+    """Слова составных имён: ТекущаяДатаСеанса → «Текущая Дата Сеанса», СтрНайти → «Стр Строка Найти»."""
+    words = [
+        word
+        for name in names if name
+        for part in WORD_BOUNDARY_IN_NAME.sub(" ", name).split()
+        for word in (part, NAME_ABBREVIATIONS.get(part)) if word
+    ]
+    return " ".join(words)
+
+
 def split_name_ru_en(name: Optional[str]) -> Tuple[str, Optional[str]]:
     """Раскладывает "Добавить (Add)" на русскую и английскую части.
 
@@ -151,6 +170,7 @@ class ElasticsearchIndexer:
             "name": doc.name,
             "name_ru": name_ru,
             "name_en": name_en or "",
+            "name_words": name_words(name_ru, name_en),
             "object": doc.object,
             "object_ru": doc.object_ru,
             "object_en": doc.object_en,

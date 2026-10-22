@@ -14,11 +14,11 @@ from src.api.mcp_tools import TOOLS
 from src.models.mcp_models import (
     MCPRequest, MCPResponse, MCPToolType,
     Find1CHelpRequest, Get1CArticleRequest, Get1CElementRequest,
-    List1CObjectMembersRequest,
+    List1CObjectMembersRequest, List1CVersionsRequest,
 )
 from src.handlers.mcp_handlers import (
     handle_find_1c_help, handle_get_1c_article, handle_get_1c_element,
-    handle_list_1c_object_members,
+    handle_list_1c_object_members, handle_list_1c_versions,
 )
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
@@ -200,6 +200,8 @@ async def mcp_endpoint_handler(request: MCPRequest, es_client: ElasticsearchClie
             return await handle_list_1c_object_members(List1CObjectMembersRequest(**request.arguments), es_client)
         elif request.tool == MCPToolType.GET_1C_ARTICLE:
             return await handle_get_1c_article(Get1CArticleRequest(**request.arguments), es_client)
+        elif request.tool == MCPToolType.LIST_1C_VERSIONS:
+            return await handle_list_1c_versions(List1CVersionsRequest(**request.arguments), es_client)
         else:
             raise HTTPException(
                 status_code=400,

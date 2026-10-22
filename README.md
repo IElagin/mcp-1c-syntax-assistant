@@ -94,7 +94,7 @@ background. `/health` reports its progress:
  "documents_count":23491,"indexing_status":"idle","indexing_active":false,
  "index_en_exists":true,"documents_count_en":23471,
  "missing_article_books":[],"missing_article_books_en":[],
- "unreadable_article_books":[],"unreadable_article_books_en":[],"version":"2.4.3"}
+ "unreadable_article_books":[],"unreadable_article_books_en":[],"help_versions":[],"version":"2.5.0"}
 ```
 
 The server is ready when `indexing_active` is `false` and `documents_count`
@@ -114,9 +114,19 @@ Next: point your editor at the server — [docs/CLIENT_SETUP.md](docs/CLIENT_SET
 | `get_1c_element` | Full card for an element whose exact name is known; a candidate list instead of a card when the name is ambiguous. |
 | `list_1c_object_members` | Methods, properties, events and constructors of one object, one line each. |
 | `get_1c_article` | Full text of an article about a language construct, query syntax, common syntax or a DCS expression function. |
+| `list_1c_versions` | Platform versions the server has a reference for, and the default one. |
 
 Schemas, limits and the exact behaviour on ambiguous or missing names:
 [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md).
+
+## Platform versions (optional)
+
+The server can hold the reference of several platform versions — for example
+8.3.20, 8.3.27 and 8.5 — each in its own index. The first four tools accept a
+`version` parameter; without it the default version answers. Each version's
+book goes to `data/hbk/<version>/`, the list is set by `HELP_VERSIONS`:
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md#версии-платформы-1). Without
+`HELP_VERSIONS` the server works with a single book, as before.
 
 ## Article books (optional)
 

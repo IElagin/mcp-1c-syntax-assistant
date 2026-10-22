@@ -45,7 +45,7 @@ async def client_on_a_mixed_index(
         assert await ElasticsearchIndexer(client, index=isolated_index).reindex_all(parsed)
         await client.refresh_index(index=isolated_index)
         monkeypatch.setattr(
-            "src.handlers.mcp_handlers.index_for", lambda lang: isolated_index
+            "src.handlers.mcp_handlers.index_for", lambda lang, version=None: isolated_index
         )
         yield client
     finally:

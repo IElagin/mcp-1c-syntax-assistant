@@ -4,13 +4,18 @@
 
 import time
 import asyncio
-from typing import Dict, Optional
+import ipaddress
+from typing import Dict, Optional, Tuple
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from src.core.config import IpNetwork
 from src.core.constants import REQUESTS_PER_MINUTE, REQUESTS_PER_HOUR
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Запросы с самой машины не ограничиваются никогда: это проверки здоровья, тесты и локальные клиенты.
+MACHINE_ADDRESSES: Tuple[IpNetwork, ...] = (ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
 
 
 @dataclass
@@ -18,6 +23,7 @@ class RateLimitConfig:
     """Конфигурация ограничения скорости."""
     requests_per_minute: int = REQUESTS_PER_MINUTE
     requests_per_hour: int = REQUESTS_PER_HOUR
+    exempt_networks: Tuple[IpNetwork, ...] = ()
     enable_blocking: bool = True
     cleanup_interval: int = 300  # 5 минут
 
@@ -40,7 +46,17 @@ class RateLimiter:
         self._last_cleanup = time.time()
         
         self._lock = asyncio.Lock()
-    
+
+    def is_exempt(self, client_id: str) -> bool:
+        """Адрес без ограничения: сама машина или сеть из RATE_LIMIT_EXEMPT. Не IP-адрес — не исключение."""
+        try:
+            address = ipaddress.ip_address(client_id)
+        except ValueError:
+            return False
+        if address.version == 6 and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        return any(address in network for network in MACHINE_ADDRESSES + self.config.exempt_networks)
+
     async def check_rate_limit(self, client_id: str) -> bool:
         """
         Проверка лимита запросов для клиента.
@@ -54,6 +70,9 @@ class RateLimiter:
         Raises:
             RateLimitExceeded: При превышении лимита
         """
+        if self.is_exempt(client_id):
+            return True
+
         async with self._lock:
             current_time = time.time()
             
@@ -169,20 +188,31 @@ class RateLimiter:
 _global_rate_limiter: Optional[RateLimiter] = None
 
 
+def config_from_settings() -> RateLimitConfig:
+    """Лимиты и исключения из переменных окружения (REQUESTS_PER_MINUTE, REQUESTS_PER_HOUR, RATE_LIMIT_EXEMPT)."""
+    from src.core.config import settings
+
+    return RateLimitConfig(
+        requests_per_minute=settings.requests_per_minute,
+        requests_per_hour=settings.requests_per_hour,
+        exempt_networks=settings.rate_limit_exempt_networks,
+    )
+
+
 def get_rate_limiter(config: Optional[RateLimitConfig] = None) -> RateLimiter:
     """
     Получение глобального экземпляра rate limiter.
     
     Args:
-        config: Конфигурация (используется только при первом вызове)
-        
+        config: Конфигурация (используется только при первом вызове); нет — из настроек окружения
+
     Returns:
         Экземпляр RateLimiter
     """
     global _global_rate_limiter
-    
+
     if _global_rate_limiter is None:
-        _global_rate_limiter = RateLimiter(config)
+        _global_rate_limiter = RateLimiter(config or config_from_settings())
     
     return _global_rate_limiter
 

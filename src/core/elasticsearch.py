@@ -124,6 +124,7 @@ class ElasticsearchClient:
                     "name": {"type": "text", "analyzer": "russian", "fields": {"keyword": {"type": "keyword"}}},
                     "name_ru": {"type": "text", "analyzer": "russian", "fields": {"keyword": {"type": "keyword"}}},
                     "name_en": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                    "name_words": {"type": "text", "analyzer": "russian"},
                     "object": {"type": "keyword"},
                     "element_kind": {"type": "keyword"},
                     "object_ru": {"type": "keyword"},

@@ -40,6 +40,15 @@ services:
       - ELASTICSEARCH_HOST=elasticsearch
       - ELASTICSEARCH_PORT=9200
       - LOG_LEVEL=INFO
+      # Версии платформы — из окружения docker compose; пусто — одна книга без версии.
+      - HELP_VERSIONS=${HELP_VERSIONS:-}
+      - DEFAULT_HELP_VERSION=${DEFAULT_HELP_VERSION:-}
+      # Ограничение частоты (docs/CONFIGURATION.md). Порт выше опубликован только на 127.0.0.1, поэтому
+      # запросы с хоста приходят в контейнер с адреса шлюза сети docker (172.x или 192.168.x) и лимитом не
+      # ограничиваются. Пустое RATE_LIMIT_EXEMPT в окружении или .env — без исключений.
+      - RATE_LIMIT_EXEMPT=${RATE_LIMIT_EXEMPT-172.16.0.0/12,192.168.0.0/16}
+      - REQUESTS_PER_MINUTE=${REQUESTS_PER_MINUTE:-}
+      - REQUESTS_PER_HOUR=${REQUESTS_PER_HOUR:-}
     restart: unless-stopped
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:8000/health || exit 1" ]

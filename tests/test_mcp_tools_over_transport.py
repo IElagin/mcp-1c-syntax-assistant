@@ -30,7 +30,7 @@ async def _transport_over(parsed, index, monkeypatch):
         assert await ElasticsearchIndexer(client, index=index).reindex_all(parsed)
         await client.refresh_index(index=index)
         monkeypatch.setattr(
-            "src.handlers.mcp_handlers.index_for", lambda lang: index
+            "src.handlers.mcp_handlers.index_for", lambda lang, version=None: index
         )
 
         from src.main import app

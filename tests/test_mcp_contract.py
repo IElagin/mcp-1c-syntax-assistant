@@ -16,11 +16,12 @@ from src.api.mcp_tools import TOOLS
 
 TOOL_NAMES = {
     "find_1c_help", "get_1c_element", "list_1c_object_members", "get_1c_article",
+    "list_1c_versions",
 }
 
 
 @pytest.mark.unit
-def test_exactly_four_tools_without_overlap():
+def test_exactly_five_tools_without_overlap():
     assert {t["name"] for t in TOOLS} == TOOL_NAMES
 
 
@@ -75,7 +76,7 @@ def test_element_tool_accepts_object_and_variant():
     element = {t["name"]: t for t in TOOLS}["get_1c_element"]["inputSchema"]
 
     assert element["required"] == ["name"]
-    assert set(element["properties"]) == {"name", "object", "variant", "lang"}
+    assert set(element["properties"]) == {"name", "object", "variant", "lang", "version"}
 
 
 @pytest.mark.unit

@@ -105,6 +105,7 @@ class UiStrings:
     element_is_an_article: str
     similar_by_name: str
     no_similar: str
+    no_similar_in_version: str
 
     element_not_in_object: str
     found_elsewhere_header: str
@@ -121,6 +122,15 @@ class UiStrings:
 
     english_index_missing: str
     russian_name_in_english_book: str
+
+    unknown_version: str
+    no_versions_configured: str
+    english_only_default_version: str
+    versions_header: str
+    version_line: str
+    version_default_mark: str
+    version_not_indexed: str
+    unversioned_line: str
 
     search_failed: str
     search_error_title: str
@@ -261,6 +271,11 @@ RU_STRINGS = UiStrings(
     ),
     similar_by_name="Похожие по имени:",
     no_similar="Похожих по имени тоже нет — проверьте написание.",
+    no_similar_in_version=(
+        "Похожих по имени тоже нет. Справка — платформы {version}: либо в имени "
+        "опечатка, либо элемент появился в более новой версии и на {version} "
+        "недоступен."
+    ),
     element_not_in_object=(
         "У объекта «{object}» нет элемента с точным именем «{name}» — "
         "выдачу обнулил фильтр по объекту, а не отсутствие элемента в справке."
@@ -292,6 +307,29 @@ RU_STRINGS = UiStrings(
         "Английская справка не содержит русских имён, поэтому такой запрос "
         'заведомо ничего не найдёт. Повторите вызов с lang="ru" либо укажите '
         "английское имя элемента."
+    ),
+    unknown_version=(
+        "Справки платформы {version} на сервере нет. Есть: {available}. "
+        "Перечень — list_1c_versions."
+    ),
+    no_versions_configured=(
+        "версии не настроены — одна книга справки без версии, параметр version "
+        "не передавайте"
+    ),
+    english_only_default_version=(
+        "Английская книга справки одна — версии {default}. Для версии {version} "
+        'ответ есть только по-русски: повторите вызов с lang="ru".'
+    ),
+    versions_header="Версии платформы со справкой:",
+    version_line="{version}{mark} — документов {count}",
+    version_default_mark=" (по умолчанию)",
+    version_not_indexed=(
+        "{version}{mark} — не проиндексирована: нет книги {file} или индексация "
+        "ещё идёт"
+    ),
+    unversioned_line=(
+        "Версии не настроены: одна книга справки, документов {count}. Параметр "
+        "version не передавайте."
     ),
     found_count="Найдено {total} элементов по запросу «{query}».",
     full_card_hint_generic="Полная карточка: get_1c_element(name=…, object=…)",
@@ -435,6 +473,11 @@ EN_STRINGS = UiStrings(
     ),
     similar_by_name="Similar by name:",
     no_similar="There is nothing similar by name either — check the spelling.",
+    no_similar_in_version=(
+        "There is nothing similar by name either. The reference is for platform "
+        "{version}: either the name has a typo, or the element appeared in a "
+        "later version and is not available on {version}."
+    ),
     element_not_in_object=(
         'The object "{object}" has no element with the exact name "{name}" — '
         "the object filter zeroed out the results, not an absence of the "
@@ -470,6 +513,29 @@ EN_STRINGS = UiStrings(
         "The English reference book contains no Russian names, so this query "
         "cannot match anything. Repeat the call with lang=\"ru\", or pass the "
         "English name of the element."
+    ),
+    unknown_version=(
+        "The server has no reference for platform {version}. Available: "
+        "{available}. The list: list_1c_versions."
+    ),
+    no_versions_configured=(
+        "versions are not configured — a single reference book without a "
+        "version, do not pass the version parameter"
+    ),
+    english_only_default_version=(
+        "There is one English reference book — for version {default}. For "
+        'version {version} the answer exists in Russian only: repeat the call with lang="ru".'
+    ),
+    versions_header="Platform versions with a reference:",
+    version_line="{version}{mark} — {count} documents",
+    version_default_mark=" (default)",
+    version_not_indexed=(
+        "{version}{mark} — not indexed: the book {file} is missing or indexing "
+        "is still running"
+    ),
+    unversioned_line=(
+        "Versions are not configured: a single reference book, {count} "
+        "documents. Do not pass the version parameter."
     ),
     found_count='Found {total} elements for the query "{query}".',
     full_card_hint_generic="Full card: get_1c_element(name=…, object=…)",

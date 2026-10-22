@@ -2,5 +2,5 @@
 MCP сервер синтаксис-помощника 1С
 """
 
-__version__ = "2.4.3"
+__version__ = "2.5.0"
 __author__ = "Ilya Elagin"

@@ -29,7 +29,7 @@ MEMBER_KINDS = OBJECT_MEMBER_KINDS + GLOBAL_MEMBER_KINDS
 
 MEMBER_KINDS_BY_GROUP = {
     "methods": [
-        "object_function", "object_procedure", "object_constructor",
+        "object_function", "object_procedure",
         "global_function", "global_procedure",
     ],
     "properties": ["object_property"],
@@ -38,6 +38,30 @@ MEMBER_KINDS_BY_GROUP = {
 }
 
 METHOD_KINDS = ("function", "procedure", "constructor")
+HELP_VERSIONS_CAP = 500
+_HELP_VERSION_BY_INDEX: Dict[str, Optional[str]] = {}
+
+
+NAME_TABLE_PAGE = 5000
+NAME_TABLE_TYPES = (
+    DocumentType.OBJECT.value,
+    DocumentType.GLOBAL_FUNCTION.value,
+    DocumentType.GLOBAL_PROCEDURE.value,
+    DocumentType.OBJECT_CONSTRUCTOR.value,
+    DocumentType.OBJECT_PROPERTY.value,
+    DocumentType.OBJECT_FUNCTION.value,
+    DocumentType.OBJECT_PROCEDURE.value,
+)
+NAME_TABLE_FIELDS = ("type", "name_ru", "name_en", "object", "availability")
+
+
+def _version_key(version: str) -> Tuple[int, ...]:
+    parts = version.split(".")
+    return tuple(int(part) for part in parts) if all(p.isdigit() for p in parts) else ()
+
+
+def _is_object_card(doc: Dict[str, Any]) -> bool:
+    return (doc.get("element_kind") or "") == "объект"
 
 
 def hits_of(response: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -100,6 +124,8 @@ def _is_real_type(object_name: Optional[str]) -> bool:
 
 def _group_of(doc_type: str) -> Optional[str]:
     lowered = (doc_type or "").lower()
+    if "constructor" in lowered:
+        return "constructors"
     if any(kind in lowered for kind in METHOD_KINDS):
         return "methods"
     if "property" in lowered:
@@ -309,7 +335,7 @@ class SearchService:
                 "sort": [{"name.keyword": {"order": "asc"}}],
             })
 
-            grouped = {"methods": [], "properties": [], "events": []}
+            grouped = {"constructors": [], "methods": [], "properties": [], "events": []}
             for doc in sources_of(response):
                 group = _group_of(doc.get("type", ""))
                 if group:
@@ -330,7 +356,7 @@ class SearchService:
             logger.error(f"Ошибка получения элементов объекта '{object_name}': {e}")
             return {
                 "object": object_name, "member_type": member_type,
-                "methods": [], "properties": [], "events": [],
+                "constructors": [], "methods": [], "properties": [], "events": [],
                 "total": 0, "error": str(e),
             }
 
@@ -371,6 +397,8 @@ class SearchService:
             if len(documents) > 1:
                 return await self._ambiguous(name, filters, total_of(response))
 
+            if variant and _is_object_card(documents[0]):
+                return await self._object_constructor(documents[0], variant)
             return self._single_document(documents[0], variant)
 
         except Exception as e:
@@ -399,6 +427,48 @@ class SearchService:
             "name": name,
             "similar": await self._similar_members(name),
             "article_exists": await self._article_exists(name),
+            "help_version": await self.help_version(),
+        }
+
+    async def help_version(self) -> Optional[str]:
+        """Версия платформы, которой соответствует книга: самое позднее «Доступен, начиная с»."""
+        if self.index not in _HELP_VERSION_BY_INDEX:
+            response = await self._search({
+                "size": 0,
+                "aggs": {"versions": {"terms": {
+                    "field": "version_from", "size": HELP_VERSIONS_CAP,
+                }}},
+            })
+            buckets = ((response or {}).get("aggregations") or {}) \
+                .get("versions", {}).get("buckets", [])
+            versions = [bucket["key"] for bucket in buckets if _version_key(bucket["key"])]
+            if not versions:
+                return None
+            _HELP_VERSION_BY_INDEX[self.index] = max(versions, key=_version_key)
+        return _HELP_VERSION_BY_INDEX[self.index]
+
+    async def _object_constructor(
+        self, object_doc: Dict[str, Any], variant: str
+    ) -> Dict[str, Any]:
+        """Конструктор объекта по имени варианта, под которым его показывает карточка объекта."""
+        key = object_doc.get("full_path") or object_doc.get("object") or ""
+        constructors = sources_of(await self._search({
+            "query": {"bool": {"filter": [
+                _object_filter(key),
+                {"term": {"type": "object_constructor"}},
+            ]}},
+            "size": 50,
+        }))
+        for constructor in constructors:
+            names = {constructor.get("name_ru") or ""} | {
+                v.get("variant") or "" for v in constructor.get("variants") or []
+            }
+            if variant in names:
+                return {"kind": "card", "document": constructor}
+        return {
+            "kind": "variant_not_found",
+            "document": object_doc,
+            "variants": [c.get("name_ru") or "" for c in constructors],
         }
 
     async def _article_exists(self, name: str) -> bool:
@@ -467,6 +537,26 @@ class SearchService:
             "aggs": {"by_object": {"terms": {"field": "object", "size": len(names)}}},
         })
         return {b["key"]: b["doc_count"] for b in buckets_of(response, "by_object")}
+
+    async def name_table(self) -> List[Dict[str, Any]]:
+        """Имена API платформы: объекты, глобальные методы, конструкторы и члены объектов с доступностью."""
+        query: Dict[str, Any] = {
+            "size": NAME_TABLE_PAGE,
+            "query": {"terms": {"type": list(NAME_TABLE_TYPES)}},
+            "_source": list(NAME_TABLE_FIELDS),
+            "sort": [{"id": "asc"}],
+        }
+        table: List[Dict[str, Any]] = []
+        while True:
+            response = await self.es_client.search(query, index=self.index)
+            hits = hits_of(response)
+            table.extend(
+                {field: hit["_source"].get(field) for field in NAME_TABLE_FIELDS}
+                for hit in hits
+            )
+            if len(hits) < NAME_TABLE_PAGE:
+                return table
+            query["search_after"] = hits[-1]["sort"]
 
     async def articles_indexed(self) -> bool:
         """Есть ли в индексе хоть одна статья."""
