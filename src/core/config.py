@@ -1,17 +1,35 @@
 """Конфигурация приложения."""
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import List, Optional
+from typing import List, Optional, Tuple, Union
+import ipaddress
 import os
 import re
 
+from src.core.constants import REQUESTS_PER_HOUR, REQUESTS_PER_MINUTE
+
 PLATFORM_VERSION = re.compile(r"\d+\.\d+\.\d+\.\d+")
+
+IpNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 
 def split_versions(value: str) -> List[str]:
     """HELP_VERSIONS списком, без пустых и пробелов."""
     return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def parse_networks(value: str) -> Tuple[IpNetwork, ...]:
+    """Адреса и сети через запятую: 172.20.0.1 или 172.16.0.0/12. Не адрес — ValueError с этим элементом."""
+    networks = []
+    for part in (item.strip() for item in value.split(",")):
+        if not part:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            raise ValueError(f"RATE_LIMIT_EXEMPT: {part!r} — не IP-адрес и не сеть вида 172.16.0.0/12") from None
+    return tuple(networks)
 
 
 class ElasticsearchConfig(BaseModel):
@@ -79,6 +97,12 @@ class Settings(BaseSettings):
 
     reindex_on_startup: str = "false"
 
+    # Ограничение частоты на один адрес клиента. Пустое значение — лимит по умолчанию.
+    requests_per_minute: int = REQUESTS_PER_MINUTE
+    requests_per_hour: int = REQUESTS_PER_HOUR
+    # Адреса и сети без ограничения частоты, через запятую; запросы с самой машины не ограничиваются всегда.
+    rate_limit_exempt: str = ""
+
     debug: bool = False
     
     force_reindex: bool = False
@@ -119,6 +143,34 @@ class Settings(BaseSettings):
             if not PLATFORM_VERSION.fullmatch(version):
                 raise ValueError(f"HELP_VERSIONS: {version!r} — не номер платформы вида 8.3.27.2342")
         return value
+
+    @field_validator("requests_per_minute", "requests_per_hour", mode="before")
+    @classmethod
+    def _empty_limit_is_default(cls, value, info: ValidationInfo):
+        """Пустая переменная — лимит по умолчанию: compose передаёт пустую строку, когда переменная не задана."""
+        if isinstance(value, str) and not value.strip():
+            return cls.model_fields[info.field_name].default
+        return value
+
+    @field_validator("requests_per_minute", "requests_per_hour")
+    @classmethod
+    def _limit_is_positive(cls, value: int, info: ValidationInfo) -> int:
+        """Лимит ноль или меньше запретил бы все запросы: такая опечатка роняет старт, а не сервис."""
+        if value < 1:
+            raise ValueError(f"{info.field_name.upper()}={value}: лимит — целое число больше нуля")
+        return value
+
+    @field_validator("rate_limit_exempt")
+    @classmethod
+    def _exempt_are_networks(cls, value: str) -> str:
+        """Опечатка в адресе роняет старт, а не оставляет лимит там, где его хотели снять."""
+        parse_networks(value)
+        return value
+
+    @property
+    def rate_limit_exempt_networks(self) -> Tuple[IpNetwork, ...]:
+        """RATE_LIMIT_EXEMPT как сети; сами адреса машины (127.0.0.1, ::1) добавляет ограничитель."""
+        return parse_networks(self.rate_limit_exempt)
 
     @model_validator(mode="after")
     def _default_version_is_configured(self) -> "Settings":
