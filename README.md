@@ -278,3 +278,9 @@ All four documents are in Russian.
   multi-architecture images, HTTP endpoints, exposing the service safely.
 
 Contributing to the test suite: [tests/README.md](tests/README.md).
+
+## Author
+
+Ilya Elagin, 1C developer. I write about AI agents in 1C development (in Russian):
+Telegram channel [t.me/elagin_1c](https://t.me/elagin_1c), articles on
+[Infostart](https://infostart.ru/profile/1612186/).
